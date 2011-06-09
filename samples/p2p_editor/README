@@ -1,0 +1,19 @@
+P2PEditor is a simple collaborative editor that runs in a terminal window.
+
+Launch the first instance like this:
+
+./p2peditor -l ":12345" 2>out
+
+This redirects the debug output to 'out' and listens on localhost port 12345.
+Now open more console and start more editors. These editors must know how to contact each other.
+Therefore, you can tell each editor to which other editor it should connect.
+Ultimatively, the editors form an unstructured P2P network.
+
+./p2peditor -l ":12346" -p ":12345" 2>out2
+
+This starts a second editor and makes it connect with the first one.
+
+./p2peditor -l ":12347" -p ":12346" 2>out2
+
+This starts a third editor and connects it with the second one.
+All edits are flooded between all editors. Thus, if you type in one console, you can see how the others update as well.
