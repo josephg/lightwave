@@ -1,0 +1,17 @@
+Build instructions
+------------------
+
+First you need to build the lightwaveot library
+
+cd ot
+make
+make install
+
+Now you might want to try the sample code
+cd samples/gocurses
+make
+make install
+cd ../p2peditor
+make
+
+See the README of the p2peditor on instructions how to start the software.
