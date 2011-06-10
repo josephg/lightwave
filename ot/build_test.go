@@ -2,6 +2,7 @@ package lightwaveot
 
 import (
   "testing"
+  "rand"
 )
 
 func TestHistoryGraph(t *testing.T) {
@@ -54,16 +55,21 @@ func TestBuild(t *testing.T) {
   m4 := Mutation{ID:"m4", Dependencies:[]string{"m6", "m10"}}
   muts := []Mutation{m1, m2, m3, m4, m5, m6, m10, m7, m8, m9, m11, m7a, m7b, m8a, m8b, m9a, m9b}
   
-  b := NewSimpleBuilder()
-  for _, mut := range muts {
-    _, err := Build(b, mut)
-    if err != nil {
-      t.Fatal(err.String())
-      return
+  // Try to apply the mutations in all possible permutations
+  for i := 0; i < 10000; i++ {
+    perm := rand.Perm(len(muts))
+    b := NewSimpleBuilder()
+    for i := 0; i < len(muts); i++ {
+      mut := muts[perm[i]]
+      _, err := Build(b, mut)
+      if err != nil {
+	t.Fatal(err.String())
+	return
+      }
     }
-  }
   
-  if len(muts) != len(b.mutations) {
-    t.Fatal("Not all mutations have been applied")
+    if len(muts) != len(b.AppliedMutationIDs()) {
+      t.Fatal("Not all mutations have been applied")
+    }
   }
 }

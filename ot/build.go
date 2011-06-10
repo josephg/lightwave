@@ -48,15 +48,28 @@ func NewSimpleBuilder() *SimpleBuilder {
   return b
 }
 
+// An ordered list of applied mutation IDs.
+// The most recent mutation is at the end of the list.
+func (self *SimpleBuilder) AppliedMutationIDs() []string {
+  return self.mutations
+}
+
+func (self *SimpleBuilder) AppliedMutation(id string) Mutation {
+  return self.appliedBlobs[id]
+}
+
+// Implements the Builder interface
 func (self *SimpleBuilder) Frontier() Frontier {
   return self.frontier
 }
 
+// Implements the Builder interface
 func (self *SimpleBuilder) HasApplied(id string) (has bool) {
   _, has = self.mutationsByID[id]
   return
 }
 
+// Implements the Builder interface
 func (self *SimpleBuilder) Enqueue(mut Mutation, deps []string) {
   // Remember the mutation
   self.waitingBlobs[mut.ID] = mut
@@ -73,6 +86,7 @@ func (self *SimpleBuilder) Enqueue(mut Mutation, deps []string) {
   self.pendingMutations[mut.ID] = len(deps)
 }
 
+// Implements the Builder interface
 func (self *SimpleBuilder) Dequeue(waitFor string) (muts []Mutation) {
   // Is any other mutation waiting for 'waitFor'?
   if l, ok := self.waitingLists[waitFor]; ok {
@@ -91,6 +105,7 @@ func (self *SimpleBuilder) Dequeue(waitFor string) (muts []Mutation) {
   return
 }
   
+// Implements the Builder interface
 func (self *SimpleBuilder) History() <-chan Mutation {
   ch := make(chan Mutation)
   f := func() {
@@ -103,6 +118,7 @@ func (self *SimpleBuilder) History() <-chan Mutation {
   return ch
 }
 
+// Implements the Builder interface
 func (self *SimpleBuilder) Apply(mut Mutation) {
   self.appliedBlobs[mut.ID] = mut
   self.mutations = append(self.mutations, mut.ID)
