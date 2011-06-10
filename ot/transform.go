@@ -9,16 +9,24 @@ import (
 // -------------------------------------------------------------------------
 // A stream of operations
 
+// Treats a sequence of operations as a stream.
 type stream struct {
   ops []Operation
-  pos, inside int
+  // An index inside the ops slice
+  pos int
+  // An index that points inside an operation.
+  // For example it tells how many characters of an InsertOp have
+  // already been read.
+  inside int
 }
 
+// Tests for the end of the stream
 func (self *stream) IsEOF() bool {
   return self.pos == len(self.ops)
 }
 
-// Extract an operation of the required length from Stream1
+// Extract an operation of the required length.
+// Length is either -1 or limited by the remaining length of the current operation (i.e. self.ops[self.pos].Len - self.inside).
 func (self *stream) Read(length int) (op Operation) {
   op = self.ops[self.pos]
   if length == -1 {
@@ -44,11 +52,16 @@ func (self *stream) Read(length int) (op Operation) {
 // -------------------------------------------------------------------------
 // Read pairs of operations from two streams
 
+// The reader is used during transformation.
+// It reads a pair of operations, from two operation streams.
+// If one operation is InsertOp or if the other stream is already finished, then
+// the other operation can be NoOp.
+// Transformation is implemented by reading a pair operations, transforming the ops, and reading again ...
 type reader struct {
   stream1, stream2 *stream
 }
 
-// Read a tuple of operations from Stream1 and Stream2
+// Read a tuple of operations from stream1 and stream2
 func (self *reader) Read() (op1 Operation, op2 Operation, err os.Error) {
   // EOF?
   if self.stream1.IsEOF() && self.stream2.IsEOF() {
@@ -94,6 +107,7 @@ func (self *reader) Read() (op1 Operation, op2 Operation, err os.Error) {
 // -------------------------------------------------------------------------
 // Transformation of mutations
 
+// Transforms one mutation against a sequence of mutations.
 func TransformSeq(muts []Mutation, mut Mutation) (tmuts []Mutation, tmut Mutation, err os.Error) {
   tmut = mut
   for _, m := range muts {
@@ -208,6 +222,11 @@ func min(a, b int) int {
 // ----------------------------------------------------------------------
 // Frontier
 
+// A Frontier is a set of mutation IDs.
+// Storing the IDs of all mutations ever applied to a document is space consuming.
+// Therefore, the frontier remembers only the 'latest' mutation IDs and throws away the 'old' ones.
+// The trick is that the old ones can be recomputed by recursively following the Mutation.Dependencies field of
+// each mutation in the frontier.
 type Frontier map[string]bool
 
 func (self Frontier) Add(mut Mutation) {
