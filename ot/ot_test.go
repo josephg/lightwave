@@ -6,6 +6,7 @@ import (
   "fmt"
   "encoding/base64"
   "crypto/sha256"
+  vec "container/vector"
 )
 
 
@@ -215,7 +216,7 @@ func TestPruning(t *testing.T) {
   }
 }
 
-func TestPruning2(t *testing.T) {
+func TestPruningAndComposing(t *testing.T) {
   // Try many random operations
   for test := 0; test < 10000; test++ {
     original := "abcdefghijk"
@@ -351,5 +352,156 @@ func TestPruning2(t *testing.T) {
 	t.Fatal("cdoc2 != cdoc3")
       }
     }
+  }
+}
+
+func TestTombStream(t *testing.T) {
+  var v vec.IntVector
+  ts := NewTombStream(&v)
+  ts.InsertChars(7)
+  if v.Len() != 1 || v.At(0) != 7 {
+    t.Fatal("Error in TombStream 1")
+  }
+  
+  ts = NewTombStream(&v)
+  ts.InsertChars(1)
+  chars, err1 := ts.Skip(2)
+  if err1 != nil {
+    t.Fatal("TombStream reached end too soon")
+  }
+  if chars != 2 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertChars(1)
+  chars, err1 = ts.Skip(5)
+  if err1 != nil {
+    t.Fatal("TombStream reached end too soon")
+  }
+  if chars != 5 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertChars(1)
+  _, err1 = ts.Skip(1)
+  if err1 == nil {
+    t.Fatal("TombStream did not detect end")
+  }
+  if v.Len() != 1 || v.At(0) != 10 {
+    t.Fatal("Error in TombStream 2")
+  }
+  
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(3)
+  if chars != 3 {
+    t.Fatal("Invalid number of chars")
+  }
+  n, err1 := ts.Bury(2)
+  if err1 != nil || n != 2 {
+    t.Fatal("Cannot bury")
+  }
+  if v.Len() != 3 || v.At(0) != 3 || v.At(1) != -2 || v.At(2) != 5 {
+    t.Fatal("Error in TombStream 3")
+  }
+  
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(5)
+  if chars != 3 {
+    t.Fatal("Invalid number of chars")
+  }
+  n, err2 := ts.Bury(2)
+  if err2 != nil || n != 2 {
+    t.Fatal("Cannot bury")
+  }
+  if v.Len() != 3 || v.At(0) != 3 || v.At(1) != -4 || v.At(2) != 3 {
+    t.Fatal("Error in TombStream 4")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(2)
+  if chars != 2 {
+    t.Fatal("Invalid number of chars")
+  }
+  n, err3 := ts.Bury(1)
+  if err3 != nil || n != 1 {
+    t.Fatal("Cannot bury")
+  }
+  if v.Len() != 3 || v.At(0) != 2 || v.At(1) != -5 || v.At(2) != 3 {
+    t.Fatal("Error in TombStream 5")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(1)
+  if chars != 1 {
+    t.Fatal("Invalid number of chars")
+  }
+  n, err4 := ts.Bury(7)
+  if err4 != nil || n != 2 {
+    t.Fatal("Cannot bury")
+  }
+  chars, _ = ts.Skip(2)
+  if chars != 2 {
+    t.Fatal("Invalid number of chars")
+  }
+  if v.Len() != 3 || v.At(0) != 1 || v.At(1) != -7 || v.At(2) != 2 {
+    t.Fatal("Error in TombStream 6")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(9)
+  if chars != 2 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertTombs(3)  // Middle of char
+  chars, _ = ts.Skip(1)
+  if chars != 1 {
+    t.Fatal("Invalid number of chars")
+  }
+  if v.Len() != 5 || v.At(0) != 1 || v.At(1) != -7 || v.At(2) != 1 || v.At(3) != -3 || v.At(4) != 1 {
+    t.Fatal("Error in TombStream 7")
+  }
+
+  ts = NewTombStream(&v)
+  ts.InsertTombs(2)  // Beginning of seq
+  if v.Len() != 6 || v.At(0) != -2 || v.At(1) != 1 || v.At(2) != -7 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 {
+    t.Fatal("Error in TombStream 8")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(15)
+  if chars != 3 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertTombs(1) // End of seq
+  if v.Len() != 7 || v.At(0) != -2 || v.At(1) != 1 || v.At(2) != -7 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 || v.At(6) != -1 {
+    t.Fatal("Error in TombStream 9")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(2)
+  if chars != 0 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertTombs(1) // End of tomb
+  if v.Len() != 7 || v.At(0) != -3 || v.At(1) != 1 || v.At(2) != -7 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 || v.At(6) != -1 {
+    t.Fatal("Error in TombStream 10")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(4)
+  if chars != 1 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertTombs(1) // Beginning of tomb
+  if v.Len() != 7 || v.At(0) != -3 || v.At(1) != 1 || v.At(2) != -8 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 || v.At(6) != -1 {
+    t.Fatal("Error in TombStream 11")
+  }
+
+  ts = NewTombStream(&v)
+  chars, _ = ts.Skip(1)
+  if chars != 0 {
+    t.Fatal("Invalid number of chars")
+  }
+  ts.InsertTombs(1) // Midle of tomb
+  if v.Len() != 7 || v.At(0) != -4 || v.At(1) != 1 || v.At(2) != -8 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 || v.At(6) != -1 {
+    t.Fatal("Error in TombStream 11")
   }
 }
