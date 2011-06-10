@@ -1,6 +1,7 @@
 package lightwaveot
 
 import (
+  "os"
   "testing"
   "rand"
   "fmt"
@@ -503,5 +504,46 @@ func TestTombStream(t *testing.T) {
   ts.InsertTombs(1) // Midle of tomb
   if v.Len() != 7 || v.At(0) != -4 || v.At(1) != 1 || v.At(2) != -8 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 || v.At(6) != -1 {
     t.Fatal("Error in TombStream 11")
+  }
+}
+
+func TestTransform(t *testing.T) {
+  // Try many random operations
+  for test := 0; test < 10000; test++ {
+    original := "abcdefghijk"
+    all := []Mutation{}
+    // Create concurrent mutations
+    for i := 0; i < 4; i++ {
+      all = append(all, Mutation{ID: fmt.Sprintf("m%v", i), Operation: Operation{Kind: StringOp, Operations: RandomOperations(len(original))}})
+    }
+
+    // Execute the four operations in any possible order
+    counter := 0
+    prev := ""
+    for perm := range Permutations(len(all)) {
+      doc := NewSimpleText(original)
+      var err os.Error
+      var applied []Mutation
+      for i := 0; i < len(perm); i++ {
+	mut := all[perm[i]]
+	// Transform against all applied ops
+	for _, appliedmut := range applied {
+	  _, mut, err = Transform(appliedmut, mut)
+          if err != nil {
+	    t.Fatal(err.String())
+          }
+	}
+	applied = append(applied, mut)
+	var result interface{}
+	result, err = Execute(doc, mut)
+	doc = result.(*SimpleText)
+      }
+      if counter == 0 {
+	prev = doc.Text
+      } else if prev != doc.Text {
+	t.Fatal("Different docs")
+      }
+      counter++
+    }
   }
 }
