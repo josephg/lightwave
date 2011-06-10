@@ -17,3 +17,17 @@ This starts a second editor and makes it connect with the first one.
 
 This starts a third editor and connects it with the second one.
 All edits are flooded between all editors. Thus, if you type in one console, you can see how the others update as well.
+
+KEYBOARD SHORTCUTS
+==================
+
+'q': Quit
+
+'s': Suspend
+     This will suspend the forwarding of mutations.
+     The purpose is to create concurrent operations by suspending two editors, then typing, and later resuming both.
+     This way you can see how OT merges the concurrent edits.
+
+'r': Resume
+
+Yes, these shortcuts mean you cannot type q, s, or r. Feel free to patch it :-)
