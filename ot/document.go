@@ -6,6 +6,14 @@ import (
   vec "container/vector"
 )
 
+// Every data structure that can be mutated by string operations must implement
+// this interface. Whenever a mutation is executed on the object, the
+// functions of this interface are called to execute the basic operations
+// insert, skip and delete. Begin and End are called before and after a mutation
+// is executed on the object.
+//
+// For many purposes it is sufficient to use the SimpleText struct which
+// implements the Text interface.
 type Text interface {
   Begin()
   InsertChars(str string)
@@ -18,6 +26,9 @@ type Text interface {
 // ------------------------------------------------------------------
 // TombStream
 
+// A TombStream is useful when implementing the Text interface.
+// It stores where inside the string of characters the tombs are located.
+// See SimpleText for an example of how to use the TombStream.
 type TombStream struct {
   seq *vec.IntVector
   pos, inside int
@@ -211,13 +222,13 @@ func execute(input interface{}, op Operation) (output interface{}, err os.Error)
   case NoOp:
     return input, nil
   case StringOp:
-    str, ok := input.(Text)
+    text, ok := input.(Text)
     if !ok {
       err = os.NewError("Type mismatch: Not a string")
       return
     }
-    err = executeString(str, op.Operations)
-    output = str
+    err = executeString(text, op.Operations)
+    output = text
   case ArrayOp:
   case ObjectOp:
   case OverwriteOp:
@@ -293,4 +304,68 @@ func (self *TextRange) Insert(pos int, length int) {
 func (self *TextRange) Delete(pos int, length int) {
   self.Current.Delete(pos, length)
   self.Anchor.Delete(pos, length)
+}
+
+// --------------------------------------------
+// SimpleText
+
+// Plain text that can be edited concurrently.
+// Implements the Text interface.
+type SimpleText struct {
+  Text string            // The string without any tombs
+  // A positive number represents a sequence of visible characters.
+  // A negative number represents a sequence of tombs.
+  tombs vec.IntVector
+  tombStream *TombStream // Used during a mutation
+  pos int                // Used during a mutation
+}
+
+func NewSimpleText(text string) *SimpleText {
+  s := &SimpleText{Text: text}
+  s.tombs.Push(len(text))
+  return s
+}
+
+func (self *SimpleText) String() string {
+  return self.Text
+}
+
+func (self *SimpleText) Clone() SimpleText {
+  return SimpleText{Text: self.Text, tombs: self.tombs.Copy()}
+}
+
+func (self *SimpleText) Begin() {
+  self.tombStream = NewTombStream(&self.tombs)
+  self.pos = 0
+}
+
+func (self *SimpleText) InsertChars(str string) {
+  self.tombStream.InsertChars(len(str))
+  self.Text = self.Text[:self.pos] + str + self.Text[self.pos:]
+  self.pos += len(str)
+}
+
+func (self *SimpleText) InsertTombs(count int) {
+  self.tombStream.InsertTombs(count)
+}
+
+func (self *SimpleText) Delete(count int) (err os.Error) {
+  var burried int
+  burried, err = self.tombStream.Bury(count)
+  if err != nil {
+    return
+  }
+  self.Text = self.Text[:self.pos] + self.Text[self.pos + burried:]
+  return
+}
+
+func (self *SimpleText) Skip(count int) (err os.Error) {
+  var chars int
+  chars, err = self.tombStream.Skip(count)
+  self.pos += chars
+  return
+}
+
+func (self *SimpleText) End() {
+  self.tombStream = nil
 }

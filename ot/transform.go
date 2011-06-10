@@ -94,9 +94,10 @@ func (self *reader) Read() (op1 Operation, op2 Operation, err os.Error) {
 // -------------------------------------------------------------------------
 // Transformation of mutations
 
-func TransformSeq(muts []Mutation, mut Mutation) (tmuts []Mutation, err os.Error) {
+func TransformSeq(muts []Mutation, mut Mutation) (tmuts []Mutation, tmut Mutation, err os.Error) {
+  tmut = mut
   for _, m := range muts {
-    m, mut, err = Transform(m, mut)
+    m, tmut, err = Transform(m, tmut)
     if err != nil {
       return
     }

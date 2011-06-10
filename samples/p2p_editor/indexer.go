@@ -98,7 +98,7 @@ func (self *Indexer) handleMutation(mut Mutation) {
   pmuts = append(pmuts, mut)
   for _, m := range muts {
     if m.ID != pmuts[0].ID {
-      pmuts, err = TransformSeq(pmuts, m)
+      pmuts, _, err = TransformSeq(pmuts, m)
       if err != nil {
 	log.Printf("TRANSFORM ERR: %v", err)
 	return
