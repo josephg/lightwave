@@ -1,0 +1,146 @@
+STRING MUTATION
+===============
+
+Data structure
+--------------
+
+A mutable string must implement the Text interface.
+The struct SimpleText provides an default implementation.
+
+A string is a sequence of characters and tombs.
+When a character is deleted, it is not removed from the string but burried, i.e. turned into a tomb.
+Tombs are anonymous, i.e. there is no need to store which character has been burried.
+For example, if "Hello World!!!" is inserted and then " World" is deleted, the final
+string is "Hello......!!!" where "." is in reality a tomb (and not the dot character of course)
+
+This allows for clever optimizations. We do not want the string to grow infinitely because in the example above
+the size of the string is the number of characters ever inserted since no character/tomb is really removed from the string.
+It is noteworthy that between any two visible characters there are zero or more tombs. We just have to remember how many tombs.
+Thus, the string above could be encoded as: (chars:"Hello"), (tombs:6), (chars:"!!!").
+The space complexity is therefore O(n) where n is the number of visible characters.
+
+The approach taken by SimpleText is to hold a string with the visible characters only (e.g. "Hello!!!") and a vector of integers.
+In our example this vector is [5, -6, 3]. The 5 means: the mutable string starts with 5 ("Hello"), followed by 6 tombs
+(the number of tombs is negative), followed by 3 characters ("!!!").
+This trick allows for a very efficient storage of tombs. 
+The TombStream struct is helpful in implementing this trick since it does all the bookkepping on the integer vector.
+
+Mutation
+--------
+
+A string can be mutated by a stream of operations. These operations consume the string from left to right and output the mutated string.
+A string mutation is encoded as an Operation of type StringOp which contains a slice of operations of the following kind:
+
+InsertOp
+--------
+
+If Operation.Value != "", then this operation inserts characters as specified by Operation.Value.
+For efficiency and consistency reasons the fueld Operation.Len stores the length of the string.
+
+If Operation.Value == "", then this operation inserts a number of tombs as specified by Operation.Len.
+While no user might ever want to insert tombs, this might result from the composition of operations,
+i.e. the first op inserts some text and the second one deletes it. The composed op must therefore directly
+insert tombs.
+
+InsertOp with Operation.Len == 0 is not allowed
+
+SkipOp
+------
+
+Skips a number of characters or tombs as specified by Operation.Len.
+The skip operation does not make any difference between a visible character and a tomb.
+It skips them all.
+
+DeleteOp
+--------
+
+Deletes a number of characters or tombs as specified by Operation.Len.
+If a character is deleted, it is turned into a tomb.
+If a tomb is deleted, it remains a tomb.
+
+
+OPERATIONAL TRANSFORMATION FOR Mutations
+========================================
+
+When transforming two mutations they might be in conflict, e.g. they both want to insert text at the same position.
+Obviously one must win, i.e. insert first. We must ensure that the same mutation wins on all computers performing this transformation.
+So we first compare Mutation.Site. The mutation is the smaller Site identifier wins, i.e. inserts first.
+Should both site identifier be equal (which should not happen in practice, because two ops of the same site should not be concurrent),
+then the tie is solved by comparing Mutation.ID. The mutation with the smaller ID wins, i.e. inserts first.
+
+Furthermore, comparing mutations by their Site identifier guarantees that concurrent sequences of inserts by different sites (e.g. users)
+are not ending up mixed. Instead, the sequences are in some random order.
+Example: User1 inserts "a" and then "b". User2 inserts "x" and then "y". These are two sequences of two operations each.
+When transforming these, either all ops of User1 go first or all ops of User2 go first.
+Hence, the result is either "abxy" or "xyab" but never "axby" or "xaby" or ...
+
+Revisions and Dependencies
+--------------------------
+
+In TP1 OT systems (such as Google Wave) there is one site that orders all mutations.
+Thus, to specify the revision at which to apply a mutation is easy: Use an index in this ordered list of mutations.
+In a TP2 OT systems (as in lightwave) there is no central site that orders mutations because the system is
+entirely decentralized. Thus, defining on which revision to rely is more difficult.
+
+Each Mutation has a Dependencies field that tells on which mutations it relies.
+This includes all mutations that can be found recursively by following the Dependencies field of these mutations ...
+Thus, the dependencies between mutations form a directed acyclic graph.
+We call the leaves of this graph the Frontier (there is a struct for this available).
+
+When a mutation is created, a set of previous mutation has already been applied to the document.
+The frontier of these preceding mutations is therefore stored in the Dependencies field. 
+So the idea of a revision number is exchanged with a frontier.
+
+Pruning
+-------
+
+Imagine Site1 has applied mutations A, B, C, D and has then created a mutation X.
+Site2 has applied mutations A, B, Y, C, D and now wants to transform and apply X.
+Therefore, Site2 must compute the difference between its history and the dependencies of X.
+The HistoryGraph struct can do this efficiently. In the end we learn that Site1 did not apply Y yet
+and that the differences start after A, B have been applied (there is a common history prefix that can be ignored).
+
+So Site2 prunes Y from its history which requires some transformation of C and D because
+they must be transformed to a world where Y never happened. The Prune and PruneSeq functions do this.
+After pruning Site2 has a sequence of mutations [C, D], which yield the same result as the [C, D] owned by Site1,
+i.e. mutation Y has been pruned.
+Thus, both sites do now have a common history [A, B, C, D] at which X can be applied.
+
+Now Site2 transforms [C, D, X] against its history [Y, C, D]
+(notice that the common history [A, B] can be safely ignored).
+The last transformation of X yields a mutation that can be applied after A, B, Y, C, D.
+This is exactly what Site2 needs.
+Now Site2 can drop the [C, D] it just compyed and it can add the transformed mutation of X to its history.
+
+This shows that the algorithm works very efficiently if the history difference of two sites is small.
+The larger the differences are, the more heavy weight the transformation and pruning becomes.
+If the last difference between two histories is N mutations backwards in time on site1 and M mutation backwards in time on site2,
+then the complexity is O(N * P + N * M * T) on site1,
+where P is the complexity of pruning a mutation and T is the complexity of transforming two mutations against each other.
+
+With Google Wave the complexity is O(N * M * T). The Google Wave trick is to set M=1 by composing the ops of the client and
+by allowing each client only one in-flight operation, which results in O(N * T).
+
+OPERATIONAL TRANSFORMATION FOR StringOp
+=======================================
+
+OT transforms two streams of operations against each other, called stream1 and stream2.
+If both streams are in conflict (i.e. both want to insert) then stream1 goes first.
+
+Read two ops of the same length from both streams. This might require splitting ops.
+However, we first check whether stream1 wants to insert something. If not, we check whether
+stream2 wants to insert something.
+When reading an InsertOp from stream1, then assume NoOp for stream2.
+When reading an InsertOp from stream2, then assume NoOp for stream1.
+
+The following cases can occur. The operation pair on the left of -> is what has been read.
+The pair on the right side is the result of transforming these two ops.
+
+InsertOp x NoOp -> InsertOp x SkipOp
+NoOp x InsertOps -> SkipOp x InsertOp
+DeleteOp x DeleteOp -> DeleteOp x DeleteOp  // No changes happen here because deleting a tomb results in a tomb
+SkipOp x SkipOp -> SkipOp x SkipOp          // No changes happen here
+DeleteOp x SkipOp -> DeleteOp x SkipOp      // No changes happen here because skip does not care whether it skips a characer or a tomb
+SkipOp x DeleteOp -> SkipOp x DeleteOp      // No changes happen here because skip does not care whether it skips a characer or a tomb
+
+Thus, a real transformation happens only in the case of InsertOp, where a SkipOp is inserted in the other stream.
