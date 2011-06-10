@@ -129,6 +129,9 @@ func RandomOperations(n int) (ops []Operation) {
   return
 }
 
+// -------------------------------------------------
+// Tests
+
 func TestPruning(t *testing.T) {
   // Try many random operations
   for test := 0; test < 10000; test++ {
@@ -167,7 +170,7 @@ func TestPruning(t *testing.T) {
 	}
 	_, x, err := TransformSeq(seq2, all[i])
 	if err != nil {
-	  panic(err.String())
+	  t.Fatal(err.String())
 	}
 	seq2 = append( seq2, x )
       }
@@ -190,7 +193,7 @@ func TestPruning(t *testing.T) {
       for _, mut := range seq2 {
 	result, err := Execute(doc2, mut)
 	if err != nil {
-	  panic(err.String())
+	  t.Fatal(err.String())
 	}
 	doc2 = result.(*SimpleText)
       }
@@ -199,7 +202,7 @@ func TestPruning(t *testing.T) {
       for _, mut := range seq3 {
 	result, err := Execute(doc3, mut)
 	if err != nil {
-	  panic(err.String())
+	  t.Fatal(err.String())
 	}
 	doc3 = result.(*SimpleText)
       }
@@ -208,6 +211,145 @@ func TestPruning(t *testing.T) {
 	t.Fatalf("Undo delivers different docs:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text)
       }
       // t.Logf("UNDO2 doc: %v\n", doc2.Text)
+    }
+  }
+}
+
+func TestPruning2(t *testing.T) {
+  // Try many random operations
+  for test := 0; test < 10000; test++ {
+    original := "abcdefghijk"
+    all := []Mutation{}
+    // Create concurrent mutations
+    for i := 0; i < 4; i++ {
+      name := fmt.Sprintf("m%v", i)
+      all = append(all, Mutation{DebugName: name, ID: base64Hash(name), Operation: Operation{Kind: StringOp, Operations: RandomOperations(len(original))}})
+    }
+
+    // Transform the mutations against each other
+    seq := []Mutation{}
+    for i := 0; i < len(all); i++ {
+      _, x, err := TransformSeq(seq, all[i])
+      if err != nil {
+	t.Fatalf("ERR: %v, i=%v\n", err.String(), i)
+      }      
+      seq = append( seq, x )
+    }
+    
+    // Transform the mutations but this time skip mutation k
+    for k := 0; k < len(all); k++ {
+      seq2 := []Mutation{}
+      for i := 0; i < len(all); i++ {
+	if i == k {
+	  continue
+	}
+	_, x, err := TransformSeq(seq2, all[i])
+	if err != nil {
+	  t.Fatal(err.String())
+	}
+	seq2 = append( seq2, x )
+      }
+      
+      // Undo mutation k in seq
+      seq3, err := PruneSeq(seq, map[string]bool{seq[k].ID: true})
+      if err != nil {
+	t.Fatalf("ERR: %v, k=%v", err.String(), k)
+      }
+      
+      // Check that seq2 and seq3 both generate the same document
+      doc2 := NewSimpleText(original)
+      for _, mut := range seq2 {
+	result, err := Execute(doc2, mut)
+	if err != nil {
+	  t.Fatal(err.String())
+	}
+	doc2 = result.(*SimpleText)
+      }
+
+      doc3 := NewSimpleText(original)
+      for _, mut := range seq3 {
+	result, err := Execute(doc3, mut)
+	if err != nil {
+	  t.Fatal(err.String())
+	}
+	doc3 = result.(*SimpleText)
+      }
+
+      if doc2.Text != doc3.Text {
+	t.Fatalf("Undo delivers different docs:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text)
+      }
+      
+      _, x, err := TransformSeq(seq2, all[k])
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      seq2 = append(seq2, x)
+      
+      _, x, err = TransformSeq(seq3, all[k])
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      seq3 = append(seq3, x)
+      
+      result, err := Execute(doc2, seq2[len(seq2)-1])
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      doc2 = result.(*SimpleText)
+      
+      result, err = Execute(doc3, seq3[len(seq3)-1])
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      doc3 = result.(*SimpleText)
+
+      if doc2.Text != doc3.Text {
+	t.Fatal(fmt.Sprintf("Undo delivers different docs after all applications:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text))
+      }
+
+      comp1, err := ComposeSeq(seq)
+      if err != nil {
+	t.Fatal(err.String())
+      }
+
+      comp2, err := ComposeSeq(seq2)
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      
+      comp3, err := ComposeSeq(seq3)
+      if err != nil {
+	t.Fatal(err.String())
+      }
+
+      cdoc1 := NewSimpleText(original)
+      result, err = Execute(cdoc1, comp1)
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      cdoc1 = result.(*SimpleText)
+
+      cdoc2 := NewSimpleText(original)
+      result, err = Execute(cdoc2, comp2)
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      cdoc2 = result.(*SimpleText)
+      
+      cdoc3 := NewSimpleText(original)
+      result, err = Execute(cdoc3, comp3)
+      if err != nil {
+	t.Fatal(err.String())
+      }
+      cdoc3 = result.(*SimpleText)
+
+      if cdoc1.Text != cdoc2.Text {
+	t.Fatal("cdoc1 != cdoc2")
+      }
+
+      if cdoc2.Text != cdoc3.Text {
+	t.Fatal("cdoc2 != cdoc3")
+      }
     }
   }
 }
