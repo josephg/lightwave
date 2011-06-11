@@ -6,13 +6,13 @@ import (
 
 const (
   NoOp = iota
-  InsertOp    // Used in StringOp and ArrayOp
+  InsertOp    // Used in StringOp and ArrayOp and AttributeOp
   DeleteOp    // Used in StringOp and ArrayOp
-  SkipOp      // Used in StringOp and ArrayOp
-  StringOp    // Used as root or in ArrayOp or in ObjectOp
-  OverwriteOp // Used as root or in ArrayOp or in ObjectOp
-  ArrayOp     // Used as root or in ArrayOp or in ObjectOp
-  ObjectOp    // Used as root or in ArrayOp or in ObjectOp
+  SkipOp      // Used in StringOp and ArrayOp and AttributeOp
+  StringOp    // Used as root or in ArrayOp or in ObjectOp and AttributeOp
+  ArrayOp     // Used as root or in ArrayOp or in ObjectOp and AttributeOp
+  ObjectOp    // Used as root or in ArrayOp or in ObjectOp and AttributeOp
+  AttributeOp // Used in ObjectOp
 )
 
 type Operation struct {
@@ -56,22 +56,23 @@ func (self Operation) String() string {
   case NoOp:
     return "nop"
   case InsertOp:
-    if len(self.Value.(string)) == 0 && self.Len > 0 {      
+    if str, ok := self.Value.(string); ok && len(str) == 0 && self.Len > 0 {      
       return fmt.Sprintf("t:%v", self.Len)
+    } else {
+      return fmt.Sprintf("i:%v", self.Value)
     }
-    return fmt.Sprintf("i:%v", self.Value.(string))
   case DeleteOp:
     return fmt.Sprintf("d:%v", self.Len)
   case SkipOp:
     return fmt.Sprintf("s:%v", self.Len)
   case StringOp:
     return fmt.Sprintf("str:%v", self.Operations)
-  case OverwriteOp:
-    return fmt.Sprintf("set:%v", self.Value)
   case ArrayOp:
     return fmt.Sprintf("arr:%v", self.Operations)
   case ObjectOp:
     return fmt.Sprintf("obj:%v", self.Operations)
+  case AttributeOp:
+    return fmt.Sprintf("attr[key:%v ops:%v]", self.Value.(string), self.Operations)    
   default:
     panic("Unsupported op")
   }

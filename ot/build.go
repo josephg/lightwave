@@ -151,7 +151,7 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
 
   // Find out how far back we have to go in history to find a common anchor point for transformation
   frontier := builder.Frontier()
-  h := NewHistoryGraph(frontier, mut.Dependencies)
+  h := newHistoryGraph(frontier, mut.Dependencies)
   reverse_muts := []Mutation{}
   prune := map[string]bool{}
   // Need to rollback?
@@ -205,4 +205,82 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
     Build(builder, m)
   }
   return
+}
+
+// ----------------------------------------------------------------------
+// Frontier
+
+// A Frontier is a set of mutation IDs.
+// Storing the IDs of all mutations ever applied to a document is space consuming.
+// Therefore, the frontier remembers only the 'latest' mutation IDs and throws away the 'old' ones.
+// The trick is that the old ones can be recomputed by recursively following the Mutation.Dependencies field of
+// each mutation in the frontier.
+type Frontier map[string]bool
+
+func (self Frontier) Add(mut Mutation) {
+  self[mut.ID] = true
+  for _, dep := range mut.Dependencies {
+    self[dep] = false, false
+  }
+}
+
+func (self Frontier) IDs() (list []string) {
+  for id, _ := range self {
+    list = append(list, id)
+  }
+  return
+}
+
+// ----------------------------------------------------------------------
+// historyGraph
+
+type historyGraph struct {
+  frontier map[string]bool
+  oldFrontier map[string]bool
+  markedCount int
+}
+
+func newHistoryGraph(frontier Frontier, dest []string) *historyGraph {
+  d := make(map[string]bool)
+  for _, id := range dest {
+    d[id] = true
+  }
+  f := make(map[string]bool)
+  markedCount := 0
+  for id, _ := range frontier {
+    _, mark := d[id]
+    f[id] = mark
+    if mark {
+      markedCount++
+    }
+  }
+  h := &historyGraph{frontier: f, oldFrontier: d, markedCount: markedCount}
+  return h
+}
+
+func (self *historyGraph) Substitute(mut Mutation) bool {
+  if _, ok := self.frontier[mut.ID]; !ok {
+    panic("Substituting a mutation that is not part of the history graph")
+  }
+  ismarked := self.frontier[mut.ID]
+  if ismarked {
+    self.markedCount--
+  }
+  for _, dep := range mut.Dependencies {
+    _, mark := self.oldFrontier[dep]
+    existsMark, exists := self.frontier[dep] 
+    mark = mark || ismarked
+    if !exists || (mark && !existsMark) {
+      self.frontier[dep] = mark
+      if mark {
+	self.markedCount++
+      }
+    }
+  }
+  self.frontier[mut.ID] = false, false
+  return ismarked
+}
+
+func (self *historyGraph) Test() bool {
+  return self.markedCount == len(self.frontier)
 }

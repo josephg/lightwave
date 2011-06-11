@@ -23,6 +23,13 @@ type Text interface {
   End()
 }
 
+type Object interface {
+  Begin()
+  Get(key string) (version int, value interface{})
+  Set(key string, version int, value interface{})
+  End()
+}
+
 // ------------------------------------------------------------------
 // TombStream
 
@@ -231,8 +238,13 @@ func execute(input interface{}, op Operation) (output interface{}, err os.Error)
     output = text
   case ArrayOp:
   case ObjectOp:
-  case OverwriteOp:
-    output = op.Value
+    obj, ok := input.(Object)
+    if !ok {
+      err = os.NewError("Type mismatch: Not an object")
+      return
+    }
+    err = executeObject(obj, op.Operations)
+    output = obj    
   default:
     err = os.NewError("Operation not allowed in this place")
   }
@@ -267,6 +279,72 @@ func executeString(text Text, ops []Operation) (err os.Error) {
     default:
       panic(fmt.Sprintf("Operation not allowed in a string: %v", op.Kind))
     }
+  }
+  return
+}
+
+func executeObject(obj Object, ops []Operation) (err os.Error) {
+  obj.Begin()
+  defer obj.End()
+  // Iterate over all AttributeOps
+  for _, attr := range ops {
+    if attr.Kind != AttributeOp {
+      err = os.NewError("Expected an AttributeOp as child of ObjectOp")
+      return
+    }
+    // Get the current value
+    version, val := obj.Get(attr.Value.(string))
+    pos := 0
+    var exec_op Operation
+    for _, op := range attr.Operations {
+      switch op.Kind {
+      case InsertOp:
+	if pos <= version {
+	  version++
+	} else {
+	  exec_op = op
+	}
+	pos++
+      case SkipOp:
+	pos += op.Len
+      case StringOp, ObjectOp, ArrayOp:
+    	if pos == version {
+	  exec_op = op
+	}
+	pos++
+      default:
+	err = os.NewError("Operation not allowed as a child of an AttributeOp")
+      }
+    }
+    switch exec_op.Kind {
+    case InsertOp:
+      if len(exec_op.Operations) > 1 {
+	err = os.NewError("InsertOp must have at most one child operation")
+        return
+      } else if len(exec_op.Operations) == 1 { // Insert a mutable object?
+	op := exec_op.Operations[0]
+	switch op.Kind {
+	case StringOp:
+	  val, err = execute(NewSimpleText(""), op)
+	case ObjectOp:
+	  val, err = execute(NewSimpleObject(), op)
+	case ArrayOp:
+	  // TODO
+	}
+	if err != nil {
+	  return
+	}
+      } else { // Insert a simple constant (Everything JSON supports)
+	val = exec_op.Value
+      }
+      version = pos - 1
+    case StringOp, ObjectOp, ArrayOp:
+      val, err = execute(val, exec_op)
+      if err != nil {
+        return
+      }
+    }
+    obj.Set(attr.Value.(string), version, val)
   }
   return
 }
@@ -368,4 +446,45 @@ func (self *SimpleText) Skip(count int) (err os.Error) {
 
 func (self *SimpleText) End() {
   self.tombStream = nil
+}
+
+// -----------------------------------------------------
+// SimpleObject
+
+type SimpleObject struct {
+  values map[string]interface{}
+  versions map[string]int
+}
+
+func NewSimpleObject() *SimpleObject {
+  return &SimpleObject{}
+}
+
+func (self *SimpleObject) Begin() {
+}
+
+func (self *SimpleObject) Get(key string) (version int, value interface{}) {
+  if self.values == nil {
+    return -1, nil
+  }
+  var ok bool
+  value, ok = self.values[key]
+  if !ok {
+    version = -1
+    return
+  }
+  version = self.versions[key]
+  return
+}
+
+func (self *SimpleObject) Set(key string, version int, value interface{}) {
+  if self.values == nil {
+    self.values = make(map[string]interface{})
+    self.versions = make(map[string]int)
+  }
+  self.values[key] = value
+  self.versions[key] = version
+}
+
+func (self *SimpleObject) End() {
 }

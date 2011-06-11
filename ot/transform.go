@@ -33,11 +33,15 @@ func (self *stream) Read(length int) (op Operation) {
     length = op.Len - self.inside
   }
   if op.Kind == InsertOp {
-    str := op.Value.(string)
-    if len(str) > 0 {
-      op.Value = str[self.inside:self.inside + length]
+    if self.inside == 0 && length == op.Len {
+      // Do nothing by intention
     } else {
-      op.Value = ""
+      str := op.Value.(string)
+      if len(str) > 0 {
+	op.Value = str[self.inside:self.inside + length]
+      } else {
+	op.Value = ""
+      }
     }
   }
   self.inside += length
@@ -140,14 +144,6 @@ func transformOp(op1 Operation, op2 Operation) (top1 Operation, top2 Operation, 
   if op1.Kind == NoOp || op2.Kind == NoOp {
     return
   }
-  if op1.Kind == OverwriteOp {
-    top2 = Operation{}
-    return
-  }
-  if op2.Kind == OverwriteOp {
-    top1 = Operation{}
-    return
-  }
   if op1.Kind != op2.Kind {
     err = os.NewError("Operations of both streams operate on a different data type or they are not allowed in this place")
     return
@@ -158,7 +154,7 @@ func transformOp(op1 Operation, op2 Operation) (top1 Operation, top2 Operation, 
   case ArrayOp:
     // TODO
   case ObjectOp:
-    // TODO
+    top1.Operations, top2.Operations, err = transformObject(op1.Operations, op2.Operations)
   default:
     err = os.NewError("Operation kind not allowed in this place")
   }
@@ -211,88 +207,70 @@ func transformStringOp(op1 Operation, op2 Operation) (top1 Operation, top2 Opera
   return
 }
 
+func transformObject(ops1 []Operation, ops2 []Operation) (tops1 []Operation, tops2 []Operation, err os.Error) {
+  attr1 := make(map[string]int)
+  attr2 := make(map[string]int)
+  pos := 0
+  for _, a := range ops1 {
+    if a.Kind != AttributeOp {
+      err = os.NewError("Operation not allowed in an object context")
+      return
+    }
+    attr1[a.Value.(string)] = pos
+    pos++
+  }
+  pos = 0
+  for _, a := range ops2 {
+    if a.Kind != AttributeOp {
+      err = os.NewError("Operation not allowed in an object context")
+      return
+    }
+    attr2[a.Value.(string)] = pos
+    pos++
+  }
+  tops1 = make([]Operation, len(ops1))
+  tops2 = make([]Operation, len(ops2))
+  copy(tops1, ops1)
+  copy(tops2, ops2)
+  for key, pos1 := range attr1 {
+    pos2, ok := attr2[key]
+    if !ok {
+      continue
+    }
+//    println(fmt.Sprintf("key=%v, pos1 = %v, pos2 = %v", key, pos1, pos2))
+    tops1[pos1].Operations, tops2[pos2].Operations, err = transformOps(tops1[pos1].Operations, tops2[pos2].Operations, transformAttrOp)
+    if err != nil {
+      return
+    }
+  }
+  return
+}
+
+func transformAttrOp(op1 Operation, op2 Operation) (top1 Operation, top2 Operation, err os.Error) {
+  if op1.Kind != InsertOp && op1.Kind != SkipOp && op1.Kind != ObjectOp && op1.Kind != ArrayOp && op1.Kind != StringOp && op1.Kind != NoOp {
+    err = os.NewError(fmt.Sprintf("Operation not allowed in an object context: %v", op1.Kind))
+    return
+  }
+  if op2.Kind != InsertOp && op2.Kind != SkipOp && op2.Kind != ObjectOp && op2.Kind != ArrayOp && op2.Kind != StringOp && op2.Kind != NoOp {
+    err = os.NewError(fmt.Sprintf("Operation not allowed in an object context: %v", op2.Kind))
+    return
+  }
+  top1 = op1
+  top2 = op2
+  if op1.Kind == InsertOp {
+    top2 = Operation{Kind: SkipOp, Len: 1}
+  } else if  op2.Kind == InsertOp {
+    top1 = Operation{Kind: SkipOp, Len: 1}
+  } else if (op1.Kind == StringOp || op1.Kind == ArrayOp || op1.Kind == ObjectOp) && (op2.Kind == StringOp || op2.Kind == ArrayOp || op2.Kind == ObjectOp) {
+    top1, top2, err = transformOp(op1, op2)
+  }
+  return
+}
+
 // Helper function
 func min(a, b int) int {
   if a < b {
     return a
   }
   return b
-}
-
-// ----------------------------------------------------------------------
-// Frontier
-
-// A Frontier is a set of mutation IDs.
-// Storing the IDs of all mutations ever applied to a document is space consuming.
-// Therefore, the frontier remembers only the 'latest' mutation IDs and throws away the 'old' ones.
-// The trick is that the old ones can be recomputed by recursively following the Mutation.Dependencies field of
-// each mutation in the frontier.
-type Frontier map[string]bool
-
-func (self Frontier) Add(mut Mutation) {
-  self[mut.ID] = true
-  for _, dep := range mut.Dependencies {
-    self[dep] = false, false
-  }
-}
-
-func (self Frontier) IDs() (list []string) {
-  for id, _ := range self {
-    list = append(list, id)
-  }
-  return
-}
-
-// ----------------------------------------------------------------------
-// HistoryGraph
-
-type HistoryGraph struct {
-  frontier map[string]bool
-  oldFrontier map[string]bool
-  markedCount int
-}
-
-func NewHistoryGraph(frontier Frontier, dest []string) *HistoryGraph {
-  d := make(map[string]bool)
-  for _, id := range dest {
-    d[id] = true
-  }
-  f := make(map[string]bool)
-  markedCount := 0
-  for id, _ := range frontier {
-    _, mark := d[id]
-    f[id] = mark
-    if mark {
-      markedCount++
-    }
-  }
-  h := &HistoryGraph{frontier: f, oldFrontier: d, markedCount: markedCount}
-  return h
-}
-
-func (self *HistoryGraph) Substitute(mut Mutation) bool {
-  if _, ok := self.frontier[mut.ID]; !ok {
-    panic("Substituting a mutation that is not part of the history graph")
-  }
-  ismarked := self.frontier[mut.ID]
-  if ismarked {
-    self.markedCount--
-  }
-  for _, dep := range mut.Dependencies {
-    _, mark := self.oldFrontier[dep]
-    existsMark, exists := self.frontier[dep] 
-    mark = mark || ismarked
-    if !exists || (mark && !existsMark) {
-      self.frontier[dep] = mark
-      if mark {
-	self.markedCount++
-      }
-    }
-  }
-  self.frontier[mut.ID] = false, false
-  return ismarked
-}
-
-func (self *HistoryGraph) Test() bool {
-  return self.markedCount == len(self.frontier)
 }
