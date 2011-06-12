@@ -7,6 +7,7 @@ GOFILES=\
 	compose.go \
 	prune.go \
 	build.go \
-	document.go
+	document.go \
+	codec_json.go
 
 include $(GOROOT)/src/Make.pkg

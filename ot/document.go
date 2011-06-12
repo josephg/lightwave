@@ -246,6 +246,7 @@ func execute(input interface{}, op Operation) (output interface{}, err os.Error)
     err = executeString(text, op.Operations)
     output = text
   case ArrayOp:
+    // TODO
   case ObjectOp:
     obj, ok := input.(Object)
     if !ok {
