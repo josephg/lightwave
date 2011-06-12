@@ -497,3 +497,67 @@ func (self *SimpleObject) Set(key string, version int, value interface{}) {
 
 func (self *SimpleObject) End() {
 }
+
+// --------------------------------------------
+// SimpleArray
+
+// Plain text that can be edited concurrently.
+// Implements the Text interface.
+type SimpleArray struct {
+  array vec.Vector
+  // A positive number represents a sequence of visible characters.
+  // A negative number represents a sequence of tombs.
+  tombs vec.IntVector
+  tombStream *TombStream // Used during a mutation
+  pos int                // Used during a mutation
+}
+
+func NewSimpleArray() *SimpleArray {
+  s := &SimpleArray{}
+  s.tombs.Push(0)
+  return s
+}
+
+func (self *SimpleArray) String() string {
+  return fmt.Sprintf("%v", self.array)
+}
+
+func (self *SimpleArray) Clone() SimpleArray {
+  return SimpleArray{array: self.array, tombs: self.tombs.Copy()}
+}
+
+func (self *SimpleArray) Begin() {
+  self.tombStream = NewTombStream(&self.tombs)
+  self.pos = 0
+}
+
+func (self *SimpleArray) Insert(data interface{}) {
+  self.tombStream.InsertChars(1)
+  self.array.Insert(self.pos, data)
+  self.pos += 1
+}
+
+func (self *SimpleArray) InsertTombs(count int) {
+  self.tombStream.InsertTombs(count)
+}
+
+func (self *SimpleArray) Delete(count int) (err os.Error) {
+  var burried int
+  burried, err = self.tombStream.Bury(count)
+  if err != nil {
+    return
+  }
+  self.array.Cut(self.pos, self.pos + burried)
+  return
+}
+
+func (self *SimpleArray) Skip(count int) (err os.Error) {
+  var chars int
+  chars, err = self.tombStream.Skip(count)
+  self.pos += chars
+  return
+}
+
+func (self *SimpleArray) End() {
+  self.tombStream = nil
+}
