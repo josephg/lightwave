@@ -178,7 +178,7 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
   }
   
   // Prune all mutations that have been applied locally but do not belong to the history of 'mut'
-  pmuts, e := PruneSeq(muts, prune)
+  pmuts, e := pruneMutationSeq(muts, prune)
   if e != nil {
     return false, e
   }

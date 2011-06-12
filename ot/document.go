@@ -30,6 +30,15 @@ type Object interface {
   End()
 }
 
+type Array interface {
+  Begin()
+  Insert(data interface{})
+  InsertTombs(count int)
+  Delete(count int) (err os.Error)
+  Skip(count int) (err os.Error)
+  End()
+}
+
 // ------------------------------------------------------------------
 // TombStream
 

@@ -5,13 +5,13 @@ import (
   "fmt"
 )
 
-func PruneSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err os.Error) {
+func pruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err os.Error) {
   started := false
   var u Mutation
   for _, mut := range muts {
     if _, isundo := prune[mut.ID]; !isundo {
       if started {
-	mut, u, err = Prune(mut, u)
+	mut, u, err = pruneMutation(mut, u)
 	if err != nil {
 	  return
 	}
@@ -32,7 +32,7 @@ func PruneSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err os
   return
 }
 
-func Prune(mut Mutation, prune Mutation) (tmut Mutation, tprune Mutation, err os.Error) {
+func pruneMutation(mut Mutation, prune Mutation) (tmut Mutation, tprune Mutation, err os.Error) {
   tmut = mut
   tprune = prune
   tmut.Operation, tprune.Operation, err = pruneOp(tmut.Operation, prune.Operation)
