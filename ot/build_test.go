@@ -23,7 +23,7 @@ func TestHistoryGraph(t *testing.T) {
   m2 := Mutation{ID:"m2", Dependencies:[]string{"m5"}}
   m3 := Mutation{ID:"m3", Dependencies:[]string{"m5", "m6"}}
   m4 := Mutation{ID:"m4", Dependencies:[]string{"m6", "m10"}}
-  h := NewHistoryGraph(map[string]bool{"m1":false, "m2":false, "m3":false, "m4":false}, []string{"m5","m9"})
+  h := newHistoryGraph(map[string]bool{"m1":false, "m2":false, "m3":false, "m4":false}, []string{"m5","m9"})
   muts := []Mutation{m1, m2, m3, m4, m5, m6, m10, m7, m8, m9, m11, m7a, m7b, m8a, m8b, m9a, m9b}
   rollback := 0
   for i := 0; i < len(muts) && !h.Test(); i++ {
