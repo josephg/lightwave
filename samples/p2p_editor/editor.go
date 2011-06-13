@@ -257,10 +257,15 @@ func (self *Editor) Loop() {
       var ops []Operation
       stream := NewTombStream(&self.tombs)
       skipped, _ := stream.SkipChars(self.Cursor() - 1)
-      ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
-      skipped, _ = stream.SkipChars(1)
-      ops = append(ops, Operation{Kind: DeleteOp, Len: skipped})
-      ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
+      if skipped > 0 {
+	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+      }
+      deleted, _ := stream.SkipChars(1)
+      ops = append(ops, Operation{Kind: DeleteOp, Len: deleted})
+      skipped = stream.SkipToEnd()
+      if skipped > 0 {
+	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+      }
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
       mut.Dependencies = self.frontier.IDs()
       mut.Site = self.site
@@ -277,9 +282,14 @@ func (self *Editor) Loop() {
       var ops []Operation
       stream := NewTombStream(&self.tombs)
       skipped, _ := stream.SkipChars(self.Cursor())
-      ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+      if skipped > 0 {
+	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+      }
       ops = append(ops, Operation{Kind: InsertOp, Len: 1, Value: string(inp)})
-      ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
+      skipped = stream.SkipToEnd()
+      if skipped > 0 {
+	ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
+      }
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
       mut.Dependencies = self.frontier.IDs()
       mut.Site = self.site

@@ -16,7 +16,8 @@ type Federation struct {
   // For debugging only
   suspend bool
   queue [][]byte
-  refqueue []BlobRef
+  // A queue of blob refs
+  refqueue []string
 }
 
 type conn struct {
@@ -63,11 +64,11 @@ func (self *Federation) newConn(c net.Conn) {
   go self.write(x)
 }
 
-func (self *Federation) ForwardBlob(blob []byte, ref BlobRef) {
+func (self *Federation) ForwardBlob(blob []byte, blobref string) {
   // DEBUG
   if self.suspend {
     self.queue = append(self.queue, blob)
-    self.refqueue = append(self.refqueue, ref)
+    self.refqueue = append(self.refqueue, blobref)
     return
   }
   // END DEBUG
@@ -106,7 +107,7 @@ func (self *Federation) read(c *conn) {
       return
     }
 //    log.Printf("read blob\n")
-    self.store.StoreBlob(blob, BlobRef{})
+    self.store.StoreBlob(blob, "")
   }
 }
 
