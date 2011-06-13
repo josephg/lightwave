@@ -5,16 +5,16 @@ import (
   "testing"
   "rand"
   "fmt"
-  "encoding/base64"
+  "encoding/hex"
   "crypto/sha256"
   vec "container/vector"
 )
 
 
 // --------------------------------------------
-// Hashes and base64 helper functions
+// Hashes and hex-encoding helper functions
 
-func base64Hash(input string) string {
+func hexHash(input string) string {
   return idToString(hash([]byte(input)))
 }
 
@@ -25,9 +25,7 @@ func hash(input []byte) []byte {
 }
 
 func idToString(id []byte) string {
-  result := make([]byte, base64.StdEncoding.EncodedLen(len(id)))[:]
-  base64.StdEncoding.Encode(result, id)
-  return string(result)
+  return hex.EncodeToString(id)
 }
 
 // -------------------------------------------
@@ -143,7 +141,7 @@ func TestPruning(t *testing.T) {
     // Create concurrent mutations
     for i := 0; i < 4; i++ {
       name := fmt.Sprintf("m%v", i)
-      all = append(all, Mutation{DebugName: name, ID: base64Hash(name), Operation: Operation{Kind: StringOp, Operations: RandomOperations(len(original))}})
+      all = append(all, Mutation{DebugName: name, ID: hexHash(name), Operation: Operation{Kind: StringOp, Operations: RandomOperations(len(original))}})
     }
 
     // Transform the mutations against each other
@@ -225,7 +223,7 @@ func TestPruningAndComposing(t *testing.T) {
     // Create concurrent mutations
     for i := 0; i < 4; i++ {
       name := fmt.Sprintf("m%v", i)
-      all = append(all, Mutation{DebugName: name, ID: base64Hash(name), Operation: Operation{Kind: StringOp, Operations: RandomOperations(len(original))}})
+      all = append(all, Mutation{DebugName: name, ID: hexHash(name), Operation: Operation{Kind: StringOp, Operations: RandomOperations(len(original))}})
     }
 
     // Transform the mutations against each other

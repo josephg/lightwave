@@ -13,7 +13,7 @@ func TestJsonCodec(t *testing.T) {
     t.Fatal(err.String())
     return
   }
-  m1b, err := EncodeMutation(mut)
+  m1b, _, err := EncodeMutation(mut)
   if err != nil {
     t.Fatal(err.String())
     return

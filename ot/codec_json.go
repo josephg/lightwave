@@ -7,12 +7,12 @@ import (
   "encoding/hex"
 )
 
-// {"site":"xxx", "op":{"$a":[ "Hello World", 100, 200, {"$s":5}, {"$d":3} ] } }
-// {"site":"xxx", "op":{"$t":[ "Hello World", {"$s":5}, {"$d":3} ] } }
-// {"site":"xxx", "op":{$o:{"k":"myattr", "v":0, "m":{"$t":[ {"$i":"Hello World"}, {"$s":5}, {"$d":3} ] } } } }
-// {"site":"xxx", "op":{"myattr":{"v":0, "s":{"$t":[ {"$i":"Hello World"}, {"$s":5}, {"$d":3} ] } } } }
-// {"site":"xxx", "op":{"myattr":{"v":1, "v":"Some constant"} } }
-// {"site":"xxx", "op":{"myattr":{"d":1} } }
+// {"site":"xxx", dep:["xxx","yyy"], "op":{"$a":[ "Hello World", 100, 200, {"$s":5}, {"$d":3} ] } }
+// {"site":"xxx", dep:["xxx","yyy"], "op":{"$t":[ "Hello World", {"$s":5}, {"$d":3} ] } }
+// {"site":"xxx", dep:["xxx","yyy"], "op":{$o:{"k":"myattr", "v":0, "m":{"$t":[ {"$i":"Hello World"}, {"$s":5}, {"$d":3} ] } } } }
+// {"site":"xxx", dep:["xxx","yyy"], "op":{"myattr":{"v":0, "s":{"$t":[ {"$i":"Hello World"}, {"$s":5}, {"$d":3} ] } } } }
+// {"site":"xxx", dep:["xxx","yyy"], "op":{"myattr":{"v":1, "v":"Some constant"} } }
+// {"site":"xxx", dep:["xxx","yyy"], "op":{"myattr":{"d":1} } }
 
 func DecodeMutation(blob []byte) (result Mutation, err os.Error) {
   // Decode JSON
@@ -38,6 +38,22 @@ func DecodeMutation(blob []byte) (result Mutation, err os.Error) {
   }
   if result.Operation, err = decodeOperation(op); err != nil {
     return
+  }
+  // Dependencies
+  d, ok := j["dep"]
+  if ok {
+    deps, ok := d.([]interface{})
+    if !ok {
+      err = os.NewError("JSON data is not a valid mutation: 'dep' property must be a string")
+      return
+    }
+    for _, x := range deps {
+      if str, ok := x.(string); ok {
+	result.Dependencies = append(result.Dependencies, str)
+      } else {
+	err = os.NewError("JSON data is not a valid mutation: 'dep' property must be a string")
+      }
+    }
   }
   // Compute the hash and encode it has hex
   h := sha256.New()
@@ -112,14 +128,18 @@ func decodeOperation(operation interface{}) (result Operation, err os.Error) {
   return
 }
 
-func EncodeMutation(mut Mutation) (result []byte, err os.Error) {
+func EncodeMutation(mut Mutation) (result []byte, id string, err os.Error) {
   var op interface{}
   op, err = encodeOperation(mut.Operation)
   if err != nil {
     return
   }
-  j := map[string]interface{}{ "site": mut.Site, "op": op }
+  j := map[string]interface{}{ "site": mut.Site, "op": op, "dep": mut.Dependencies }
   result, err = json.Marshal(j)
+  // Compute the hash and encode it has hex
+  h := sha256.New()
+  h.Write(result)
+  id = hex.EncodeToString(h.Sum())
   return
 }
 
