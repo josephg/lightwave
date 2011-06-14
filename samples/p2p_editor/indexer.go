@@ -22,7 +22,6 @@ func NewIndexer(store *Store, federation *Federation) *Indexer {
 }
 
 func (self *Indexer) HandleBlob(blob []byte, blobref string) {
-//  log.Printf("ID = %v\n", blobref)
   mut, err := DecodeMutation(blob)
   if err != nil {
     log.Printf("JSON: %v\n", err)
@@ -33,20 +32,18 @@ func (self *Indexer) HandleBlob(blob []byte, blobref string) {
   }
   // Send the blob to call other network participants
   self.federation.ForwardBlob(blob, blobref)
-//  log.Printf("Frontier: %v\n", self.Frontier())
   // Try to apply it
   Build(self, mut)
-//  log.Printf("Frontier: %v\n", self.Frontier())
 }
 
 func (self *Indexer) AddListener(l IndexerListener) {
   self.listeners = append(self.listeners, l)
 }
 
-func (self *Indexer) Apply(mut Mutation) {
+func (self *Indexer) Apply(mut *Mutation) {
   self.SimpleBuilder.Apply(mut)
   // Inform all listeners
   for _, l := range self.listeners {
-    l.HandleMutation(mut)
+    l.HandleMutation(*mut)
   }
 }

@@ -269,7 +269,7 @@ func (self *Editor) Loop() {
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
       mut.Dependencies = self.frontier.IDs()
       mut.Site = self.site
-      blob, blobref, err := EncodeMutation(mut)
+      blob, blobref, err := EncodeMutation(mut, EncNormal)
       if err !=  nil {
 	panic(err.String())
       }
@@ -293,7 +293,7 @@ func (self *Editor) Loop() {
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
       mut.Dependencies = self.frontier.IDs()
       mut.Site = self.site
-      blob, blobref, err := EncodeMutation(mut)
+      blob, blobref, err := EncodeMutation(mut, EncNormal)
       if err !=  nil {
 	panic(err.String())
       }
