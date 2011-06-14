@@ -17,19 +17,15 @@ func TestHashTree1(t *testing.T) {
   }
   hash := ""
   for test := 0; test < 1000; test++ {
-    var tree HashTree
+    tree := NewSimpleHashTree()
     perm := rand.Perm(len(set))
     for i := 0; i < len(set); i++ {
       member := set[perm[i]]
       h := sha256.New()
       h.Write([]byte(member))
-      tree.Add(h.Sum())
+      tree.Add(hex.EncodeToString(h.Sum()))
     }
-    result := hex.EncodeToString(tree.Hash())
-//    log.Printf("Iter %v: %v", test, result)
-//    for i, id := range tree.childIDs {
-//      log.Printf(" %v: %v", i, hex.EncodeToString(id))
-//    }
+    result := tree.Hash()
     if test == 0 {
       hash = result
     } else {
@@ -45,19 +41,19 @@ func TestHashTree2(t *testing.T) {
   for i := 0; i < 1000; i++ {
     set = append(set, fmt.Sprintf("m%v", i))
   }
-  var tree1 HashTree
+  tree1 := NewSimpleHashTree()
   for i := 0; i < len(set); i++ {
     member := set[i]
     h := sha256.New()
     h.Write([]byte(member))
-    tree1.Add(h.Sum())
+    tree1.Add(hex.EncodeToString(h.Sum()))
   }
-  var tree2 HashTree
+  tree2 := NewSimpleHashTree()
   for i := 0; i < len(set); i++ {
     member := set[i]
     h := sha256.New()
     h.Write([]byte(member))
-    tree2.Add(h.Sum())
+    tree2.Add(hex.EncodeToString(h.Sum()))
   }
 
   h := sha256.New()
@@ -72,20 +68,20 @@ func TestHashTree2(t *testing.T) {
   diff2 = append(diff2, h.Sum())
 
   for _, d := range diff1 {
-    tree1.Add(d)
+    tree1.Add(hex.EncodeToString(d))
   }
   for _, d := range diff2 {
-    tree2.Add(d)
+    tree2.Add(hex.EncodeToString(d))
   }
 
-  if hex.EncodeToString(tree1.Hash()) == hex.EncodeToString(tree2.Hash()) {
+  if tree1.Hash() == tree2.Hash() {
     t.Fatal("Hashes should be different")
   }
   
   only1 := []string{}
   only2 := []string{}
   
-  onlyIn1, onlyIn2 := CompareHashTrees(&tree1, &tree2)
+  onlyIn1, onlyIn2 := CompareHashTrees(tree1, tree2)
   for {
     select {
     case ch1, ok := <- onlyIn1:
