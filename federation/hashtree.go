@@ -1,16 +1,22 @@
 package lightwavefed
 
 import (
-  "os"
   "crypto/sha256"
   "encoding/hex"
-  "log"
+//  "log"
   "sort"
+  "bytes"
 )
 
 const (
   HashTreeDepth = 32 * 2 // 32 byte hash in hex-encoding is 64 characters
   HashTreeNodeDegree = 16
+)
+
+const (
+  HashTree_NIL = iota
+  HashTree_IDs
+  HashTree_InnerNodes
 )
 
 const hextable = "0123456789abcdef"
@@ -37,59 +43,54 @@ func (self *HashTree) Add(id []byte) {
   self.add(id, 0)
 }
 
-func (self *HashTree) PrefixHash(prefix string) (hash string, childIDs []string, err os.Error) {
+func (self *HashTree) Children(prefix string) (kind int, children []string) {
   depth := len(prefix)
   if len(prefix) % 2 == 1 {
     prefix = prefix + "0"
   }
   bin_prefix, e := hex.DecodeString(prefix)
   if e != nil {
-    err = os.NewError("Malformed prefix. Must be a hex encoding.")
-    return
+    return HashTree_NIL, nil
   }
-  h, children := self.prefixHash(bin_prefix, 0, depth)
-  hash = hex.EncodeToString(h)
-  if children_hashes, ok := children.([][]byte); ok {
-    for _, ch := range children_hashes {
-      childIDs = append(childIDs, hex.EncodeToString(ch))
-    }
-  } else if children_indexes, ok := children.([]int); ok {
-    for _, ch := range children_indexes {
-      childIDs = append(childIDs, string(hextable[ch]))
-    }
+  kind, bin_children := self.children(bin_prefix, 0, depth)
+  for _, bin_child := range bin_children {
+    children = append(children, hex.EncodeToString(bin_child))
   }
   return
 }
 
-func (self *hashTreeNode) prefixHash(prefix []byte, level int, depth int) (hash []byte, children interface{}) {
+func (self *hashTreeNode) children(prefix []byte, level int, depth int) (kind int, children [][]byte) {
+  // Recursion ?
   if depth > 0 {
-    // Recursion
+    if self.childNodes == nil {
+      return HashTree_NIL, nil
+    }
     index := prefix[level / 2]
     if level % 2 == 0 {
       index = index >> 4
     } else {
       index = index & 0xf
     }
-    if self.childNodes == nil {
-      return self.Hash(), nil
-    }
     ch := self.childNodes[index]
     if ch == nil {
-      return self.Hash(), nil
+      return HashTree_NIL, nil
     }
-    return ch.prefixHash(prefix, level + 1, depth - 1)
+    return ch.children(prefix, level + 1, depth - 1)
   }
-  
-  if self.childNodes != nil {
-    indexes := []int{}
-    for i, ch := range self.childNodes {
-      if ch != nil {
-	indexes = append(indexes, i)
-      }
+    
+  if self.childNodes == nil {
+    return HashTree_IDs, self.childIDs
+  }
+  children = make([][]byte, HashTreeNodeDegree)
+  for i, ch := range self.childNodes {
+    if ch == nil {
+      children[i] = []byte{}
+    } else {
+      children[i] = ch.Hash()
     }
-    return self.Hash(), indexes
   }
-  return self.Hash(), self.childIDs
+  kind = HashTree_InnerNodes
+  return
 }
 
 func (self *hashTreeNode) add(id []byte, level int) {
@@ -166,13 +167,14 @@ func compareHashTrees(tree1, tree2 *HashTree, prefix string, onlyIn1, onlyIn2 ch
   if len(prefix) == 0 {
     defer close(onlyIn1)
     defer close(onlyIn2)
+    // The trees are equal? 
+    if bytes.Compare(tree1.Hash(), tree2.Hash()) == 0 {
+      return
+    }
   }
   
-  h1, children1, _ := tree1.PrefixHash(prefix)
-  h2, children2, _ := tree2.PrefixHash(prefix)
-  if h1 == h2 {
-    return
-  }
+  kind1, children1 := tree1.Children(prefix)
+  kind2, children2 := tree2.Children(prefix)
   
   // Turn a list of strings into a map of strings for further efficient processing
   map1 := map[string]bool{}
@@ -184,7 +186,7 @@ func compareHashTrees(tree1, tree2 *HashTree, prefix string, onlyIn1, onlyIn2 ch
     map2[ch] = true
   }
   
-  if (len(children1) == 0 || len(children1[0]) == 64) && (len(children2) == 0 || len(children2[0]) == 64) {
+  if kind1 == HashTree_IDs && kind2 == HashTree_IDs {
     // Both returned hashes. Compare the two sets of hashes
     for key, _ := range map1 {
       if _, ok := map2[key]; !ok {
@@ -196,35 +198,39 @@ func compareHashTrees(tree1, tree2 *HashTree, prefix string, onlyIn1, onlyIn2 ch
 	onlyIn2 <- key
       }
     }
-  } else if (len(children1) == 0 || len(children1[0]) == 1) && (len(children2) == 0 || len(children2[0]) == 1) {
+  } else if kind1 == HashTree_InnerNodes && kind2 == HashTree_InnerNodes {
     // Both returned subtree nodes? Recursion into the sub tree nodes
-    for key, _ := range map1 {
-      if _, ok := map2[key]; !ok {
-	onlyIn1 <- prefix + key
+    for i := 0; i < HashTreeNodeDegree; i++ {
+      if children1[i] == children2[i] {
+	continue
+      }
+      if children1[i] == "" {
+	onlyIn2 <- prefix + string(hextable[i])
+      } else if children2[i] == "" {
+	onlyIn1 <- prefix + string(hextable[i])
       } else {
-	compareHashTrees(tree1, tree2, prefix + key, onlyIn1, onlyIn2)
+	compareHashTrees(tree1, tree2, prefix + string(hextable[i]), onlyIn1, onlyIn2)
       }
     }
-    for key, _ := range map2 {
-      if _, ok := map1[key]; !ok {
-	onlyIn2 <- prefix + key
+  } else if kind1 == HashTree_InnerNodes && kind2 == HashTree_IDs {
+    for i := 0; i < HashTreeNodeDegree; i++ {
+      compareHashTreeWithList(tree1, map2, prefix + string(hextable[i]), onlyIn1, onlyIn2)
+      for id, _ := range map2 {
+	onlyIn2 <- id
       }
-    }
-  } else if (len(children1) > 0 || len(children1[0]) == 1) && (len(children2) > 0 || len(children2[0]) == 64) {
-    for key, _ := range map1 {
-      compareHashTreeWithList(tree1, map2, prefix + key, onlyIn1, onlyIn2)
-    }
-  } else if (len(children1) > 0 || len(children1[0]) == 64) && (len(children2) > 0 || len(children2[0]) == 1) {
-    for key, _ := range map2 {
-      compareHashTreeWithList(tree2, map1, prefix + key, onlyIn2, onlyIn1)
     }
   } else {
-    log.Printf("One tree returned a malformed hash")
+    for i := 0; i < HashTreeNodeDegree; i++ {
+      compareHashTreeWithList(tree2, map1, prefix + string(hextable[i]), onlyIn2, onlyIn1)
+      for id, _ := range map1 {
+	onlyIn1 <- id
+      }
+    }  
   }
 }
 
 func compareHashTreeWithList(tree1 *HashTree, list map[string]bool, prefix string, onlyIn1, onlyIn2 chan<- string) {
-  _, children1, _ := tree1.PrefixHash(prefix)
+  kind1, children1 := tree1.Children(prefix)
   if len(children1) == 0 {
     return
   }
@@ -235,25 +241,20 @@ func compareHashTreeWithList(tree1 *HashTree, list map[string]bool, prefix strin
     map1[ch] = true
   }
 
-  if len(children1[0]) == 64 {
+  if kind1 == HashTree_IDs {
     // Both returned hashes. Compare the two sets of hashes
     for key, _ := range map1 {
       if _, ok := list[key]; !ok {
 	onlyIn1 <- key
+      } else {
+	list[key] = false, false
       }
-    }
-    for key, _ := range list {
-      if _, ok := map1[key]; !ok {
-	onlyIn2 <- key
-      }
-    }
-  } else if len(children1[0]) == 1 {
-    // Both returned subtree nodes? Recursion into the sub tree nodes
-    for key, _ := range map1 {
-      compareHashTreeWithList(tree1, list, prefix + key, onlyIn1, onlyIn2)
     }
   } else {
-    log.Printf("One tree returned a malformed hash")
+    // Both returned subtree nodes? Recursion into the sub tree nodes
+    for i := 0; i < HashTreeNodeDegree; i++ {
+      compareHashTreeWithList(tree1, list, prefix + string(hextable[i]), onlyIn1, onlyIn2)
+    }
   }
 }
 
@@ -267,19 +268,7 @@ func (p BytesArray) Len() int {
 }
 
 func (p BytesArray) Less(i, j int) bool {
-  l := min(len(p[i]), len(p[j]))
-  for pos := 0; pos < l; pos++ {
-    if p[i][pos] < p[j][pos] {
-      return true
-    }
-    if p[i][pos] > p[j][pos] {
-      return false
-    }
-  }
-  if len(p[i]) < len(p[j]) {
-    return true
-  }
-  return false
+    return bytes.Compare(p[i], p[j]) == -1
 }
 
 func (p BytesArray) Swap(i, j int) {
