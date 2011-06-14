@@ -55,6 +55,16 @@ func DecodeMutation(blob []byte) (result Mutation, err os.Error) {
       }
     }
   }
+  // AppliedAt
+  a, ok := j["at"]
+  if ok {
+    at, ok := a.(float64)
+    if !ok {
+      err = os.NewError("JSON data is not a valid mutation: 'at' property must be a string")
+      return
+    }
+    result.AppliedAt = int(at)
+  }
   // Compute the hash and encode it has hex
   h := sha256.New()
   h.Write(blob)
@@ -128,13 +138,24 @@ func decodeOperation(operation interface{}) (result Operation, err os.Error) {
   return
 }
 
-func EncodeMutation(mut Mutation) (result []byte, id string, err os.Error) {
+const (
+  EncNormal = iota
+  EncExcludeDependencies
+)
+
+func EncodeMutation(mut Mutation, flags int) (result []byte, id string, err os.Error) {
   var op interface{}
   op, err = encodeOperation(mut.Operation)
   if err != nil {
     return
   }
-  j := map[string]interface{}{ "site": mut.Site, "op": op, "dep": mut.Dependencies }
+  j := map[string]interface{}{ "site": mut.Site, "op": op }
+  if mut.AppliedAt > 0 {
+    j["at"] = mut.AppliedAt
+  }
+  if (flags & EncExcludeDependencies) == 0 {
+    j["dep"] = mut.Dependencies
+  }
   result, err = json.Marshal(j)
   // Compute the hash and encode it has hex
   h := sha256.New()

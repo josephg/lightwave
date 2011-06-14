@@ -13,8 +13,12 @@ type Builder interface {
   HasApplied(id string) bool
   Enqueue(mut Mutation, waitFor []string)
   Dequeue(waitFor string) []Mutation
-  History() <-chan Mutation
-  Apply(mut Mutation)
+  // Returns a channel that delivers all applied mutations (which might have been transformed).
+  // The flag determines the order. If true, the mutations are itereatd in reverse order, i.e. the latest applied mutation is returned first.
+  History(reverse bool) <-chan Mutation
+  // Sets the AppliedAt property of the mutation. Therefore, the mutation is altered by
+  // the Apply function and passed by pointer.
+  Apply(mut *Mutation)
   Frontier() Frontier
 }
 
@@ -106,11 +110,21 @@ func (self *SimpleBuilder) Dequeue(waitFor string) (muts []Mutation) {
 }
   
 // Implements the Builder interface
-func (self *SimpleBuilder) History() <-chan Mutation {
+func (self *SimpleBuilder) History(reverse bool) <-chan Mutation {
   ch := make(chan Mutation)
+  if reverse {
+    f := func() {
+      for i := len(self.mutations) - 1; i >= 0; i-- {
+	ch <- self.appliedBlobs[self.mutations[i]]
+      }
+      close(ch)
+    }
+    go f()
+    return ch
+  }
   f := func() {
-    for i := len(self.mutations) - 1; i >= 0; i-- {
-      ch <- self.appliedBlobs[self.mutations[i]]
+    for _, id := range self.mutations {
+      ch <- self.appliedBlobs[id]
     }
     close(ch)
   }
@@ -119,11 +133,12 @@ func (self *SimpleBuilder) History() <-chan Mutation {
 }
 
 // Implements the Builder interface
-func (self *SimpleBuilder) Apply(mut Mutation) {
-  self.appliedBlobs[mut.ID] = mut
+func (self *SimpleBuilder) Apply(mut *Mutation) {
+  mut.AppliedAt = len(self.mutations)
+  self.appliedBlobs[mut.ID] = *mut
   self.mutations = append(self.mutations, mut.ID)
   self.mutationsByID[mut.ID] = true
-  self.frontier.Add(mut)
+  self.frontier.Add(*mut)
 }
 
 // -------------------------------------------
@@ -159,7 +174,7 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
     // Go back in history until our history is equal with that of 'mut'.
     // On the way remember which mutations of our history do not belong to the
     // history of 'mut' because these must be pruned.
-    for history_mut := range builder.History() {
+    for history_mut := range builder.History(true) {
       if !h.Substitute(history_mut) {
 	prune[history_mut.ID] = true
       }
@@ -198,7 +213,7 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
   }
   mut = pmuts[0]
   
-  builder.Apply(mut)
+  builder.Apply(&mut)
   
   // Process all mutations that had have been waiting for 'mut'
   for _, m := range builder.Dequeue(mut.ID) {

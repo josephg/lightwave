@@ -43,6 +43,8 @@ type Mutation struct {
   Site string "site"
   // IDs of mutations on which this mutation depends directly (indirect dependencies are not listed)
   Dependencies []string "d"
+  // This field has only a meaning for the local computer or in the case of a client/server protocol
+  AppliedAt int
   // For debugging only
   DebugName string "n"      
 }
