@@ -1,0 +1,7 @@
+P2PServer is a simple collaboration server that speaks the same federation protocol as P2PEditor, but provides no UI itsef. It listens on an additional socket to allow incoming connections from P2PClient.
+
+The command line options are the same as for p2peditor, with addition to the
+
+-s ":8989"
+
+flag which will make the server accept client connections on port 8989.

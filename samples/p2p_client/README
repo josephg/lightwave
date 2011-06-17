@@ -1,0 +1,28 @@
+P2PClient is a simple collaborative editor that runs in a terminal window but is not able to federate itself. It must always be connected to a P2PServer.
+
+First you must launch a server like this:
+
+../p2p_server/p2pserver -l ":12345" -s ":8989" 2>out
+
+Now you can starts a client and connect to the server.
+
+./p2pclient -s ":8989" 2>out2
+
+The client can collaborate with other clients connected to the same server and to all other peers participating in the federation.
+
+It is important to see that the OT algorithms used on the client are only a subset of the federation OT and the client/server protocol is very lean because there is no need to pass around hash codes etc.
+This makes clients easier to implement and the C/S communication more efficient.
+
+KEYBOARD SHORTCUTS
+==================
+
+'q': Quit
+
+'s': Suspend
+     This will suspend the forwarding of mutations.
+     The purpose is to create concurrent operations by suspending two editors, then typing, and later resuming both.
+     This way you can see how OT merges the concurrent edits.
+
+'r': Resume
+
+Yes, these shortcuts mean you cannot type q, s, or r. Feel free to patch it :-)
