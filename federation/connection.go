@@ -158,16 +158,10 @@ func (self *Connection) read() {
       if handler != nil {
 	status, data = handler(&msg)
       }
-      // log.Printf("Sending %v %v\n", status, data)
       var msg2 Message
       msg2.ID = msg.ID
       msg2.Status = status
-      bytes, err := json.Marshal(data)
-      if err != nil {
-	panic("Failed to marshal response")
-      }
-      p := json.RawMessage(bytes)
-      msg2.Payload = &p
+      msg2.EncodePayload(data)
       self.sendResponse(&msg2)
     }
   }

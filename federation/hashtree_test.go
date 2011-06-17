@@ -12,8 +12,6 @@ import (
 )
 
 func TestHashTree1(t *testing.T) {
-  return
-  
   set := []string{}
   for i := 0; i < 1000; i++ {
     set = append(set, fmt.Sprintf("m%v", i))
@@ -40,8 +38,6 @@ func TestHashTree1(t *testing.T) {
 }
 
 func TestHashTree2(t *testing.T) {  
-  return
-  
   set := []string{}
   for i := 0; i < 1000; i++ {
     set = append(set, fmt.Sprintf("m%v", i))
@@ -110,8 +106,8 @@ func TestHashTree2(t *testing.T) {
   }
   sort.SortStrings(only1)
   sort.SortStrings(only2)
-  SortBytesArray(diff1)
-  SortBytesArray(diff2)
+  sortBytesArray(diff1)
+  sortBytesArray(diff2)
   for i, s := range only1 {
     if s != hex.EncodeToString(diff1[i]) {
       t.Fatal("Wrong result")
@@ -213,8 +209,8 @@ func TestHashTreeRemote(t *testing.T) {
   }
   sort.SortStrings(only1)
   sort.SortStrings(only2)
-  SortBytesArray(diff1)
-  SortBytesArray(diff2)
+  sortBytesArray(diff1)
+  sortBytesArray(diff2)
   for i, s := range only1 {
     if s != hex.EncodeToString(diff1[i]) {
       t.Fatal("Wrong result")

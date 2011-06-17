@@ -7,7 +7,7 @@ import (
 //  "log"
   "sort"
   "bytes"
-  "json"
+//  "json"
 )
 
 const (
@@ -193,7 +193,7 @@ func (self *hashTreeNode) binaryHash() []byte {
       }
     }
   } else {
-    sortbytesArray(self.childIDs)
+    sortBytesArray(self.childIDs)
     for _, hash := range self.childIDs {
       h.Write([]byte(hash))
     }
@@ -329,21 +329,13 @@ func HashTreeHandler(tree HashTree) RequestHandler {
       hash, _ := tree.Hash()
       return 200, &struct{Hash string "hash"}{hash}
     case "TCHLD":
-      r := struct{Prefix string "prefix"}{}
-      if req.Payload == nil {
+      query := struct{Prefix string "prefix"}{}
+      if req.DecodePayload(query) != nil {
 	return 400, nil
       }
-      println(string([]byte(*req.Payload)))
-      err := json.Unmarshal(*req.Payload, &r)
-      if err != nil {
-	return 400, nil
-      }
-      m := &struct{Kind int "kind"; Children []string "chld"}{}
-      m.Kind, m.Children, err = tree.Children(r.Prefix)
-      if err != nil {
-	return 400, nil
-      }
-      return 200, m
+      reply := &struct{Kind int "kind"; Children []string "chld"}{}
+      reply.Kind, reply.Children, _ = tree.Children(query.Prefix)
+      return 200, reply
     }
     return 400, nil
   }
@@ -401,7 +393,7 @@ func (p bytesArray) Swap(i, j int) {
   p[i], p[j] = p[j], p[i]
 }
 
-func sortbytesArray(arr [][]byte) {
+func sortBytesArray(arr [][]byte) {
   sort.Sort(bytesArray(arr))
 }
   
