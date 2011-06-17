@@ -18,6 +18,22 @@ type Connection struct {
   respHandler map[int]ResponseHandler 
 }
 
+type ResponseChunk struct {
+  Status int
+  Data interface{}
+}
+
+// A handler processing a request can return a chunked response.
+// In this case all ResponseChunks sent over this channel are
+// send to the remote computer. If the status of a ResponseChunk is different
+// from 201, then the channel is closed and the response is assumed to be complete.
+type ChunkSender chan ResponseChunk
+
+// When performing a request, a client can send a ChunkReceiver to handle the reply.
+// This will forward the reply message(s) to the channel.
+// When 201 is used, a reply can consist of a sequence of messages.
+type MessageReceiver chan Message
+
 func newConnection(conn net.Conn, fed *Federation) *Connection {
   c := &Connection{conn: conn, fed: fed, respHandler: make(map[int]ResponseHandler), enc: json.NewEncoder(conn), dec: json.NewDecoder(conn)}
   go c.read()
@@ -87,24 +103,34 @@ func (self *Connection) SendRequestAsync(msg *Message, handler ResponseHandler) 
 // The function returns the status code it receives in the response message or an error code
 // if sending or receiving failed locally.
 // The return value 'err' is !=nil if sending, receiving or marshalling/unmarshalling fails.
-func (self *Connection) SendRequest(cmd string, data interface{}, resp interface{}) (status int, err os.Error) {
+func (self *Connection) SendRequest(cmd string, query interface{}, reply interface{}) (status int, err os.Error) {
+  // Build the message
+  msg := &Message{Cmd: cmd}
+  bytes, err := json.Marshal(query)
+  if err != nil {
+    return 0, err
+  }
+  p := json.RawMessage(bytes)
+  msg.Payload = &p
+
+  if recv, ok := reply.(MessageReceiver); ok {
+    // Create a channel to be notified when the response comes int
+    handler := func(r *Message) {
+      recv <- *r
+      if r.Status != 201 {
+	close(recv)
+      }
+    }
+    err = self.SendRequestAsync(msg, handler)
+    return -1, err
+  }
+  
   // Create a channel to be notified when the response comes int
   ch := make(chan *Message)
   handler := func(r *Message) {
     ch <- r
     close(ch)
   }
-  // Build the message
-  msg := &Message{Cmd: cmd}
-  // if data != nil {
-    bytes, err := json.Marshal(data)
-    if err != nil {
-      return 0, err
-    }
-    p := json.RawMessage(bytes)
-    msg.Payload = &p
-  // }
-    
   // Send the message
   err = self.SendRequestAsync(msg, handler)
   if err != nil {
@@ -112,8 +138,8 @@ func (self *Connection) SendRequest(cmd string, data interface{}, resp interface
   }
   // Wait for the response
   r := <-ch
-  if resp != nil && r.Payload != nil && r.Status == 200 {
-    err = json.Unmarshal(*r.Payload, resp)
+  if reply != nil && r.Payload != nil && r.Status == 200 {
+    err = json.Unmarshal(*r.Payload, reply)
   }
   return r.Status, err
 }
@@ -143,7 +169,9 @@ func (self *Connection) read() {
     if msg.Status != 0 && msg.ID != 0 { // This is a response
       self.mutex.Lock()
       if handler, ok := self.respHandler[msg.ID]; ok {
-	self.respHandler[msg.ID] = nil, false
+	if msg.Status != 201 { // More data to come?
+	  self.respHandler[msg.ID] = nil, false
+	}
 	self.mutex.Unlock()
 	handler(&msg)
       } else {
@@ -158,11 +186,16 @@ func (self *Connection) read() {
       if handler != nil {
 	status, data = handler(&msg)
       }
-      var msg2 Message
-      msg2.ID = msg.ID
-      msg2.Status = status
-      msg2.EncodePayload(data)
-      self.sendResponse(&msg2)
+      // The returned data is a channel?
+      if ch, ok := data.(ChunkSender); ok {
+	go self.sendChunkedResponse(msg.ID, ch)
+      } else {
+	var msg2 Message
+	msg2.ID = msg.ID
+	msg2.Status = status
+	msg2.EncodePayload(data)
+	self.sendResponse(&msg2)
+      }
     }
   }
 }
@@ -175,4 +208,20 @@ func (self *Connection) Close() {
   }
   self.conn.Close()
   self.conn = nil
+}
+
+func (self *Connection) sendChunkedResponse(messageID int, res ChunkSender) {
+  for chunk := range res {
+    var msg Message
+    msg.ID = messageID
+    msg.Status = chunk.Status
+    msg.EncodePayload(chunk.Data)
+    self.sendResponse(&msg)
+    // Final message?
+    if msg.Status != 201 {
+      self.mutex.Lock()
+      self.respHandler[messageID] = nil, false
+      self.mutex.Unlock()
+    }
+  }
 }

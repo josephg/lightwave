@@ -15,7 +15,7 @@ type Message struct {
 // 'data' is a pointer to some data structure.
 // The function decodes the payload into this data structure.
 func (self *Message) DecodePayload(data interface{}) os.Error {
-  if self.Payload != nil {
+  if self.Payload == nil {
     return os.NewError("No payload in message")
   }
   return json.Unmarshal(*self.Payload, data)
