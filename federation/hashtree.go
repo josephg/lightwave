@@ -4,10 +4,8 @@ import (
   "crypto/sha256"
   "encoding/hex"
   "os"
-//  "log"
   "sort"
   "bytes"
-//  "json"
 )
 
 const (
@@ -37,7 +35,7 @@ const hextable = "0123456789abcdef"
 type HashTree interface {
   // The toplevel hash of the tree in hex encoding.
   // The hash is a SHA256 hash
-  Hash() (hash string, err os.Error)
+  Hash() (hash string)
   // Adds a BLOB id to the tree. The id is a hex encoded SHA256 hash.
   Add(id string) os.Error
   // Returns the children of some inner node.
@@ -63,18 +61,8 @@ func NewSimpleHashTree() *SimpleHashTree {
   return &SimpleHashTree{}
 }
 
-/*
-func NewHashTree(hashes [][]byte) *HashTree{
-  ht := &HashTree{}
-  for _, hash := range hashes {
-    ht.Add(hash)
-  }
-  return ht
-}
-*/
-
-func (self *SimpleHashTree) Hash() (hash string, err os.Error) {
-  return hex.EncodeToString(self.binaryHash()), nil
+func (self *SimpleHashTree) Hash() (hash string) {
+  return hex.EncodeToString(self.binaryHash())
 }
 
 func (self *SimpleHashTree) Add(id string) os.Error {
@@ -221,11 +209,8 @@ func compareHashTrees(tree1, tree2 HashTree, prefix string, onlyIn1, onlyIn2 cha
     defer close(onlyIn1)
     defer close(onlyIn2)
     // The trees are equal?
-    h1, err1 := tree1.Hash()
-    h2, err2 := tree2.Hash()
-    if err1 != nil || err2 != nil {
-      return
-    }
+    h1 := tree1.Hash()
+    h2 := tree2.Hash()
     if h1 == h2 {
       return
     }
@@ -322,25 +307,7 @@ func compareHashTreeWithList(tree1 HashTree, list map[string]bool, prefix string
 // ------------------------------------------
 // Talk to a hash tree on another computer
 
-func HashTreeHandler(tree HashTree) RequestHandler {
-  return func(req *Message) (status int, data interface{}) {
-    switch req.Cmd {
-    case "THASH":
-      hash, _ := tree.Hash()
-      return 200, &struct{Hash string "hash"}{hash}
-    case "TCHLD":
-      query := struct{Prefix string "prefix"}{}
-      if req.DecodePayload(query) != nil {
-	return 400, nil
-      }
-      reply := &struct{Kind int "kind"; Children []string "chld"}{}
-      reply.Kind, reply.Children, _ = tree.Children(query.Prefix)
-      return 200, reply
-    }
-    return 400, nil
-  }
-}
-
+/*
 // Provides remote access to a HashTree on another computer.
 // It uses a Connection to talk to the remote HashTree.
 // The purpose of RemoteHashTree is to compare the content of
@@ -375,6 +342,7 @@ func (self *RemoteHashTree) Children(prefix string) (kind int, children []string
   }
   return resp.Kind, resp.Children, nil
 }
+*/
 
 // ------------------------------------------
 // Helpers

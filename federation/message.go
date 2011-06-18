@@ -6,10 +6,13 @@ import (
 )
 
 type Message struct {
-  ID int "id"
   Cmd string "cmd"
-  Status int "stat"
   Payload *json.RawMessage "data"
+  connection *Connection
+}
+
+type messageWithoutPayload struct {
+  Cmd string "cmd"
 }
 
 // 'data' is a pointer to some data structure.
@@ -22,6 +25,14 @@ func (self *Message) DecodePayload(data interface{}) os.Error {
 }
 
 func (self *Message) EncodePayload(data interface{}) os.Error {
+  if data == nil {
+    self.Payload = nil
+    return nil
+  }
+  if raw, ok := data.(json.RawMessage); ok {
+    self.Payload = &raw
+    return nil
+  }
   bytes, err := json.Marshal(data)
   if err != nil {
     return err

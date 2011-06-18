@@ -164,19 +164,20 @@ func TestHashTreeRemote(t *testing.T) {
     t.Fatal("Hashes should be different")
   }
 
-  fed := NewFederation()
-  go Listen(":8989", fed)
+  fed1 := NewFederation(&dummyBlobStore2{})
+  go Listen(":8989", fed1)
   time.Sleep(100000)
   
-  conn, err := Dial(":8989", fed)
+  fed2 := NewFederation(&dummyBlobStore2{})
+  conn, err := Dial(":8989", fed2)
   if err != nil {
     t.Fatal("Could not connect")
   }
   
   rtree1 := NewRemoteHashTree(conn)
   handler := HashTreeHandler(tree1)
-  fed.Handle( "THASH", handler )
-  fed.Handle( "TCHLD", handler )
+  fed1.Handle( "THASH", handler )
+  fed1.Handle( "TCHLD", handler )
   
   x, err := rtree1.Hash()
   if err != nil {
@@ -221,4 +222,17 @@ func TestHashTreeRemote(t *testing.T) {
       t.Fatal("Wrong result")
     }
   }
+}
+
+type dummyBlobStore2 struct {
+}
+
+func (self *dummyBlobStore2) StoreBlob(blob []byte, blobref string) {
+}
+
+func (self *dummyBlobStore2) AddListener(listener BlobStoreListener) {
+}
+
+func (self *dummyBlobStore2) HashTree() HashTree {
+  return nil
 }
