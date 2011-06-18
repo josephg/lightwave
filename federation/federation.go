@@ -166,7 +166,10 @@ func (self *Federation) getHandler(msg Message) {
     return
   }
   // TODO: If this is not a JSON blob ...
-  msg.connection.Send("BLOB", json.RawMessage(blob))
+  err = msg.connection.Send("BLOB", json.RawMessage(blob))
+  if err != nil {
+    log.Printf("Error while sending %v\n", err)
+  }
 }
 
 // Handles the 'GETN' command
@@ -186,6 +189,7 @@ func (self *Federation) getnHandlerIntern(prefix string, conn *Connection) {
     return
   }
   for blob := range channel {
+    log.Printf("sendblob %v\n", blob.BlobRef)
     conn.Send("BLOB", json.RawMessage(blob.Data))
   }
 }
@@ -259,7 +263,7 @@ func (self *Federation) treeHashChildrenHandler(msg Message) {
     log.Printf("Comparison of hash trees failed: prefix=%v, kind1=%v, kind2=%v, err=%v\n", prefix, kind1, kind2, err)
     return
   }
-  
+
   // Turn a list of strings into a map of strings for further efficient processing
   map1 := map[string]bool{}
   for _, ch := range children1 {
@@ -298,7 +302,7 @@ func (self *Federation) treeHashChildrenHandler(msg Message) {
 	self.getnHandlerIntern(p, msg.connection)
       } else if children2[i] == "" {
 	// Get all blobs with this prefix
-        msg.connection.Send("GETN", p)	
+        msg.connection.Send("GETN", p)
       } else {
 	// Recursion
 	msg.connection.Send("TCHLD", p)

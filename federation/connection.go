@@ -32,6 +32,7 @@ func (self *Connection) Send(cmd string, data interface{}) (err os.Error) {
   msg.Cmd = cmd
   err = msg.EncodePayload(data)
   if err != nil {
+    log.Printf("Encoding failed: %v\n", err)
     return
   }
   self.mutex.Lock()
