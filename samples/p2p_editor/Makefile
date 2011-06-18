@@ -4,7 +4,6 @@ TARG=p2peditor
 GOFILES=\
 	main.go \
 	editor.go \
-	federation.go \
 	store.go \
 	indexer.go
 

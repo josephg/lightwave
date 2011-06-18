@@ -11,12 +11,11 @@ type IndexerListener interface {
 
 type Indexer struct {
   *SimpleBuilder
-  federation *Federation
   listeners []IndexerListener
 }
 
-func NewIndexer(store *Store, federation *Federation) *Indexer {
-  idx := &Indexer{SimpleBuilder: NewSimpleBuilder(), federation:federation}
+func NewIndexer(store *Store) *Indexer {
+  idx := &Indexer{SimpleBuilder: NewSimpleBuilder()}
   store.AddListener(idx)
   return idx
 }
@@ -31,7 +30,7 @@ func (self *Indexer) HandleBlob(blob []byte, blobref string) {
     panic("Something is wrong with the blobref")
   }
   // Send the blob to call other network participants
-  self.federation.ForwardBlob(blob, blobref)
+  // self.federation.ForwardBlob(blob, blobref)
   // Try to apply it
   Build(self, mut)
 }

@@ -3,10 +3,9 @@ package main
 import (
   . "curses"
   . "lightwaveot"
+  fed "lightwavefed"
   "flag"
 )
-
-var federation *Federation
 
 func main() {
   // Parse the command line
@@ -26,8 +25,8 @@ func main() {
 
   // Initialize Store, Indexer and Network
   store := NewStore()
-  federation = NewFederation(localAddr, store)
-  indexer := NewIndexer(store, federation)
+  federation := fed.NewFederation(store)
+  indexer := NewIndexer(store)
   
   // Launch the UI
   editor := NewEditor(store, indexer)
@@ -35,7 +34,8 @@ func main() {
   editor.Refresh()
   
   // Accept incoming network connections
-  go federation.Listen()
+  go federation.Listen(localAddr)
+  
   // Create an outgoing network connection
   if peerAddr != "" {
     federation.Dial(peerAddr)

@@ -2,6 +2,7 @@ package main
 
 import (
   "flag"
+  fed "lightwavefed"
 )
 
 func main() {
@@ -16,11 +17,12 @@ func main() {
   
   // Initialize Store, Indexer and Network
   store := NewStore()
-  federation := NewFederation(localAddr, store)
-  indexer := NewIndexer(store, federation)
+  federation := fed.NewFederation(store)
+  indexer := NewIndexer(store)
   csproto := NewCSProtocol(store, indexer, csAddr)
+  
   // Accept incoming network connections
-  go federation.Listen()
+  go federation.Listen(localAddr)
 
   // Create an outgoing network connection
   if peerAddr != "" {

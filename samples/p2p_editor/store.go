@@ -2,17 +2,17 @@ package main
 
 import (
   "os"
+  "strings"
   "crypto/sha256"
   "encoding/hex"
+  fed "lightwavefed"
 )
 
-type StoreListener interface {
-  HandleBlob(blob []byte, blobref string)
-}
-
+// Implements the BlobStore interface
 type Store struct {
-  listeners []StoreListener
+  listeners []fed.BlobStoreListener
   blobs map[string][]byte
+  hashTree *fed.SimpleHashTree
 }
 
 func NewBlobRef(blob []byte) string {
@@ -22,7 +22,12 @@ func NewBlobRef(blob []byte) string {
 }
 
 func NewStore() *Store {
-  return &Store{blobs:make(map[string][]byte)}
+  s := &Store{blobs:make(map[string][]byte), hashTree: fed.NewSimpleHashTree()}
+  return s
+}
+
+func (self *Store) HashTree() fed.HashTree {
+  return self.hashTree
 }
 
 func (self *Store) Enumerate() (result map[string][]byte) {
@@ -39,6 +44,7 @@ func (self *Store) StoreBlob(blob []byte, blobref string) {
   if _, ok := self.blobs[blobref]; ok {
     return
   }
+  self.hashTree.Add(blobref)
   // Store the blob and allow for its further processing
   self.blobs[blobref] = blob
   for _, l := range self.listeners {
@@ -55,7 +61,24 @@ func (self *Store) GetBlob(blobref string) (blob []byte, err os.Error) {
   return
 }
 
-func (self *Store) AddListener(l StoreListener) {
+func (self *Store) GetBlobs(prefix string) (channel <-chan fed.Blob, err os.Error) {
+  ch := make(chan fed.Blob)
+  go self.getBlobs(prefix, ch)
+  return ch, nil
+}
+
+func (self *Store) getBlobs(prefix string, channel chan fed.Blob) {
+  // TODO: The sending on the channel might fail if the underlying
+  // connection is broken
+  for blobref, blob := range self.blobs {
+    if strings.HasPrefix(blobref, prefix) {
+      channel <- fed.Blob{Data:blob, BlobRef: blobref}
+    }
+  }
+  close(channel)
+}
+
+func (self *Store) AddListener(l fed.BlobStoreListener) {
   self.listeners = append(self.listeners, l)
 }
 

@@ -203,10 +203,10 @@ func (self *Editor) Loop() {
     switch inp {
     case 'q':
       return
-    case 's':
-      federation.Suspend()
-    case 'r':
-      federation.Resume()
+//    case 's':
+//      federation.Suspend()
+//    case 'r':
+//      federation.Resume()
     case KEY_LEFT:
       if line == 0 && linePos == 0 {
 	continue

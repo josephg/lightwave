@@ -13,12 +13,11 @@ type IndexerListener interface {
 type Indexer struct {
   *SimpleBuilder
   store *Store
-  federation *Federation
   listeners []IndexerListener
 }
 
-func NewIndexer(store *Store, federation *Federation) *Indexer {
-  idx := &Indexer{SimpleBuilder: NewSimpleBuilder(), federation:federation, store: store}
+func NewIndexer(store *Store) *Indexer {
+  idx := &Indexer{SimpleBuilder: NewSimpleBuilder(), store: store}
   store.AddListener(idx)
   return idx
 }
@@ -48,8 +47,6 @@ func (self *Indexer) HandleClientMutation(mut Mutation) (err os.Error) {
   // Store the blob. This will call back into the indexer, but since the mutation
   // has already been allplied, nothing bad will happen
   self.store.StoreBlob(blob, blobref)
-  // Send the blob to other network participants
-  self.federation.ForwardBlob(blob, blobref)
   return
 }
 
@@ -62,8 +59,6 @@ func (self *Indexer) HandleBlob(blob []byte, blobref string) {
   if mut.ID != blobref {
     panic("Something is wrong with the blobref")
   }
-  // Send the blob to other network participants
-  self.federation.ForwardBlob(blob, blobref)
   // Try to apply it
   Build(self, mut)
 }
