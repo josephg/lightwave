@@ -274,7 +274,6 @@ func (self *Federation) treeHashChildrenHandler(msg Message) {
     // Both returned hashes. Compare the two sets of hashes
     for key, _ := range map1 {
       if _, ok := map2[key]; !ok {
-	log.Printf("... getting %v\n", key)
 	msg.connection.Send("GET", key)
       }
     }
