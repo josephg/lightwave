@@ -1,9 +1,13 @@
 Build instructions
 ------------------
 
-First you need to build the lightwaveot library
+First you need to build the lightwaveot library.
+The samples need as well the federation library lightwavefed.
 
 cd ot
+make
+make install
+cd ../federation
 make
 make install
 
@@ -11,7 +15,9 @@ Now you might want to try the sample code
 cd samples/gocurses
 make
 make install
-cd ../p2peditor
+cd ../p2p_editor
 make
 
 See the README of the p2peditor on instructions how to start the software.
+
+Then continue exploring the samples p2p_server and p2p_client
