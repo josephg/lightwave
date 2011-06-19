@@ -38,6 +38,42 @@ func TestJsonCodec(t *testing.T) {
   }
 }
 
+func TestJsonCodec2(t *testing.T) {
+  m1 := []byte(`{"site":"xxx", "dep":["abc"], "op":{"$t":[ "Hello World", {"$s":5}, {"$d":3} ] } }`)
+  var mut Mutation
+  err = json.Unmarshal(m1, &mut)
+  if err != nil {
+    t.Fatal(err.String())
+    return
+  }
+  if mut.Site != "xxx" || mut.Operation.Kind != StringOp || mut.Dependencies[0] != "abc" {
+    t.Fatal("Decoding failed")
+  }
+  m1b, err = json.Marshal(&mut)
+  if err != nil {
+    t.Fatal(err.String())
+    return
+  }
+
+  d1 := make(map[string]interface{})
+  d2 := make(map[string]interface{})
+  err = json.Unmarshal(m1, &d1)
+  if err != nil {
+    t.Fatal(err.String())
+    return
+  }
+  err = json.Unmarshal(m1b, &d2)
+  if err != nil {
+    t.Fatal(err.String())
+    return
+  }
+
+  if !compareJson(d1, d2) {
+    t.Fatalf("Decoding and Encoding changed the mutation content:\n%v\n%v\n", string(m1), string(m1b))
+    return
+  }
+}
+
 func compareJson(val1, val2 interface{}) bool {
   if obj1, ok := val1.(map[string]interface{}); ok {
 	obj2, ok := val2.(map[string]interface{})
