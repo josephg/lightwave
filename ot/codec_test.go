@@ -6,14 +6,14 @@ import (
 )
   
 func TestJsonCodec(t *testing.T) {
-  m1 := []byte(`{"site":"xxx", "op":{"$t":[ "Hello World", {"$s":5}, {"$d":3} ] } }`)
+  m1 := []byte(`{"site":"xxx", "dep":[], "op":{"$t":[ "Hello World", {"$s":5}, {"$d":3} ] } }`)
 
   mut, err := DecodeMutation(m1)
   if err != nil {
     t.Fatal(err.String())
     return
   }
-  m1b, _, err := EncodeMutation(mut)
+  m1b, _, err := EncodeMutation(mut, EncNormal)
   if err != nil {
     t.Fatal(err.String())
     return

@@ -194,3 +194,13 @@ func encodeOperation(op Operation) (result interface{}, err os.Error) {
   }
   return
 }
+
+func (self *Mutation) MarshalJSON() (bytes []byte, err os.Error) {
+  bytes, _, err = EncodeMutation(*self, EncNormal)
+  return
+}
+
+func (self *Mutation) UnmarshalJSON(bytes []byte) (err os.Error) {
+  *self, err = DecodeMutation(bytes) 
+  return
+}
