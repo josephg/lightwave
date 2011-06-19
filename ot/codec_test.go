@@ -41,7 +41,7 @@ func TestJsonCodec(t *testing.T) {
 func TestJsonCodec2(t *testing.T) {
   m1 := []byte(`{"site":"xxx", "dep":["abc"], "op":{"$t":[ "Hello World", {"$s":5}, {"$d":3} ] } }`)
   var mut Mutation
-  err = json.Unmarshal(m1, &mut)
+  err := json.Unmarshal(m1, &mut)
   if err != nil {
     t.Fatal(err.String())
     return
@@ -49,7 +49,7 @@ func TestJsonCodec2(t *testing.T) {
   if mut.Site != "xxx" || mut.Operation.Kind != StringOp || mut.Dependencies[0] != "abc" {
     t.Fatal("Decoding failed")
   }
-  m1b, err = json.Marshal(&mut)
+  m1b, err := json.Marshal(&mut)
   if err != nil {
     t.Fatal(err.String())
     return
