@@ -9,10 +9,10 @@ import (
 
 func main() {
   // Parse the command line
-  var peerAddr string
-  flag.StringVar(&peerAddr, "p", "", "Address of a remote peer")
-  var localAddr string
-  flag.StringVar(&localAddr, "l", ":12345", "Local address")
+  var identity string
+  flag.StringVar(&identity, "l", "", "Name of the server, e.g. 'fed1.com'")
+  var peerName string
+  flag.StringVar(&peerName, "p", "", "Name of a remote peer, e.g. 'fed2.com' (optional)")
   flag.Parse()
   
   // Start Curses
@@ -25,7 +25,8 @@ func main() {
 
   // Initialize Store, Indexer and Network
   store := NewStore()
-  federation := fed.NewFederation(store)
+  ns := &dummyNameService{}
+  federation := fed.NewFederation(identity, ns, store)
   indexer := NewIndexer(store)
   
   // Launch the UI
@@ -34,11 +35,14 @@ func main() {
   editor.Refresh()
   
   // Accept incoming network connections
-  go federation.Listen(localAddr)
+  go federation.Listen()
   
   // Create an outgoing network connection
-  if peerAddr != "" {
-    federation.Dial(peerAddr)
+  if peerName != "" {
+    err := federation.Dial(peerName)
+    if err != nil {
+      panic("Could not connect to remote peer")
+    }
   }
   // Wait for UI events
   editor.Loop()

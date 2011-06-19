@@ -7,26 +7,30 @@ import (
 
 func main() {
   // Parse the command line
-  var peerAddr string
-  flag.StringVar(&peerAddr, "p", "", "Address of a remote peer")
-  var localAddr string
-  flag.StringVar(&localAddr, "l", ":12345", "Local address of the peer")
+  var identity string
+  flag.StringVar(&identity, "l", "", "Name of the server, e.g. 'fed1.com'")
+  var peerName string
+  flag.StringVar(&peerName, "p", "", "Name of a remote peer, e.g. 'fed2.com' (optional)")
   var csAddr string
   flag.StringVar(&csAddr, "s", "6868", "Address of the client server protocol")
   flag.Parse()
   
   // Initialize Store, Indexer and Network
   store := NewStore()
-  federation := fed.NewFederation(store)
+  ns := &dummyNameService{}
+  federation := fed.NewFederation(identity, ns, store)
   indexer := NewIndexer(store)
   csproto := NewCSProtocol(store, indexer, csAddr)
   
   // Accept incoming network connections
-  go federation.Listen(localAddr)
+  go federation.Listen()
 
   // Create an outgoing network connection
-  if peerAddr != "" {
-    federation.Dial(peerAddr)
+  if peerName != "" {
+    err := federation.Dial(peerName)
+    if err != nil {
+      panic("Could not connect to remote peer")
+    }
   }
   
   // Accept clients

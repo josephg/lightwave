@@ -15,9 +15,11 @@ const (
 )
 
 type Federation struct {
+  identity string
   mutex sync.Mutex
   connections map[*Connection]int
   store BlobStore
+  ns NameService
 }
 
 type BlobStore interface {
@@ -37,8 +39,15 @@ type Blob struct {
   BlobRef string
 }
 
-func NewFederation(store BlobStore) *Federation {
-  fed := &Federation{store: store, connections: make(map[*Connection]int)}
+type NameService interface {
+  // Returns a string of the form "hostname:port", "Ip-address:port" or ":port".
+  // Real life applications will use DNS A-records + default ports or DNS SRV-records
+  // to perform the lookup. For demos we can hardcode it.
+  Lookup(identity string) (addr string, err os.Error)
+}
+
+func NewFederation(identity string, ns NameService, store BlobStore) *Federation {
+  fed := &Federation{store: store, connections: make(map[*Connection]int), identity: identity, ns: ns}
   store.AddListener(fed)
   return fed
 }
@@ -55,7 +64,12 @@ func (self *Federation) unregisterConnection(conn *Connection) {
   self.mutex.Unlock()
 }
 
-func (self *Federation) Listen(addr string) (err os.Error) {
+func (self *Federation) Listen() (err os.Error) {
+  addr, err := self.ns.Lookup(self.identity)
+  if err != nil {
+    log.Printf("Failed to lookup my own address")
+    return err
+  }
   l, err := net.Listen("tcp", addr)
   if err != nil {
     return
@@ -68,6 +82,7 @@ func (self *Federation) Listen(addr string) (err os.Error) {
     }
     conn := newConnection(c, self)
     self.registerConnection(conn, connServer)
+    conn.Send("HELO", self.identity)
     // This tells the other side to start sending BLOBs as they come in
     conn.Send("OPEN", nil)
   }
@@ -75,13 +90,18 @@ func (self *Federation) Listen(addr string) (err os.Error) {
 }
 
 // Creates a connection to another peer
-func (self *Federation) Dial(raddr string) (err os.Error) {
+func (self *Federation) Dial(identity string) (err os.Error) {
+  raddr, err := self.ns.Lookup(identity)
+  if err != nil {
+    return err
+  }
   c, err := net.Dial("tcp", raddr)
   if err != nil {
     return err
   }
   conn := newConnection(c, self)
   self.registerConnection(conn, connClient)
+  conn.Send("HELO", self.identity)
   // This tells the other side to start sending BLOBs as they come in
   conn.Send("OPEN", nil)
   // This initiates the syncing
@@ -99,6 +119,10 @@ func (self *Federation) HandleBlob(blob []byte, blobref string) {
 }
 
 func (self *Federation) HandleMessage(msg Message) {
+  if msg.Cmd != "HELO" && msg.connection.identity == "" {
+    log.Printf("ERR: Missing HELO")
+    return
+  }
   switch msg.Cmd {
   case "OPEN":
     self.openHandler(msg)
@@ -116,10 +140,25 @@ func (self *Federation) HandleMessage(msg Message) {
     self.getnxHandler(msg)
   case "BLOB":
     self.blobHandler(msg)
+  case "HELO":
+    self.heloHandler(msg)
   default:
     log.Printf("Unknown command: %v\n", msg.Cmd)
     msg.connection.Send("ERR", msg.Cmd)
   }
+}
+
+// Handles the 'HELO' command
+func (self *Federation) heloHandler(msg Message) {
+  if msg.connection.identity != "" {
+    log.Printf("Error: Second HELO is being sent")
+  }
+  var identity string
+  if msg.DecodePayload(&identity) != nil {
+    log.Printf("Error in HELO request")
+    return
+  }
+  msg.connection.identity = identity
 }
 
 // Handles the 'BLOB' command

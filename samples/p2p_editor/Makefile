@@ -5,6 +5,7 @@ GOFILES=\
 	main.go \
 	editor.go \
 	store.go \
-	indexer.go
+	indexer.go \
+	nameservice.go
 
 include $(GOROOT)/src/Make.cmd

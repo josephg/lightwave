@@ -83,11 +83,26 @@ func (self *dummyBlobStore) AddListener(l BlobStoreListener) {
   self.listeners = append(self.listeners, l)
 }
 
+type dummyNameService struct {
+}
+
+func (self *dummyNameService) Lookup(identity string) (addr string, err os.Error) {
+  switch identity {
+  case "fed1.com":
+    return ":8787", nil
+  case "fed2.com":
+    return ":8686", nil
+  }
+  return "", os.NewError("Unknown host")
+}
+      
+
 func TestFed(t *testing.T) {
+  ns := &dummyNameService{}
   store1 := newDummyBlobStore()
   store2 := newDummyBlobStore()
-  fed1 := NewFederation(store1)
-  fed2 := NewFederation(store2)
+  fed1 := NewFederation("fed1.com", ns, store1)
+  fed2 := NewFederation("fed2.com", ns, store2)
 
   // Add some keys to both stores
   for i := 0; i < 1000; i++ {
@@ -107,10 +122,10 @@ func TestFed(t *testing.T) {
     store1.StoreBlob([]byte(fmt.Sprintf("{\"y\":%v}", i)), "")
   }
 
-  go fed1.Listen(":8787")
+  go fed1.Listen()
   time.Sleep(100000)
   
-  err := fed2.Dial(":8787")
+  err := fed2.Dial("fed1.com")
   if err != nil {
     t.Fatal("Could not connect")
   }

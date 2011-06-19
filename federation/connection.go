@@ -10,6 +10,8 @@ import (
 
 
 type Connection struct {
+  // The identity of the remote server
+  identity string
   fed *Federation
   conn net.Conn
   enc *json.Encoder

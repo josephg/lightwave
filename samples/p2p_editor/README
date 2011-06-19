@@ -2,18 +2,28 @@ P2PEditor is a simple collaborative editor that runs in a terminal window.
 
 Launch the first instance like this:
 
-./p2peditor -l ":12345" 2>out
+./p2peditor -l "fed1.com" 2>out
 
-This redirects the debug output to 'out' and listens on localhost port 12345.
+This editor does not behave as if it owns the domain "fed1.com".
+The file nameservice.com maps domain names (e.g. fed1.com) to local ports for testing purposes:
+
+fed1.com -> localhost 8181
+fed2.com -> localhost 8282
+...
+fed5.com -> localhost 8585
+
+In real systems, the nameservice will use DNS to lookup the respective servers.
+
+The above command line redirects the debug output to 'out' and listens on localhost port 8181.
 Now open more console and start more editors. These editors must know how to contact each other.
 Therefore, you can tell each editor to which other editor it should connect.
 Ultimatively, the editors form an unstructured P2P network.
 
-./p2peditor -l ":12346" -p ":12345" 2>out2
+./p2peditor -l "fed2.com" -p "fed1.com" 2>out2
 
 This starts a second editor and makes it connect with the first one.
 
-./p2peditor -l ":12347" -p ":12346" 2>out2
+./p2peditor -l "fed3.com" -p "fed1.com" 2>out2
 
 This starts a third editor and connects it with the second one.
 All edits are flooded between all editors. Thus, if you type in one console, you can see how the others update as well.
@@ -23,11 +33,4 @@ KEYBOARD SHORTCUTS
 
 'q': Quit
 
-'s': Suspend
-     This will suspend the forwarding of mutations.
-     The purpose is to create concurrent operations by suspending two editors, then typing, and later resuming both.
-     This way you can see how OT merges the concurrent edits.
-
-'r': Resume
-
-Yes, these shortcuts mean you cannot type q, s, or r. Feel free to patch it :-)
+Yes, these shortcuts mean you cannot type 'q'. Feel free to patch it :-)
