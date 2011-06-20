@@ -8,6 +8,7 @@ GOFILES=\
 	prune.go \
 	build.go \
 	document.go \
-	codec_json.go
+	codec_json.go \
+	permission.go
 
 include $(GOROOT)/src/Make.pkg
