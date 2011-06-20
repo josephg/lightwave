@@ -4,10 +4,19 @@ import (
   "os"
 )
 
+// A permission is a set of 31 permission bits.
+// A permission is applied by first OR-ing the document-bits with the allow-bits.
+// Then, AND the resulting bits with the deny-bits.
+// If an allow-bit is 1 then the corresponding deny bit must be 1 as well.
+// In other words, allow and deny must not contradict each other.
 type Permission struct {
+  // The user whom this permission is granted or denied
   User string "user"
+  // The domain of the user whom this permission is granted or denied
   Domain string "domain"
+  // A 1 bit explicitly allows something
   Allow int "allow"
+  // A 0 bit explicitly denies something
   Deny int "deny"
 }
 
