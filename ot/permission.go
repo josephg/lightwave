@@ -28,6 +28,9 @@ func TransformPermissions(p1, p2 Permission) (tp1, tp2 Permission, err os.Error)
   
   tp1 = p1
   tp2 = p2
+  if p1.User != p2.User || p1.Domain != p2.Domain {
+    return
+  }
   tp1.Allow = (p1.Allow & p2.Deny) &^ p2.Allow
   tp1.Deny = p1.Deny | (0xfffffff ^ p2.Deny)
   tp2.Allow = (p2.Allow & p1.Deny) &^ p1.Allow
