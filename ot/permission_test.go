@@ -59,3 +59,43 @@ func TestPermissionCompose(t *testing.T) {
     }
   }
 }
+
+func TestPermissionPrune(t *testing.T) {
+  p1 := Permission{ID:"p1", Allow:1, Deny: ^0}
+  p2 := Permission{ID:"p2", Allow:0, Deny: ^1}
+  p3 := Permission{ID:"p3", Allow:1, Deny: ^0}
+  tp, _, err := TransformPermission(p3, p1)
+  if err != nil {
+    t.Fatal(err.String())
+  }
+  tp, _, err = TransformPermission(tp, p2)
+  if err != nil {
+    t.Fatal(err.String())
+  }
+  if tp.Allow != 0 || tp.Deny != ^0 {
+    t.Fatal("Not the expected transformation before pruning")
+  }
+  if len(tp.history) != 2 || tp.history[0].id != "p1" || tp.history[1].id != "p2" {
+    t.Fatal("History is wrong 1")
+  }
+  pr, err := PrunePermission(tp, map[string]bool{"p2":true})
+  if err != nil {
+    t.Fatalf("Prune 1: %v\n", err.String())
+  }
+  if pr.Allow != 0 || pr.Deny != ^0 {
+    t.Fatal("Not the expected result of pruning: 1")
+  }
+  if tp.originalAllow != 1 || tp.originalDeny != ^0 {
+    t.Fatalf("Original is wrong: %v %v", tp.originalAllow, tp.originalDeny)
+  }
+  if len(tp.history) != 2 || tp.history[0].id != "p1" || tp.history[1].id != "p2" {
+    t.Fatal("History is wrong 2")
+  }
+  pr, err = PrunePermission(tp, map[string]bool{"p1":true, "p2":true})
+  if err != nil {
+    t.Fatalf("Prune 2: %v\n", err.String())
+  }
+  if pr.Allow != 1 || pr.Deny != ^0 {
+    t.Fatalf("Not the expected result of pruning: 2: %x %x", pr.Allow, pr.Deny)
+  }
+}
