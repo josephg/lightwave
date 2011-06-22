@@ -166,7 +166,7 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
 
   // Find out how far back we have to go in history to find a common anchor point for transformation
   frontier := builder.Frontier()
-  h := newHistoryGraph(frontier, mut.Dependencies)
+  h := NewHistoryGraph(frontier, mut.Dependencies)
   reverse_muts := []Mutation{}
   prune := map[string]bool{}
   // Need to rollback?
@@ -239,6 +239,13 @@ func (self Frontier) Add(mut Mutation) {
   }
 }
 
+func (self Frontier) AddBlob(blobref string, deps []string) {
+  self[blobref] = true
+  for _, dep := range deps {
+    self[dep] = false, false
+  }
+}
+
 func (self Frontier) IDs() (list []string) {
   for id, _ := range self {
     list = append(list, id)
@@ -247,15 +254,15 @@ func (self Frontier) IDs() (list []string) {
 }
 
 // ----------------------------------------------------------------------
-// historyGraph
+// HistoryGraph
 
-type historyGraph struct {
+type HistoryGraph struct {
   frontier map[string]bool
   oldFrontier map[string]bool
   markedCount int
 }
 
-func newHistoryGraph(frontier Frontier, dest []string) *historyGraph {
+func NewHistoryGraph(frontier Frontier, dest []string) *HistoryGraph {
   d := make(map[string]bool)
   for _, id := range dest {
     d[id] = true
@@ -269,11 +276,11 @@ func newHistoryGraph(frontier Frontier, dest []string) *historyGraph {
       markedCount++
     }
   }
-  h := &historyGraph{frontier: f, oldFrontier: d, markedCount: markedCount}
+  h := &HistoryGraph{frontier: f, oldFrontier: d, markedCount: markedCount}
   return h
 }
 
-func (self *historyGraph) Substitute(mut Mutation) bool {
+func (self *HistoryGraph) Substitute(mut Mutation) bool {
   if _, ok := self.frontier[mut.ID]; !ok {
     panic("Substituting a mutation that is not part of the history graph")
   }
@@ -296,6 +303,29 @@ func (self *historyGraph) Substitute(mut Mutation) bool {
   return ismarked
 }
 
-func (self *historyGraph) Test() bool {
+func (self *HistoryGraph) SubstituteBlob(blobref string, dependencies []string) bool {
+  if _, ok := self.frontier[blobref]; !ok {
+    panic("Substituting a mutation that is not part of the history graph")
+  }
+  ismarked := self.frontier[blobref]
+  if ismarked {
+    self.markedCount--
+  }
+  for _, dep := range dependencies {
+    _, mark := self.oldFrontier[dep]
+    existsMark, exists := self.frontier[dep] 
+    mark = mark || ismarked
+    if !exists || (mark && !existsMark) {
+      self.frontier[dep] = mark
+      if mark {
+	self.markedCount++
+      }
+    }
+  }
+  self.frontier[blobref] = false, false
+  return ismarked
+}
+
+func (self *HistoryGraph) Test() bool {
   return self.markedCount == len(self.frontier)
 }
