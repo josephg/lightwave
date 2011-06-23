@@ -11,7 +11,7 @@ func pruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation
   for _, mut := range muts {
     if _, isundo := prune[mut.ID]; !isundo {
       if started {
-	mut, u, err = pruneMutation(mut, u)
+	mut, u, err = PruneMutation(mut, u)
 	if err != nil {
 	  return
 	}
@@ -32,7 +32,7 @@ func pruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation
   return
 }
 
-func pruneMutation(mut Mutation, prune Mutation) (tmut Mutation, tprune Mutation, err os.Error) {
+func PruneMutation(mut Mutation, prune Mutation) (tmut Mutation, tprune Mutation, err os.Error) {
   tmut = mut
   tprune = prune
   tmut.Operation, tprune.Operation, err = pruneOp(tmut.Operation, prune.Operation)

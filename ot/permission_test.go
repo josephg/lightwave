@@ -75,7 +75,7 @@ func TestPermissionPrune(t *testing.T) {
   if tp.Allow != 0 || tp.Deny != ^0 {
     t.Fatal("Not the expected transformation before pruning")
   }
-  if len(tp.history) != 2 || tp.history[0].id != "p1" || tp.history[1].id != "p2" {
+  if len(tp.History) != 2 || tp.History[0].id != "p1" || tp.History[1].id != "p2" {
     t.Fatal("History is wrong 1")
   }
   pr, err := PrunePermission(tp, map[string]bool{"p2":true})
@@ -85,10 +85,10 @@ func TestPermissionPrune(t *testing.T) {
   if pr.Allow != 0 || pr.Deny != ^0 {
     t.Fatal("Not the expected result of pruning: 1")
   }
-  if tp.originalAllow != 1 || tp.originalDeny != ^0 {
-    t.Fatalf("Original is wrong: %v %v", tp.originalAllow, tp.originalDeny)
+  if tp.OriginalAllow != 1 || tp.OriginalDeny != ^0 {
+    t.Fatalf("Original is wrong: %v %v", tp.OriginalAllow, tp.OriginalDeny)
   }
-  if len(tp.history) != 2 || tp.history[0].id != "p1" || tp.history[1].id != "p2" {
+  if len(tp.History) != 2 || tp.History[0].id != "p1" || tp.History[1].id != "p2" {
     t.Fatal("History is wrong 2")
   }
   pr, err = PrunePermission(tp, map[string]bool{"p1":true, "p2":true})
