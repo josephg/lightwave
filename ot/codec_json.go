@@ -204,3 +204,21 @@ func (self *Mutation) UnmarshalJSON(bytes []byte) (err os.Error) {
   *self, err = DecodeMutation(bytes) 
   return
 }
+
+func (self *Operation) MarshalJSON() (bytes []byte, err os.Error) {
+  data, err := encodeOperation(*self)
+  if err != nil {
+    return
+  }
+  return json.Marshal(data)
+}
+
+func (self *Operation) UnmarshalJSON(bytes []byte) (err os.Error) {
+  data := make(map[string]interface{})
+  err = json.Unmarshal(bytes, &data)
+  if err != nil {
+    return
+  }
+  *self, err = decodeOperation(data) 
+  return
+}

@@ -337,7 +337,7 @@ func TestObjPrune(t *testing.T) {
     return
   }
 
-  m, _, err := pruneMutation(tm2, m1)
+  m, _, err := PruneMutation(tm2, m1)
   o1 := NewSimpleObject()
   o1.Set("a1", 0, NewSimpleText(""))
   _, err = Execute(o1, m)
@@ -350,7 +350,7 @@ func TestObjPrune(t *testing.T) {
     t.Fatalf("Object o1 attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
   }
 
-  m, _, err = pruneMutation(tm1, m2)
+  m, _, err = PruneMutation(tm1, m2)
   o1 = NewSimpleObject()
   o1.Set("a1", 0, NewSimpleText(""))
   _, err = Execute(o1, m)
@@ -382,7 +382,7 @@ func TestObjPrune2(t *testing.T) {
     return
   }
 
-  m, _, err := pruneMutation(tm2, m1)
+  m, _, err := PruneMutation(tm2, m1)
   o1 := NewSimpleObject()
   _, err = Execute(o1, m)
   if err != nil {
@@ -394,7 +394,7 @@ func TestObjPrune2(t *testing.T) {
     t.Fatalf("Object o1 attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
   }
 
-  m, _, err = pruneMutation(tm1, m2)
+  m, _, err = PruneMutation(tm1, m2)
   o1 = NewSimpleObject()
   _, err = Execute(o1, m)
   if err != nil {
