@@ -2,7 +2,7 @@ package main
 
 import (
   "flag"
-  fed "lightwavefed"
+  . "lightwavestore"
 )
 
 func main() {
@@ -16,18 +16,18 @@ func main() {
   flag.Parse()
   
   // Initialize Store, Indexer and Network
-  store := NewStore()
+  store := NewSimpleBlobStore()
   ns := &dummyNameService{}
-  federation := fed.NewFederation(identity, ns, store)
+  replication := NewReplication(identity, ns, store)
   indexer := NewIndexer(store)
   csproto := NewCSProtocol(store, indexer, csAddr)
   
   // Accept incoming network connections
-  go federation.Listen()
+  go replication.Listen()
 
   // Create an outgoing network connection
   if peerName != "" {
-    err := federation.Dial(peerName)
+    err := replication.Dial(peerName)
     if err != nil {
       panic("Could not connect to remote peer")
     }

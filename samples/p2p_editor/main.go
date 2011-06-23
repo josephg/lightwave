@@ -3,7 +3,7 @@ package main
 import (
   . "curses"
   . "lightwaveot"
-  fed "lightwavefed"
+  . "lightwavestore"
   "flag"
 )
 
@@ -24,9 +24,9 @@ func main() {
   Init_pair(1, COLOR_RED, COLOR_BLACK)
 
   // Initialize Store, Indexer and Network
-  store := NewStore()
+  store := NewSimpleBlobStore()
   ns := &dummyNameService{}
-  federation := fed.NewFederation(identity, ns, store)
+  replication := NewReplication(identity, ns, store)
   indexer := NewIndexer(store)
   
   // Launch the UI
@@ -35,11 +35,11 @@ func main() {
   editor.Refresh()
   
   // Accept incoming network connections
-  go federation.Listen()
+  go replication.Listen()
   
   // Create an outgoing network connection
   if peerName != "" {
-    err := federation.Dial(peerName)
+    err := replication.Dial(peerName)
     if err != nil {
       panic("Could not connect to remote peer")
     }

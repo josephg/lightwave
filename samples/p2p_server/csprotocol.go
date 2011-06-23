@@ -2,6 +2,7 @@ package main
 
 import (
   . "lightwaveot"
+  . "lightwavestore"
   "log"
   "net"
   "net/textproto"
@@ -9,7 +10,7 @@ import (
 )
 
 type CSProtocol struct {
-  store *Store
+  store BlobStore
   indexer *Indexer
   laddr string
   conns map[int]*csconn
@@ -23,7 +24,7 @@ type csconn struct {
   ID int
 }
 
-func NewCSProtocol(store *Store, indexer *Indexer, laddr string) *CSProtocol {
+func NewCSProtocol(store BlobStore, indexer *Indexer, laddr string) *CSProtocol {
   cs := &CSProtocol{store:store, indexer: indexer, laddr: laddr, conns: make(map[int]*csconn)}
   indexer.AddListener(cs)
   return cs

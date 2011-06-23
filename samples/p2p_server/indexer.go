@@ -2,6 +2,7 @@ package main
 
 import (
   . "lightwaveot"
+  . "lightwavestore"
   "log"
   "os"
 )
@@ -12,11 +13,11 @@ type IndexerListener interface {
 
 type Indexer struct {
   *SimpleBuilder
-  store *Store
+  store BlobStore
   listeners []IndexerListener
 }
 
-func NewIndexer(store *Store) *Indexer {
+func NewIndexer(store BlobStore) *Indexer {
   idx := &Indexer{SimpleBuilder: NewSimpleBuilder(), store: store}
   store.AddListener(idx)
   return idx

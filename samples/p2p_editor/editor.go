@@ -3,6 +3,7 @@ package main
 import (
   . "curses"
   . "lightwaveot"
+  . "lightwavestore"
   "os"
   "fmt"
   "strings"
@@ -10,7 +11,7 @@ import (
 )
 
 type Editor struct {
-  store *Store
+  store BlobStore
   frontier Frontier
   text string
   tombs vec.IntVector
@@ -23,7 +24,7 @@ type Editor struct {
   site string // The site identifier used in Mutation
 }
 
-func NewEditor(store *Store, indexer *Indexer) *Editor {
+func NewEditor(store BlobStore, indexer *Indexer) *Editor {
   e := &Editor{store:store, Rows: *Rows, Columns: *Cols, frontier:make(Frontier), site: uuid()}
   indexer.AddListener(e)
   return e
