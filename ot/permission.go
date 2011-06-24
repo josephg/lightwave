@@ -123,6 +123,6 @@ func ExecutePermission(bits int, perm Permission) (result int, err os.Error) {
     return
   }
   
-  bits = (bits | perm.Allow) &^ perm.Deny
+  result = (bits | perm.Allow) &^ perm.Deny
   return
 }
