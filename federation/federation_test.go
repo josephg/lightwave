@@ -1,152 +1,94 @@
 package lightwavefed
 
 import (
+  . "lightwavestore"
+  idx "lightwaveidx"
   "testing"
   "time"
-  "bytes"
-  "os"
   "fmt"
-  "strings"
-  "crypto/sha256"
-  "encoding/hex"
+  "log"
+  "os"
 )
 
-func newBlobRef(blob []byte) string {
-  h := sha256.New()
-  h.Write(blob)
-  return string(hex.EncodeToString(h.Sum()))
+type dummyAppIndexer struct {
+  userID string
+  store BlobStore
 }
 
-type dummyBlobStore struct {
-  listeners []BlobStoreListener
-  blobs map[string][]byte
-  hashTree *SimpleHashTree
-}
-
-func newDummyBlobStore() *dummyBlobStore {
-  s := &dummyBlobStore{blobs:make(map[string][]byte), hashTree: NewSimpleHashTree()}
-  return s
-}
-
-func (self *dummyBlobStore) Enumerate() (result map[string][]byte) {
-  return self.blobs
-}
-
-func (self *dummyBlobStore) StoreBlob(blob []byte, blobref string) {
-  // Empty blob reference?
-  if len(blobref) == 0 {
-    blobref = newBlobRef(blob)
-  }
-  // The blob is already known?
-  if _, ok := self.blobs[blobref]; ok {
-    return
-  }
-  self.hashTree.Add(blobref)
-  // Store the blob and allow for its further processing
-  self.blobs[blobref] = blob
-  for _, l := range self.listeners {
-    l.HandleBlob(blob, blobref)
-  }
-}
-
-func (self *dummyBlobStore) HashTree() HashTree {
-  return self.hashTree
-}
-
-func (self *dummyBlobStore) GetBlob(blobref string) (blob []byte, err os.Error) {
-  var ok bool
-  if blob, ok = self.blobs[blobref]; ok {
-    return
-  }
-  err = os.NewError("Unknown Blob ID")
-  return
-}
-
-func (self *dummyBlobStore) GetBlobs(prefix string) (channel <-chan Blob, err os.Error) {
-  ch := make(chan Blob)
-  go self.getBlobs(prefix, ch)
-  return ch, nil
-}
-
-func (self *dummyBlobStore) getBlobs(prefix string, channel chan Blob) {
-  // TODO: The sending on the channel might fail if the underlying
-  // connection is broken
-  for blobref, blob := range self.blobs {
-    if strings.HasPrefix(blobref, prefix) {
-      channel <- Blob{Data:blob, BlobRef: blobref}
-    }
-  }
-  close(channel)
-}
-
-func (self *dummyBlobStore) AddListener(l BlobStoreListener) {
-  self.listeners = append(self.listeners, l)
+func (self *dummyAppIndexer) Invitation(invitation_blobref, permanode_blobref, inviter string) {
+  log.Printf("%v is automatically accepting the invitation\n", self.userID)
+  keepBlob := []byte(`{"type":"keep", "signer":"` + self.userID + `", "invitation":"` + invitation_blobref + `", "perma":"` + permanode_blobref + `"}`)
+  keepBlobRef := NewBlobRef(keepBlob)
+  self.store.StoreBlob(keepBlob, keepBlobRef)
 }
 
 type dummyNameService struct {
 }
 
-func (self *dummyNameService) Lookup(identity string) (addr string, err os.Error) {
+func (self *dummyNameService) Lookup(identity string) (url string, err os.Error) {
   switch identity {
-  case "fed1.com":
-    return ":8787", nil
-  case "fed2.com":
-    return ":8686", nil
+  case "a@alice":
+    return "http://localhost:8181/fed", nil
+  case "b@bob":
+    return "http://localhost:8282/fed", nil
   }
-  return "", os.NewError("Unknown host")
+  return "", os.NewError("Unknown identity")
 }
-      
 
-func TestFed(t *testing.T) {
-  ns := &dummyNameService{}
-  store1 := newDummyBlobStore()
-  store2 := newDummyBlobStore()
-  fed1 := NewFederation("fed1.com", ns, store1)
-  fed2 := NewFederation("fed2.com", ns, store2)
-
-  // Add some keys to both stores
-  for i := 0; i < 1000; i++ {
-    blob := []byte(fmt.Sprintf("{\"x\"=\"m%v\"}", i))
-    store1.StoreBlob(blob, "")
-    store2.StoreBlob(blob, "")
-  }
-
-  // Add some keys which are different
-  d1 := 10
-  for i := 0; i < d1; i++ {
-    store1.StoreBlob([]byte(fmt.Sprintf("{\"x\":%v}", i)), "")
-  }
-  // Add some keys which are different
-  d2 := 17
-  for i := 0; i < d2; i++ {
-    store1.StoreBlob([]byte(fmt.Sprintf("{\"y\":%v}", i)), "")
-  }
-
-  go fed1.Listen()
-  time.Sleep(100000)
-  
-  err := fed2.Dial("fed1.com")
+func runFed(t *testing.T, fed *Federation) {
+  err := fed.Listen()
   if err != nil {
-    t.Fatal("Could not connect")
+    t.Fatal(err.String())
   }
+}
 
-  // Wait for synchronization to happen
-  time.Sleep(3000000000)
+func TestFederation(t *testing.T) {
+  ns := &dummyNameService{}
+  store1 := NewSimpleBlobStore()
+  store2 := NewSimpleBlobStore()
+  fed1 := NewFederation("127.0.0.1:8181", ns, store1, nil)
+  fed2 := NewFederation("127.0.0.1:8282", ns, store2, nil)
+  indexer1 := idx.NewIndexer("a@alice", store1, fed1)
+  indexer2 := idx.NewIndexer("b@bob", store2, fed2)
+  app1 := &dummyAppIndexer{"a@alice", store1}
+  indexer1.AddListener(app1)
+  app2 := &dummyAppIndexer{"b@bob", store2}
+  indexer2.AddListener(app2)
+  go runFed(t, fed1)
+  go runFed(t, fed2)
   
-  // Now both stores should have the same stuff
-  m1 := store1.Enumerate()
-  m2 := store2.Enumerate()
-  if len(m1) != len(m2) || len(m1) != 1000 + d1 + d2 {
-    t.Fatalf("Wrong number of entries: %v %v", len(m1), len(m2))
-  }
-   
-  for key, blob := range m1 {
-    blob2, ok := m2[key]
-    if !ok {
-      t.Fatal("Missing blob")
-    }
-    if bytes.Compare(blob, blob2) != 0 {
-      t.Fatal("Blobs are different")
-    }
-  }
+  time.Sleep(1000000000 * 2)
+
+  blob1 := []byte(`{"type":"permanode", "signer":"a@alice", "random":"perma1abc"}`)
+  blobref1 := NewBlobRef(blob1)
+  blob2 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site1", "dep":[], "op":{"$t":["Hello World"]}}`)
+  blobref2 := NewBlobRef(blob2)
+  blob3 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site2", "dep":[], "op":{"$t":["Olla!!"]}}`)
+  blobref3 := NewBlobRef(blob3)
+  blob4 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}}`)
+  blobref4 := NewBlobRef(blob4)
+  // Grant user foo@bar read access
+  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"foo@bar", "allow":` + fmt.Sprintf("%v", idx.Perm_Read) + `, "deny":0}`)
+  blobref5 := NewBlobRef(blob5)
+  // Invite 
+  blob6 := []byte(`{"type":"invitation", "signer":"a@alice", "perma":"` + blobref1 + `", "user":"b@bob"}`)
+  blobref6 := NewBlobRef(blob6)
+  blob7 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site3", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}}`)
+  blobref7 := NewBlobRef(blob7)
+
+  log.Printf("Hashes:\n1: %v\n2: %v\n3: %v\n4: %v\n5: %v\n6: %v\n7: %v\n", blobref1, blobref2, blobref3, blobref4, blobref5, blobref6, blobref7)
+  
+  // Insert them in the wrong order
+  store1.StoreBlob(blob1, blobref1)
+  store1.StoreBlob(blob2, blobref2)  
+  store1.StoreBlob(blob3, blobref3)  
+  store1.StoreBlob(blob4, blobref4)  
+  store1.StoreBlob(blob5, blobref5)
+  store1.StoreBlob(blob6, blobref6)
+
+  time.Sleep(1000000000 * 2)
+
+  store1.StoreBlob(blob7, blobref7)
+
+  time.Sleep(1000000000 * 2)
 }

@@ -4,11 +4,19 @@ import (
   . "lightwavestore"
   "testing"
   "fmt"
+  "log"
 )
+
+type dummyFederation struct {
+}
+
+func (self *dummyFederation) Forward(blobref string, users []string) {
+  log.Printf("Forwarding %v to %v\n", blobref, users) 
+}
 
 func TestPermanode(t *testing.T) {
   store := NewSimpleBlobStore()
-  _ = NewIndexer("a@b", store)
+  _ = NewIndexer("a@b", store, nil)
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
   blobref1 := NewBlobRef(blob1)
@@ -21,7 +29,7 @@ func TestPermanode(t *testing.T) {
 
 func TestPermanode2(t *testing.T) {
   store := NewSimpleBlobStore()
-  _ = NewIndexer("a@b", store)
+  _ = NewIndexer("a@b", store, nil)
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
   blobref1 := NewBlobRef(blob1)
@@ -34,8 +42,9 @@ func TestPermanode2(t *testing.T) {
 }
 
 func TestPermanode3(t *testing.T) {
+  fed := &dummyFederation{}
   store := NewSimpleBlobStore()
-  indexer := NewIndexer("a@b", store)
+  indexer := NewIndexer("a@b", store, fed)
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
   blobref1 := NewBlobRef(blob1)
@@ -46,13 +55,13 @@ func TestPermanode3(t *testing.T) {
   blob4 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}}`)
   blobref4 := NewBlobRef(blob4)
   // Grant user foo@bar read access
-  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"foo", "domain":"bar", "allow":` + fmt.Sprintf("%v", Perm_Read) + `, "deny":0}`)
+  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"foo@bar", "allow":` + fmt.Sprintf("%v", Perm_Read) + `, "deny":0}`)
   blobref5 := NewBlobRef(blob5)
   // Invite 
-  blob6 := []byte(`{"type":"invitation", "signer":"a@b", "perma":"` + blobref1 + `", "user":"foo", "domain":"bar"}`)
+  blob6 := []byte(`{"type":"invitation", "signer":"a@b", "perma":"` + blobref1 + `", "user":"foo@bar"}`)
   blobref6 := NewBlobRef(blob6)
   // Fake a keep
-  blob7 := []byte(`{"type":"keep", "signer":"foo@bar", "invitation":"` + blobref6 + `", "perma":"` + blobref1 + `", "user":"foo", "domain":"bar"}`)
+  blob7 := []byte(`{"type":"keep", "signer":"foo@bar", "invitation":"` + blobref6 + `", "perma":"` + blobref1 + `"}`)
   blobref7 := NewBlobRef(blob7)
 
   // Insert them in the wrong order
@@ -69,7 +78,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal(err.String())
   }
   if !allow {
-    t.Fatal("Expected an allow")
+    t.Fatal("Expected an allow for a@b")
   }
 
   allow, err = indexer.HasPermission("x@y", blobref1, Perm_Read)
@@ -85,7 +94,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal(err.String())
   }
   if !allow {
-    t.Fatal("Expected an allow")
+    t.Fatal("Expected an allow for foo@bar")
   }
 
   allow, err = indexer.HasPermission("a@b", blobref1, Perm_Invite | Perm_Expel)
@@ -93,7 +102,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal(err.String())
   }
   if !allow {
-    t.Fatal("Expected an allow")
+    t.Fatal("Expected an allow for Invite a@b")
   }
 
   users, err := indexer.Users(blobref1)

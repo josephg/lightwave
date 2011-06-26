@@ -22,7 +22,7 @@ func (self *dummyNameService) Lookup(identity string) (addr string, err os.Error
 }
       
 
-func TestFed(t *testing.T) {
+func TestReplication(t *testing.T) {
   ns := &dummyNameService{}
   store1 := NewSimpleBlobStore()
   store2 := NewSimpleBlobStore()

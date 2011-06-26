@@ -2,8 +2,7 @@ include $(GOROOT)/src/Make.inc
 
 TARG=lightwavefed
 GOFILES=\
-	message.go \
-	connection.go \
+	queue.go \
 	federation.go
 
 include $(GOROOT)/src/Make.pkg

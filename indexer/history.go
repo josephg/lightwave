@@ -68,6 +68,29 @@ func (self *otHistory) History(reverse bool) <-chan interface{} {
   return ch
 }
 
+// Implements the Builder interface
+func (self *otHistory) HistoryBlobRefs(reverse bool) <-chan string {
+  ch := make(chan string)
+  if reverse {
+    f := func() {
+      for i := len(self.appliedBlobs) - 1; i >= 0; i-- {
+	ch <- self.appliedBlobs[i]
+      }
+      close(ch)
+    }
+    go f()
+    return ch
+  }
+  f := func() {
+    for _, id := range self.appliedBlobs {
+      ch <- id
+    }
+    close(ch)
+  }
+  go f()
+  return ch
+}
+
 func (self *otHistory) Apply(newnode otNode) (deps []string, err os.Error) {
   // The mutation has already been applied?
   if self.HasApplied(newnode.BlobRef()) {
@@ -149,14 +172,13 @@ func (self *otHistory) Apply(newnode otNode) (deps []string, err os.Error) {
   if mut, ok := newnode.(*mutationNode); ok {
     self.content, err = ot.Execute(self.content, mut.mutation)
   } else if perm, ok := newnode.(*permissionNode); ok {
-    userid := perm.permission.User + "@" + perm.permission.Domain
-    bits, ok := self.permissions[userid]
+    bits, ok := self.permissions[perm.permission.User]
     if !ok {
       bits = 0
     }
     bits, err = ot.ExecutePermission(bits, perm.permission)
     if err == nil {
-      self.permissions[userid] = bits
+      self.permissions[perm.permission.User] = bits
     }
   }
   return

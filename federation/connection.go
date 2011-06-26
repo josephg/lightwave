@@ -8,7 +8,6 @@ import (
   "sync"
 )
 
-
 type Connection struct {
   // The identity of the remote server
   identity string
@@ -56,7 +55,7 @@ func (self *Connection) read() {
       self.Close()
       return
     }
-    self.fed.HandleMessage(msg)
+    self.fed.handleMessage(msg)
   }
 }
 

@@ -8,7 +8,6 @@ import (
   "sync"
 )
 
-
 type Connection struct {
   // The identity of the remote server
   identity string

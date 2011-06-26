@@ -17,7 +17,6 @@ type Permission struct {
   // A 1 bit explicitly denies something
   Deny int "deny"
   User string "user"
-  Domain string "domain"
   // This property is not serialized
   History []permissionHistory
   OriginalDeny int
@@ -47,7 +46,7 @@ func TransformPermission(p1, p2 Permission) (tp1, tp2 Permission, err os.Error) 
   }
   
   // Permissions for different users?
-  if p1.User != p2.User || p1.Domain != p2.Domain {
+  if p1.User != p2.User {
     return
   }
   
@@ -99,7 +98,6 @@ func PrunePermission(p Permission, prune map[string]bool) (tp Permission, err os
     }
     var x Permission
     x.User = p.User
-    x.Domain = p.Domain
     x.Allow = h.allow
     x.Deny = h.deny
     x.ID = h.id
