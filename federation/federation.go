@@ -10,6 +10,9 @@ import (
   "strings"
   "http"
   "io/ioutil"
+  "io"
+  "bytes"
+  "json"
 )
 
 const (
@@ -93,7 +96,7 @@ func (self *Federation) Listen() (err os.Error) {
 
 func (self *Federation) handleRequest(w http.ResponseWriter, req *http.Request) {
   switch req.Method {
-  case "POST":
+  case "POST", "PUT":
     blob, err := ioutil.ReadAll(req.Body)
     if err != nil {
       log.Printf("Error reading request body")
@@ -103,6 +106,59 @@ func (self *Federation) handleRequest(w http.ResponseWriter, req *http.Request) 
     log.Printf("Received blob via federation: %v\n", string(blob))
     self.store.StoreBlob(blob, "")
     w.WriteHeader(200)
+  case "GET":
+    values := req.URL.Query()
+    //
+    // GET /fed?blobref=xyz
+    //
+    if blobref := values.Get("blobref"); blobref != "" {
+      blob, err := self.store.GetBlob(blobref)
+      if err != nil {
+	log.Printf("Failed retrieving blob\n")
+	// TODO: Better error message
+	w.WriteHeader(500)
+	return
+      }
+      w.Header().Add("Content-type", "application/octet-stream")
+      buf := bytes.NewBuffer(blob)
+      written, err := io.Copy(w, buf)
+      if written != int64(len(blob)) || err != nil {
+	log.Printf("Failed sending blob\n")
+	return
+      }
+    //
+    // GET /fed?frontier=xyz
+    //
+    } else if blobref = values.Get("frontier"); blobref != "" {
+      perma, err := self.indexer.PermaNode(blobref)
+      if perma == nil || err != nil {
+	log.Printf("Failed retrieving perma node")
+	w.WriteHeader(500)
+	return
+      }
+      var result []byte
+      if perma.OT() == nil {
+	result = []byte("[]")
+      } else {
+	var err os.Error
+	result, err = json.Marshal(perma.OT().Frontier().IDs())
+	if err != nil {
+	  log.Printf("Failed retrieving the frontier")
+	  return
+	}
+      }
+      w.Header().Add("Content-type", "application/json")
+      buf := bytes.NewBuffer(result)
+      written, err := io.Copy(w, buf)
+      if written != int64(len(result)) || err != nil {
+	log.Printf("Failed sending result\n")
+	return
+      }
+    } else {
+      log.Printf("Malformed get request\n")
+      // TODO: Better error message
+      w.WriteHeader(500)
+    }
   default:
     w.WriteHeader(500)
     // TODO: give error message

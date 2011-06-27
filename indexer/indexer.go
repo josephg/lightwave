@@ -69,7 +69,7 @@ type abstractNode interface {
   Parent() string
 }
 
-type permaNode struct {
+type PermaNode struct {
   node
   // The blobref of this node
   blobref string
@@ -83,22 +83,28 @@ type permaNode struct {
   pendingInvitations map[string]string
 }
 
-func (self *permaNode) BlobRef() string {
+func (self *PermaNode) OT() OTHistory {
+  return self.ot
+}
+
+func (self *PermaNode) BlobRef() string {
   return self.blobref
 }
 
-func (self *permaNode) UsersWithPermission(bits int, ignoreOwner bool) (users []string) {
+func (self *PermaNode) FollowersWithPermission(bits int, ignoreOwner bool) (users []string) {
   for userid, _ := range self.keeps {
     if ignoreOwner && userid == self.signer {
       continue
     }
     if self.ot != nil {
-      allowed, ok := self.ot.permissions[userid]
-      if !ok {
-	continue
-      }
-      if allowed & bits != bits {
-	continue
+      if self.signer != userid { // The user is not the owner. Then he needs special permissions
+	allowed, ok := self.ot.permissions[userid]
+	if !ok {
+	  continue
+	}
+	if allowed & bits != bits {
+	  continue
+	}
       }
     }
     users = append(users, userid)
@@ -106,7 +112,14 @@ func (self *permaNode) UsersWithPermission(bits int, ignoreOwner bool) (users []
   return
 }
 
-func (self *permaNode) HasKeep(userid string) bool {
+func (self *PermaNode) Followers() (users []string) {
+  for userid, _ := range self.keeps {
+    users = append(users, userid)
+  }
+  return
+}
+
+func (self *PermaNode) HasKeep(userid string) bool {
   _, ok := self.keeps[userid]
   return ok
 }
@@ -208,22 +221,22 @@ func (self *Indexer) AddListener(appIndexer ApplicationIndexer) {
   self.appIndexers = append(self.appIndexers, appIndexer)
 }
 
-func (self *Indexer) permaNode(blobref string) (perma *permaNode, err os.Error) {
+func (self *Indexer) PermaNode(blobref string) (perma *PermaNode, err os.Error) {
   n, ok := self.nodes[blobref]
   if !ok {
     return nil, nil
   }
-  perma, ok = n.(*permaNode)
+  perma, ok = n.(*PermaNode)
   if !ok {
     err = os.NewError("Blob is not a permanode")
   }
   return
 }
 
-func (self *Indexer) invitation(blobref string) (invitation *invitationSchema, err os.Error) {
+func (self *Indexer) Invitation(blobref string) (invitation *invitationSchema, err os.Error) {
   // Check that the blob has already been processed by the indexer.
   // This ensures that it is well-formed and signed
-   valid, processed := self.blobs[blobref]
+  valid, processed := self.blobs[blobref]
   if !processed {
     return nil, nil
   }
@@ -284,7 +297,7 @@ func (self *Indexer) dequeue(waitFor string) (blobrefs []string) {
 func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result interface{}, err os.Error) {
   switch schema.Type {
   case "permanode":
-    n := &permaNode{blobref: blobref, node: node{signer: schema.Signer, parent: schema.PermaNode}, keeps: make(map[string]string), pendingInvitations: make(map[string]string)}
+    n := &PermaNode{blobref: blobref, node: node{signer: schema.Signer, parent: schema.PermaNode}, keeps: make(map[string]string), pendingInvitations: make(map[string]string)}
     return n, nil
   case "mutation":
     if schema.Operation == nil {
@@ -352,21 +365,21 @@ func (self *Indexer) handleSchemaBlob(blob []byte, blobref string) {
   }
   ptr := newnode.(abstractNode)
   // The node is linked to another permaNode?
-  var perma *permaNode
+  var perma *PermaNode
   if ptr.Parent() != "" {
     p, ok := self.nodes[ptr.Parent()]
     if !ok { // The other permaNode is not yet applied? -> enqueue
       self.enqueue(blobref, []string{schema.PermaNode})
       return
     }
-    if perma, ok = p.(*permaNode); !ok {
+    if perma, ok = p.(*PermaNode); !ok {
       log.Printf("The specified node is not a perma node")
       return
     }
   }
   switch newnode.(type) {
-  case *permaNode:
-    perma = newnode.(*permaNode)
+  case *PermaNode:
+    perma = newnode.(*PermaNode)
     self.nodes[blobref] = newnode
     log.Printf("Added a permanode successfully")
   case otNode:
@@ -394,7 +407,7 @@ func (self *Indexer) handleSchemaBlob(blob []byte, blobref string) {
   }
 
   if self.fed != nil && schema.Signer == self.userID {
-    users := perma.UsersWithPermission(Perm_Read, true)
+    users := perma.FollowersWithPermission(Perm_Read, true)
     if len(users) > 0 {
       self.fed.Forward(blobref, users)
     }
@@ -427,7 +440,7 @@ func (self *Indexer) handleInvitation(schema *superSchema, blobref string) {
     return
   }
   // Do we have the perma node to which this invitation belongs?
-  perma, err := self.permaNode(schema.PermaNode)
+  perma, err := self.PermaNode(schema.PermaNode)
   if err != nil { // Not a perma node?
     log.Printf("Err: Not a perma node: %v\n", err)
     return
@@ -437,7 +450,7 @@ func (self *Indexer) handleInvitation(schema *superSchema, blobref string) {
     return
   }
   // Is there a keep for the referenced permaNode already
-  if perma.HasKeep(schema.Signer) {
+  if perma.HasKeep(schema.User) {
     // The invitation has already been accepted. Forget about it
     return
   }
@@ -454,23 +467,21 @@ func (self *Indexer) handleInvitation(schema *superSchema, blobref string) {
     for _, app := range self.appIndexers {
       app.Invitation(blobref, schema.PermaNode, schema.Signer)
     }
-    self.postApply(blobref)
   } else { // This is an invitation of another user
     // Add the invitation to remember that this user has been invited.
     perma.pendingInvitations[schema.User] = blobref
     log.Printf("User %v has been invited\n", schema.User)
     // Forward invitations, especially to the user being invited
     if self.fed != nil && schema.Signer == self.userID {
-      users := append(perma.UsersWithPermission(Perm_Read, true), schema.User)
+      users := append(perma.FollowersWithPermission(Perm_Read, true), schema.User)
       if len(users) > 0 {
 	self.fed.Forward(blobref, users)
       }
       // Forward the permanode to the invited user as well
       self.fed.Forward(schema.PermaNode, []string{schema.User})
     }
-
-    self.postApply(blobref)
-  }  
+  }
+  self.postApply(blobref)  
 }
 
 func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
@@ -479,7 +490,7 @@ func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
     return
   }
   // Do we have the perma node to which this invitation belongs?
-  perma, err := self.permaNode(schema.PermaNode)
+  perma, err := self.PermaNode(schema.PermaNode)
   if err != nil { // Not a perma node?
     log.Printf("Err: Not a perma node: %v\n", err)
     return
@@ -497,7 +508,7 @@ func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
       log.Printf("Err: Keep on a foreign permanode is missing an invitation")
       return
     }
-    invitation, err = self.invitation(schema.Invitation)
+    invitation, err = self.Invitation(schema.Invitation)
     // Not an invitation?
     if err != nil {
       log.Printf("Err: Keep references an invitation that is something else or malformed")
@@ -508,6 +519,7 @@ func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
       self.enqueue(blobref, []string{schema.Invitation})
       return
     }
+
     // The invitation has indeed been issued for the user who issued the keep? If not -> error
     if invitation.User != schema.Signer {
       log.Printf("Err: Keep references an invitation targeted at a different user")
@@ -534,8 +546,13 @@ func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
     log.Printf("The local user accepted the invitation\n")
     // TODO: Signal this to the application
   } else {
-    log.Printf("The user %v accepted the invitation\n", schema.Signer)
-    // TODO: Signal this to the application
+    if invitation != nil {
+      log.Printf("The user %v accepted the invitation\n", schema.Signer)
+      // TODO: Signal this to the application
+    } else {
+      log.Printf("The user %v keeps his onw perma node\n", schema.Signer)
+      // TODO: Signal this to the application
+    }
     
     // If the local user signed the invitation, then send all data belonging to the perma node over to this user
     if invitation != nil && invitation.Signer == self.userID {
@@ -546,7 +563,7 @@ func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
   self.postApply(blobref)
 }
 
-func (self *Indexer) forwardContent(perma *permaNode, userid string) {
+func (self *Indexer) forwardContent(perma *PermaNode, userid string) {
   if self.fed == nil {
     return
   }
@@ -557,34 +574,35 @@ func (self *Indexer) forwardContent(perma *permaNode, userid string) {
       self.fed.Forward(blobref, users)
     }
   }
+  
+  // Forward all keeps
+  for u, blobref := range perma.keeps {
+    if u == userid {
+      continue
+    }
+    self.fed.Forward(blobref, users)
+  }
 }
 
 func (self *Indexer) HasPermission(userid string, blobref string, mask int) (ok bool, err os.Error) {
-  perma, err := self.permaNode(blobref)
+  perma, err := self.PermaNode(blobref)
   if err != nil || perma == nil {
     err = os.NewError("No such perma node")
     return false, err
   }
   if perma.ot == nil { // permaNode has no content ?
     return false, nil
-  }    
-  bits, ok := perma.ot.permissions[userid]
-  if !ok { // The requested user is not a user of this permaNode
-    return false, nil
   }
-  return bits & mask == mask, nil
+  return perma.ot.HasPermission(userid, mask), nil
 }
 
-func (self *Indexer) Users(blobref string) (users []string, err os.Error) {
-  perma, err := self.permaNode(blobref)
+func (self *Indexer) Followers(blobref string) (users []string, err os.Error) {
+  perma, err := self.PermaNode(blobref)
   if err != nil || perma == nil {
     err = os.NewError("No such perma node")
     return nil, err
   }
-  users = append(users, perma.signer)
-  for userid, _ := range perma.keeps {
-    users = append(users, userid)
-  }
+  users = perma.Followers()
   return
 }
 

@@ -48,6 +48,8 @@ func TestPermanode3(t *testing.T) {
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
   blobref1 := NewBlobRef(blob1)
+  blob1b := []byte(`{"type":"keep", "signer":"a@b", "perma":"` + blobref1 + `"}`)
+  blobref1b := NewBlobRef(blob1b)
   blob2 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site1", "dep":[], "op":{"$t":["Hello World"]}}`)
   blobref2 := NewBlobRef(blob2)
   blob3 := []byte(`{"type":"mutation", "perma":"` + blobref1 + `", "site":"site2", "dep":[], "op":{"$t":["Olla!!"]}}`)
@@ -66,6 +68,7 @@ func TestPermanode3(t *testing.T) {
 
   // Insert them in the wrong order
   store.StoreBlob(blob1, blobref1)
+  store.StoreBlob(blob1b, blobref1b)
   store.StoreBlob(blob2, blobref2)  
   store.StoreBlob(blob3, blobref3)  
   store.StoreBlob(blob4, blobref4)  
@@ -105,12 +108,12 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Expected an allow for Invite a@b")
   }
 
-  users, err := indexer.Users(blobref1)
+  users, err := indexer.Followers(blobref1)
   if err != nil {
     t.Fatal(err.String())
   }
   if len(users) != 2 {
-    t.Fatal("Wrong number of users")
+    t.Fatalf("Wrong number of users: %v\n", users)
   }
   if (users[0] != "a@b" || users[1] != "foo@bar") && (users[1] != "a@b" || users[0] != "foo@bar") {
     t.Fatal("Wrong users")

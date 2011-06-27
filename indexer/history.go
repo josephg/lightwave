@@ -6,6 +6,10 @@ import (
   "os"
 )
 
+type OTHistory interface {
+  Frontier() ot.Frontier
+}
+
 type otHistory struct {
   // An ordered list of applied blob references.
   // The most recent blob is at the end of the list.
@@ -116,7 +120,7 @@ func (self *otHistory) Apply(newnode otNode) (deps []string, err os.Error) {
   prune := map[string]bool{}
   // Need to rollback?
   if !h.Test() {
-    // Go back in history until our history is equal with that of 'mut'.
+    // Go back in history until our history is equal to (or earlier than) that of 'mut'.
     // On the way remember which mutations of our history do not belong to the
     // history of 'mut' because these must be pruned.
     for x := range self.History(true) {
@@ -182,4 +186,12 @@ func (self *otHistory) Apply(newnode otNode) (deps []string, err os.Error) {
     }
   }
   return
+}
+
+func (self *otHistory) HasPermission(userid string, mask int) (ok bool) {
+  bits, ok := self.permissions[userid]
+  if !ok { // The requested user is not a user of this permaNode
+    return false
+  }
+  return bits & mask == mask
 }
