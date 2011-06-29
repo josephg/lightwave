@@ -10,8 +10,9 @@ import (
 // If an allow-bit is 1 then the corresponding deny bit must be 1 as well.
 // In other words, allow and deny must not contradict each other.
 type Permission struct {
+  // This property is not serialized
   ID string
-  Dependencies []string
+  Dependencies []string "dep"
   // A 1 bit explicitly allows something
   Allow int "allow"
   // A 1 bit explicitly denies something
@@ -19,7 +20,9 @@ type Permission struct {
   User string "user"
   // This property is not serialized
   History []permissionHistory
+  // This property is not serialized
   OriginalDeny int
+  // This property is not serialized
   OriginalAllow int
 }
 

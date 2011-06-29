@@ -145,6 +145,7 @@ func (self *otHistory) Apply(newnode otNode) (deps []string, err os.Error) {
   // Prune all mutations that have been applied locally but do not belong to the history of the new mutation
   pnodes, e := pruneSeq(nodes, prune)
   if e != nil {
+    log.Printf("Prune Error: %v\n", e)
     err = e
     return
   }
@@ -171,7 +172,6 @@ func (self *otHistory) Apply(newnode otNode) (deps []string, err os.Error) {
   self.appliedBlobs = append(self.appliedBlobs, newnode.BlobRef())
   self.members[newnode.BlobRef()] = newnode
   self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
-  log.Printf("Applied blob %v\n", newnode.BlobRef())
   
   if mut, ok := newnode.(*mutationNode); ok {
     self.content, err = ot.Execute(self.content, mut.mutation)

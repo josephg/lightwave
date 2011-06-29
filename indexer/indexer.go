@@ -13,12 +13,13 @@ import (
 // Struct to deserialize any schema blob
 
 type superSchema struct {
-  // Allowed value are "permanode", "mutation", "permission", "invitation", "keep"
+  // Allowed value are "permanode", "mutation", "permission", "keep"
   Type    string "type"
 
   Signer string "signer"
   
-  Invitation string "invitation"
+  Permission string "permission"
+  Action string "action"
 //  Sig    string "sig"
 
   Dependencies []string "dep"
@@ -55,10 +56,12 @@ type node struct {
   signer string
 }
 
+// The blobref of the parent node or the empty string
 func (self *node) Parent() string {
   return self.parent
 }
 
+// The userid of the signer
 func (self *node) Signer() string {
   return self.signer
 }
@@ -67,6 +70,7 @@ func (self *node) Signer() string {
 type abstractNode interface {
   BlobRef() string
   Parent() string
+  Signer() string
 }
 
 type PermaNode struct {
@@ -91,12 +95,9 @@ func (self *PermaNode) BlobRef() string {
   return self.blobref
 }
 
-func (self *PermaNode) FollowersWithPermission(bits int, ignoreOwner bool) (users []string) {
+func (self *PermaNode) FollowersWithPermission(bits int) (users []string) {
   for userid, _ := range self.keeps {
-    if ignoreOwner && userid == self.signer {
-      continue
-    }
-    if self.ot != nil {
+    if self.ot != nil && bits != 0 { // Need to check for special permission bits?
       if self.signer != userid { // The user is not the owner. Then he needs special permissions
 	allowed, ok := self.ot.permissions[userid]
 	if !ok {
@@ -124,14 +125,22 @@ func (self *PermaNode) HasKeep(userid string) bool {
   return ok
 }
 
+// All nodes participating in Operational Transformation must implement this interface
 type otNode interface {
   abstractNode
   Dependencies() []string
 }
 
+const (
+  PermAction_Invite = iota
+  PermAction_Expel
+  PermAction_Change
+)
+
 type permissionNode struct {
   node
   permission ot.Permission
+  action int
 }
 
 func (self *permissionNode) BlobRef() string {
@@ -155,25 +164,31 @@ func (self *mutationNode) Dependencies() []string {
   return self.mutation.Dependencies
 }
 
-// -----------------------------------------------------
-// Data structures which are a specialization of the superSchema
+type keepNode struct {
+  node
+  blobref string
+  dependencies []string
+  permission string
+}
 
-type invitationSchema struct {
-  Type string "type"
-  Signer string "signer"
-  PermaNode string "perma"
-  User string "user"
+func (self *keepNode) BlobRef() string {
+  return self.blobref
+}
+
+func (self *keepNode) Dependencies() []string {
+  return self.dependencies
 }
 
 // ------------------------------------------------------
 // Interfaces
  
 type Federation interface {
+  SetIndexer(indexer *Indexer)
   Forward(blobref string, users []string)
 }
 
 type ApplicationIndexer interface {
-  Invitation(invitation_blobref, permanode_blobref string, inviter string)
+  Invitation(invitation_blobref string)
 }
 
 // ------------------------------------------------------
@@ -214,6 +229,7 @@ type Indexer struct {
 func NewIndexer(userid string, store BlobStore, fed Federation) *Indexer {
   idx := &Indexer{userID: userid, store: store, nodes: make(map[string]interface{}), waitingBlobs: make(map[string]bool), waitingLists: make(map[string]*lst.List), pendingBlobs: make(map[string]int) /* keeps: make(map[string]string) */, openInvitations: make(map[string]string), blobs:make(map[string]bool), fed: fed}
   store.AddListener(idx)
+  fed.SetIndexer(idx)
   return idx
 }
 
@@ -233,31 +249,16 @@ func (self *Indexer) PermaNode(blobref string) (perma *PermaNode, err os.Error) 
   return
 }
 
-func (self *Indexer) Invitation(blobref string) (invitation *invitationSchema, err os.Error) {
-  // Check that the blob has already been processed by the indexer.
-  // This ensures that it is well-formed and signed
-  valid, processed := self.blobs[blobref]
-  if !processed {
+func (self *Indexer) Permission(blobref string) (permission *permissionNode, err os.Error) {
+  n, ok := self.nodes[blobref]
+  if !ok {
     return nil, nil
   }
-  if !valid {
-    return nil, os.NewError("The referenced blob is malformed and was rejected by the indexer")
+  permission, ok = n.(*permissionNode)
+  if !ok {
+    err = os.NewError("Blob is not a permissionNode")
   }
-  
-  blob, err := self.store.GetBlob(blobref)
-  if err != nil { // Blob not found?
-    return nil, nil
-  }
-  var schema invitationSchema
-  err = json.Unmarshal(blob, &schema)
-  if err != nil {
-    return nil, err
-  }
-  if schema.Type != "invitation" {
-    err = os.NewError("Not an invitation")
-    return
-  }
-  return &schema, nil
+  return
 }
 
 func (self *Indexer) enqueue(blobref string, deps []string) {
@@ -295,7 +296,13 @@ func (self *Indexer) dequeue(waitFor string) (blobrefs []string) {
 }
 
 func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result interface{}, err os.Error) {
+  if schema.Signer == "" {
+    return nil, os.NewError("Missing signer")
+  }
   switch schema.Type {
+  case "keep":
+    n := &keepNode{blobref: blobref, node: node{signer: schema.Signer, parent: schema.PermaNode}, dependencies: schema.Dependencies, permission: schema.Permission}
+    return n, nil
   case "permanode":
     n := &PermaNode{blobref: blobref, node: node{signer: schema.Signer, parent: schema.PermaNode}, keeps: make(map[string]string), pendingInvitations: make(map[string]string)}
     return n, nil
@@ -324,6 +331,17 @@ func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result int
     n.permission.User = schema.User
     n.permission.Allow = schema.Allow
     n.permission.Deny = schema.Deny
+    switch schema.Action {
+    case "invite":
+      n.action = PermAction_Invite
+    case "expel":
+      n.action = PermAction_Expel
+    case "change":
+      n.action = PermAction_Change
+    default:
+      err = os.NewError("Unknown action type in permission blob")
+      return
+    }
     return n, nil    
   default:
     log.Printf("Unknown schema type")
@@ -332,90 +350,27 @@ func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result int
 }
 
 func (self *Indexer) HandleBlob(blob []byte, blobref string) {
+  var signer string
+  var perma *PermaNode
   // First, determine the mimetype
   mimetype := MimeType(blob)
   if mimetype == "application/x-lightwave-schema" { // Is it a schema blob?
-    self.handleSchemaBlob(blob, blobref)
-    return
-  }
-  // The blob is not interpreted by the indexer because it is not a schema blob
-  self.postApply(blobref)
-}
-
-func (self *Indexer) handleSchemaBlob(blob []byte, blobref string) {
-  // Try to decode it into a camli-store schema blob
-  var schema superSchema
-  err := json.Unmarshal(blob, &schema)
-  if err != nil {
-    log.Printf("Malformed schema blob: %v\n", err)
-  }
-  
-  switch schema.Type {
-  case "invitation":
-    self.handleInvitation(&schema, blobref)
-    return
-  case "keep":
-    self.handleKeep(&schema, blobref)
-    return
-  }
-  
-  newnode, err := self.decodeNode(&schema, blobref)
-  if err != nil {
-    log.Printf("Schema blob is not valid: %v\n", err)
-  }
-  ptr := newnode.(abstractNode)
-  // The node is linked to another permaNode?
-  var perma *PermaNode
-  if ptr.Parent() != "" {
-    p, ok := self.nodes[ptr.Parent()]
-    if !ok { // The other permaNode is not yet applied? -> enqueue
-      self.enqueue(blobref, []string{schema.PermaNode})
+    var processed bool
+    if perma, signer, processed = self.handleSchemaBlob(blob, blobref); !processed {
       return
     }
-    if perma, ok = p.(*PermaNode); !ok {
-      log.Printf("The specified node is not a perma node")
-      return
-    }
+  } else {
+    // TODO: Handle ordinary binary blobs
   }
-  switch newnode.(type) {
-  case *PermaNode:
-    perma = newnode.(*PermaNode)
-    self.nodes[blobref] = newnode
-    log.Printf("Added a permanode successfully")
-  case otNode:
-    if perma == nil {
-      log.Printf("Permission or mutation without a permanode")
-      return
-    }
-    if perma.ot == nil {
-      perma.ot = newOTHistory()
-      // The owner of the permanode has all the rights on it
-      perma.ot.permissions[perma.signer] = ^0
-    }
-    deps, err := perma.ot.Apply(newnode.(otNode))
-    if err != nil {
-      log.Printf("Err: applying blob failed: %v\n", err)
-    }
-    if len(deps) > 0 {
-      self.enqueue(blobref, deps)
-      return
-    }
-    self.nodes[blobref] = newnode
-  default:
-    log.Printf("Err: Unknown blob type\n")
-    return
-  }
-
-  if self.fed != nil && schema.Signer == self.userID {
-    users := perma.FollowersWithPermission(Perm_Read, true)
+    
+  // Forward the blob to all followers
+  if self.fed != nil && signer == self.userID {
+    users := perma.FollowersWithPermission(Perm_Read)
     if len(users) > 0 {
       self.fed.Forward(blobref, users)
     }
   }
-  self.postApply(blobref)
-}
 
-func (self *Indexer) postApply(blobref string) {
   // Remember that this blob has been processed
   self.blobs[blobref] = true
     
@@ -430,158 +385,193 @@ func (self *Indexer) postApply(blobref string) {
   }
 }
 
-func (self *Indexer) handleInvitation(schema *superSchema, blobref string) {
-  if schema.User == "" {
-    log.Printf("Err: Invitation is lacking a target user")
-    return
+func (self *Indexer) handleSchemaBlob(blob []byte, blobref string) (perma *PermaNode, signer string, processed bool) {
+  // Try to decode it into a camli-store schema blob
+  var schema superSchema
+  err := json.Unmarshal(blob, &schema)
+  if err != nil {
+    log.Printf("Malformed schema blob: %v\n", err)
+    return nil, "", false
   }
-  if schema.PermaNode == "" {
-    log.Printf("Err: Invitation is lacking a blob reference to what to keep")
-    return
+
+  newnode, err := self.decodeNode(&schema, blobref)
+  if err != nil {
+    log.Printf("Schema blob is not valid: %v\n", err)
+    return nil, "", false
   }
-  // Do we have the perma node to which this invitation belongs?
-  perma, err := self.PermaNode(schema.PermaNode)
-  if err != nil { // Not a perma node?
-    log.Printf("Err: Not a perma node: %v\n", err)
-    return
+  ptr := newnode.(abstractNode)
+  signer = ptr.Signer()
+  // The node is linked to another permaNode?
+  if ptr.Parent() != "" {
+    p, ok := self.nodes[ptr.Parent()]
+    if !ok { // The other permaNode is not yet applied? -> enqueue
+      self.enqueue(blobref, []string{ptr.Parent()})
+      return nil, "", false
+    }
+    if perma, ok = p.(*PermaNode); !ok {
+      log.Printf("The specified node is not a perma node")
+      return nil, "", false
+    }
   }
-  if perma == nil { // Permanode is not yet in the store?
-    self.enqueue(blobref, []string{schema.PermaNode})
+  switch newnode.(type) {
+  case *PermaNode:
+    perma = newnode.(*PermaNode)
+    self.nodes[blobref] = newnode
+    log.Printf("Added a permanode successfully")
+    processed = true
     return
-  }
-  // Is there a keep for the referenced permaNode already
-  if perma.HasKeep(schema.User) {
-    // The invitation has already been accepted. Forget about it
+  case otNode:
+    if perma == nil {
+      log.Printf("Permission or mutation without a permanode")
+      return nil, "", false
+    }
+    if perma.ot == nil {
+      perma.ot = newOTHistory()
+      // The owner of the permanode has all the rights on it
+      perma.ot.permissions[perma.signer] = ^0
+    }
+    // Is this an invitation? Then we cannot apply it, because most data is missing.
+    if inv, ok := newnode.(*permissionNode); ok && inv.action == PermAction_Invite && inv.permission.User == self.userID && !self.hasBlobs(inv.Dependencies()) {
+      processed = self.handleInvitation(perma, inv)
+      // Do not apply the blob here. We must first download all the data
+      self.enqueue(blobref, inv.Dependencies())
+      return
+    } else if keep, ok := newnode.(*keepNode); ok {
+      processed = self.checkKeep(perma, keep)
+      if !processed {
+	log.Printf("Keep block failed at inspection\n")
+	return
+      }
+    }
+    deps, err := perma.ot.Apply(newnode.(otNode))
+    if err != nil {
+      log.Printf("Err: applying blob failed: %v\nblobref=%v\n", err, blobref)
+      return nil, "", false
+    }
+    if len(deps) > 0 {
+      self.enqueue(blobref, deps)
+      return nil, "", false
+    }
+    self.nodes[blobref] = newnode
+    log.Printf("Applied blob %v at %v\n", ptr.BlobRef(), self.userID)
+
+    processed = true
+    if _, ok := newnode.(*permissionNode); ok {
+      processed = self.handlePermission(perma, newnode.(*permissionNode))
+    } else if _, ok := newnode.(*keepNode); ok {
+      processed = self.handleKeep(perma, newnode.(*keepNode))
+    }
     return
   }
 
-  log.Printf("Handling invitation at %v\n", self.userID)
-  
-  // TODO: Is the signer of this invitation allowed to invite in the first place?
-      
-  // Who is invited here? The local user?
-  if schema.User == self.userID {
-    self.openInvitations[schema.PermaNode] = blobref
-    log.Printf("An invitation has been received")
-    // Signal to the next layer that an invitation has been received
-    for _, app := range self.appIndexers {
-      app.Invitation(blobref, schema.PermaNode, schema.Signer)
-    }
-  } else { // This is an invitation of another user
-    // Add the invitation to remember that this user has been invited.
-    perma.pendingInvitations[schema.User] = blobref
-    log.Printf("User %v has been invited\n", schema.User)
-    // Forward invitations, especially to the user being invited
-    if self.fed != nil && schema.Signer == self.userID {
-      users := append(perma.FollowersWithPermission(Perm_Read, true), schema.User)
-      if len(users) > 0 {
-	self.fed.Forward(blobref, users)
-      }
-      // Forward the permanode to the invited user as well
-      self.fed.Forward(schema.PermaNode, []string{schema.User})
-    }
-  }
-  self.postApply(blobref)  
+  log.Printf("Err: Unknown blob type\n")
+  return nil, "", false
 }
 
-func (self *Indexer) handleKeep(schema *superSchema, blobref string) {
-  if schema.PermaNode == "" {
-    log.Printf("Err: Invitation is lacking a blob reference to what to keep")
-    return
+func (self *Indexer) handleInvitation(perma *PermaNode, perm *permissionNode) bool {
+  log.Printf("Handling invitation at %v\n", self.userID)
+  self.openInvitations[perma.BlobRef()] = perm.BlobRef()
+  // Signal to the next layer that an invitation has been received
+  for _, app := range self.appIndexers {
+    app.Invitation(perm.BlobRef())
   }
-  // Do we have the perma node to which this invitation belongs?
-  perma, err := self.PermaNode(schema.PermaNode)
-  if err != nil { // Not a perma node?
-    log.Printf("Err: Not a perma node: %v\n", err)
-    return
-  }
-  if perma == nil { // Permanode is not yet in the store?
-    self.enqueue(blobref, []string{schema.PermaNode})
-    return
-  }
+  return true
+}
 
-  var invitation *invitationSchema
+func (self *Indexer) handlePermission(perma *PermaNode, perm *permissionNode) bool {
+  switch perm.action {
+  case PermAction_Change:
+    // TODO
+  case PermAction_Expel:
+    // TODO
+  case PermAction_Invite:
+    // Add the invitation to remember that this user has been invited.
+    perma.pendingInvitations[perm.permission.User] = perm.BlobRef()
+    log.Printf("User %v has been invited\n", perm.permission.User)
+    // Forward the invitation to the user being invited
+    if self.fed != nil && perm.Signer() == self.userID {
+      self.fed.Forward(perm.BlobRef(), []string{perm.permission.User})
+      // Forward the permanode to the invited user as well
+      self.fed.Forward(perma.BlobRef(), []string{perm.permission.User})
+    }
+  default:
+    panic("Unknown action type")
+  }
+  return true
+}
+
+func (self *Indexer) checkKeep(perma *PermaNode, keep *keepNode) bool {
+  var perm *permissionNode
   // The signer of the keep is not the signer of the permanode?
   // In this case he must present a valid invitation
-  if schema.Signer != perma.signer {
-    if schema.Invitation == "" {
-      log.Printf("Err: Keep on a foreign permanode is missing an invitation")
-      return
+  if keep.Signer() != perma.Signer() {
+    if keep.permission == "" {
+      log.Printf("Err: Keep on a foreign permanode is missing a reference to a permission blob")
+      return false
     }
-    invitation, err = self.Invitation(schema.Invitation)
+    var err os.Error
+    perm, err = self.Permission(keep.permission)
     // Not an invitation?
     if err != nil {
-      log.Printf("Err: Keep references an invitation that is something else or malformed")
-      return
+      log.Printf("Err: Keep references a permision that is something else or malformed")
+      return false
     }
-    // Invitation has not yet been received or processed? -> enqueue
-    if invitation == nil {
-      self.enqueue(blobref, []string{schema.Invitation})
-      return
+    // Permission has not yet been received or processed? -> enqueue
+    if perm == nil {
+      self.enqueue(keep.BlobRef(), []string{keep.permission})
+      return false
     }
-
+    // TODO: Is the permission still valid or has it been overruled?
+    
     // The invitation has indeed been issued for the user who issued the keep? If not -> error
-    if invitation.User != schema.Signer {
+    if perm.permission.User != keep.Signer() {
       log.Printf("Err: Keep references an invitation targeted at a different user")
-      return
+      return false
     }
   }
+  return true
+}
 
-  log.Printf("Handling Keep from %v at %v\n", schema.Signer, self.userID)
+func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
+  log.Printf("Handling Keep from %v at %v\n", keep.Signer(), self.userID)
+  var perm *permissionNode
+  // The signer of the keep is not the signer of the permanode?
+  // In this case he must present a valid invitation
+  if keep.Signer() != perma.Signer() {
+    var err os.Error
+    perm, err = self.Permission(keep.permission)
+    if err != nil || perm == nil {  // Problem already catched at checkKeep 
+      panic("Keep references a permision that is something else or malformed")
+    }
+  }
 
   // Does this implicitly accept a pending invitation? Clean it up.
-  if _, ok := perma.pendingInvitations[schema.Signer]; ok {
-    perma.pendingInvitations[schema.Signer] = "", false
+  if _, ok := perma.pendingInvitations[keep.Signer()]; ok {
+    perma.pendingInvitations[keep.Signer()] = "", false
   }
   // This keep is new. The permaNode has a new user.
-  perma.keeps[schema.Signer] = blobref
+  perma.keeps[keep.Signer()] = keep.BlobRef()
 
   // This implies accepting an invitation?
-  if invitation != nil && invitation.User == self.userID {
+  if perm != nil && perm.permission.User == self.userID {
     // Send the keep (which accepts the invitation) to the signer of the invitation
-    if self.fed != nil {
-      self.fed.Forward(blobref, []string{invitation.Signer})
+    if self.fed != nil && keep.Signer() != self.userID {
+      self.fed.Forward(keep.BlobRef(), []string{keep.Signer()})
     }
-    self.openInvitations[schema.PermaNode] = "", false
+    self.openInvitations[perma.BlobRef()] = "", false
     log.Printf("The local user accepted the invitation\n")
     // TODO: Signal this to the application
   } else {
-    if invitation != nil {
-      log.Printf("The user %v accepted the invitation\n", schema.Signer)
+    if perm != nil {
+      log.Printf("The user %v accepted the invitation\n", keep.Signer())
       // TODO: Signal this to the application
+      // TODO: Send this user all blobs of the local user that are not in the other user's frontier yet.
     } else {
-      log.Printf("The user %v keeps his onw perma node\n", schema.Signer)
+      log.Printf("The user %v keeps his own perma node\n", keep.Signer())
       // TODO: Signal this to the application
     }
-    
-    // If the local user signed the invitation, then send all data belonging to the perma node over to this user
-    if invitation != nil && invitation.Signer == self.userID {
-      self.forwardContent(perma, schema.Signer)
-    }
   }
-  
-  self.postApply(blobref)
-}
-
-func (self *Indexer) forwardContent(perma *PermaNode, userid string) {
-  if self.fed == nil {
-    return
-  }
-  users := []string{userid}
-  
-  if perma.ot != nil {
-    for blobref := range perma.ot.HistoryBlobRefs(false) {
-      self.fed.Forward(blobref, users)
-    }
-  }
-  
-  // Forward all keeps
-  for u, blobref := range perma.keeps {
-    if u == userid {
-      continue
-    }
-    self.fed.Forward(blobref, users)
-  }
+  return true
 }
 
 func (self *Indexer) HasPermission(userid string, blobref string, mask int) (ok bool, err os.Error) {
@@ -604,6 +594,16 @@ func (self *Indexer) Followers(blobref string) (users []string, err os.Error) {
   }
   users = perma.Followers()
   return
+}
+
+func (self *Indexer) hasBlobs(blobrefs []string) bool {
+  for _, blobref := range blobrefs {
+    _, ok := self.nodes[blobref]
+    if !ok {
+      return false
+    }
+  }
+  return true
 }
 
 // ----------------------------------------------------------------
@@ -633,14 +633,14 @@ func transform(node1 otNode, node2 otNode) (tnode1, tnode2 otNode, err os.Error)
       m1.mutation, m2.mutation, err = ot.Transform(node1.(*mutationNode).mutation, node2.(*mutationNode).mutation)
       tnode1 = &m1
       tnode2 = &m2
-    case *permissionNode:
+    case *permissionNode, *keepNode:
       // Do nothing by intention
     default:
       panic("Unknown node type")
     }
   case *permissionNode:
     switch node2.(type) {
-    case *mutationNode:
+    case *mutationNode, *keepNode:
       // Do nothing by intention
     case *permissionNode:
       p1 := *(node1.(*permissionNode))
@@ -651,6 +651,8 @@ func transform(node1 otNode, node2 otNode) (tnode1, tnode2 otNode, err os.Error)
     default:
       panic("Unknown node type")
     }
+  case *keepNode:
+    // Do nothing by intention    
   default:
     panic("Unknown node type")
   }
@@ -673,17 +675,19 @@ func pruneSeq(nodes []otNode, prune map[string]bool) (result []otNode, err os.Er
 	  m := *(n.(*mutationNode))
 	  m.mutation, u, err = ot.PruneMutation(n.(*mutationNode).mutation, u)
 	  result = append(result, &m)
+	case *keepNode:
+	  result = append(result, n)
 	}
 	if err != nil {
 	  return
 	}
       } else { // Pruning did not yet start. Just append 'n' to the result
 	result = append(result, n)
-	continue
       }
+      continue
     }
     switch n.(type) {
-    case *permissionNode: // Ignore the permission node
+    case *permissionNode, *keepNode: // Ignore the permission node
       // Do nothing by intention
     case *mutationNode: // Store in u that the mutation in 'n' are pruned.
       if !started { // Initialize 'u'

@@ -5,6 +5,7 @@ import (
   "strings"
   "crypto/sha256"
   "encoding/hex"
+  "log"
 )
 
 func NewBlobRef(blob []byte) string {
@@ -35,6 +36,7 @@ func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) {
   }
   // The blob is already known?
   if _, ok := self.blobs[blobref]; ok {
+    log.Printf("Blob is already known\n")
     return
   }
   self.hashTree.Add(blobref)

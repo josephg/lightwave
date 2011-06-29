@@ -22,6 +22,7 @@ const (
 )
 
 type Federation struct {
+  userID string
   addr string
   mutex sync.Mutex
   store store.BlobStore
@@ -30,14 +31,13 @@ type Federation struct {
   queues map[string]*queue
 }
 
-type queueEntry struct {
-  users []string
-  blobref string
+func NewFederation(userid, addr string, ns store.NameService, store store.BlobStore) *Federation {
+  fed := &Federation{userID: userid, ns: ns, store: store, addr: addr, queues: make(map[string]*queue)}
+  return fed
 }
 
-func NewFederation(addr string, ns store.NameService, store store.BlobStore, indexer *idx.Indexer) *Federation {
-  fed := &Federation{ns: ns, store: store, indexer: indexer, addr: addr, queues: make(map[string]*queue)}
-  return fed
+func (self *Federation) SetIndexer(indexer *idx.Indexer) {
+  self.indexer = indexer
 }
 
 func (self *Federation) getQueue(domain string) chan<- queueEntry {
@@ -57,6 +57,9 @@ func (self *Federation) Forward(blobref string, users []string) {
   // Determine the servers that have to be informed
   urls := make(map[string]vec.StringVector)
   for _, user := range users {
+    if user == self.userID {
+      continue
+    }
     rawurl, err := self.ns.Lookup(user)
     if err != nil {
       log.Print("Unknown user", err)
@@ -163,4 +166,129 @@ func (self *Federation) handleRequest(w http.ResponseWriter, req *http.Request) 
     w.WriteHeader(500)
     // TODO: give error message
   }
+}
+
+// Downloads a permanode and all blobs up-to and including the frontier blobs.
+func (self *Federation) DownloadBlobsRecursively(rawurl string, blobrefs []string) (err os.Error) {
+  for i := 0; i < len(blobrefs); i++ {
+    blobref := blobrefs[i]
+    dependencies, err := self.DownloadBlob(rawurl, blobref)
+    if err != nil {
+      return err
+    }
+    blobrefs = append(blobrefs, dependencies...)
+  }
+  return
+}
+
+type depSchema struct {
+  Dependencies []string "dep"
+}
+
+func (self *Federation) DownloadBlob(rawurl, blobref string) (dependencies []string, err os.Error) {
+  // Get the blob
+  var client http.Client
+  req, err := client.Get(rawurl + "?blobref=" + http.URLEscape(blobref))
+  if err != nil {
+    return nil, err
+  }
+  // TODO: Improve for large files
+  blob, err := ioutil.ReadAll(req.Body)
+  if err != nil {
+    log.Printf("Error reading request body")
+    return nil, err
+  }
+  req.Body.Close()
+  self.store.StoreBlob(blob, "")
+  // Check whether the retrieved blob is a schema blob
+  mimetype := idx.MimeType(blob)
+  if mimetype == "application/x-lightwave-schema" {
+    var schema depSchema
+    err = json.Unmarshal(blob, &schema)
+    if err != nil {
+      log.Printf("Malformed schema blob: %v\n", err)
+      return nil, err
+    }
+    dependencies = schema.Dependencies
+  }
+  return
+}
+
+func (self *Federation) DownloadFrontier(rawurl string, blobref string) (frontier []string, err os.Error) {
+  // Get the blob
+  var client http.Client
+  req, err := client.Get(rawurl + "?frontier=" + http.URLEscape(blobref))
+  if err != nil {
+    return nil, err
+  }
+  // Process the returned value
+  blob, err := ioutil.ReadAll(req.Body)
+  if err != nil {
+    log.Printf("Error reading request body")
+    return nil, err
+  }
+  req.Body.Close()
+  err = json.Unmarshal(blob, &frontier)
+  if err != nil {
+    log.Printf("Malformed frontier response: %v\n", err)
+    return nil, err
+  }
+  return
+}
+
+type invitationSchema struct {
+  User string "user"
+  Signer string "signer"
+  PermaNode string "perma"
+  Dependencies []string "dep"
+}
+
+func (self *Federation) AcceptInvitation(blobref string) (err os.Error) {
+  // Load the invitation from the store
+  blob, err := self.store.GetBlob(blobref)
+  if err != nil {
+    return err
+  }
+  var schema invitationSchema
+  err = json.Unmarshal(blob, &schema)
+  if err != nil {
+    return err
+  }
+  
+  // Find the web server of this user
+  var rawurl string
+  rawurl, err = self.ns.Lookup(schema.Signer)
+  if err != nil {
+    return
+  }
+
+  // Get the frontier
+  // frontier, err := self.DownloadFrontier(rawurl, schema.PermaNode)
+  // if err != nil {
+  //   return err
+  // }
+  
+  // Download the perma node and all its member blobs
+  // blobrefs := []string{schema.PermaNode}
+  // blobrefs = append(blobrefs, frontier...)
+  // err = self.DownloadBlobsRecursively(rawurl, frontier) 
+  // if err != nil {
+  //  return err
+  // }
+
+  err = self.DownloadBlobsRecursively(rawurl, schema.Dependencies) 
+  if err != nil {
+    return err
+  }
+
+  // Create a keep on the permaNode.
+  keepJson := map[string]interface{}{ "signer": self.userID, "permission": blobref, "perma":schema.PermaNode, "dep": []string{blobref}}
+  keepBlob, err := json.Marshal(keepJson)
+  if err != nil {
+    panic(err.String())
+  }
+  keepBlob = append([]byte(`{"type":"keep",`), keepBlob[1:]...)
+  log.Printf("Storing keep %v\n", string(keepBlob))
+  self.store.StoreBlob(keepBlob, "")
+  return
 }
