@@ -146,7 +146,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Wrong users")
   }
 
-  users = perma.FollowersWithPermission(Perm_Read, false)
+  users = perma.FollowersWithPermission(Perm_Read)
   if len(users) != 2 {
     t.Fatalf("Wrong number of users: %v\n", users)
   }
@@ -154,7 +154,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Wrong users")
   }
 
-  users = perma.FollowersWithPermission(Perm_Read | Perm_Invite, false)
+  users = perma.FollowersWithPermission(Perm_Read | Perm_Invite)
   if len(users) != 1 {
     t.Fatalf("Wrong number of users: %v\n", users)
   }

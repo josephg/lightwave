@@ -566,6 +566,28 @@ func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
       log.Printf("The user %v accepted the invitation\n", keep.Signer())
       // TODO: Signal this to the application
       // TODO: Send this user all blobs of the local user that are not in the other user's frontier yet.
+      
+      if perma.ot != nil {
+	frontier := perma.ot.Frontier()
+	h := ot.NewHistoryGraph(frontier, keep.Dependencies())
+	forwards := []string{}
+	if !h.Test() {
+	  for x := range perma.ot.History(true) {
+	    history_node := x.(otNode)
+	    if !h.SubstituteBlob(history_node.BlobRef(), history_node.Dependencies()) {
+	      if history_node.Signer() == self.userID {
+		forwards = append(forwards, history_node.BlobRef())
+	      }
+	    }
+	    if h.Test() {
+	      break
+	    }
+	  }
+	}
+	for _, f := range forwards {
+	  self.fed.Forward(f, []string{keep.Signer()})
+	}
+      }
     } else {
       log.Printf("The user %v keeps his own perma node\n", keep.Signer())
       // TODO: Signal this to the application
