@@ -106,14 +106,14 @@ func TestFederation(t *testing.T) {
   if err != nil {
     t.Fatal("Not a perma node")
   }
-  if len(p.Followers()) != 3 {
+  if len(p.Followers()) != 2 {
     t.Fatal("Indexer1 has wrong number of followers")
   }
   p, err = indexer2.PermaNode(blobref1)
   if err != nil {
     t.Fatal("Not a perma node")
   }
-  if len(p.Followers()) != 3 {
+  if len(p.Followers()) != 2 {
     t.Fatal("Indexer2 has wrong number of followers", p.Followers())
   }
 //  p, err = indexer3.PermaNode(blobref1)
