@@ -103,42 +103,27 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Missing a keep")
   }
 
-  allow, err := indexer.HasPermission("a@b", blobref1, Perm_Read)
-  if err != nil {
-    t.Fatal(err.String())
-  }
+  allow := perma.HasPermission("a@b", Perm_Read)
   if !allow {
     t.Fatal("Expected an allow for a@b")
   }
 
-  allow, err = indexer.HasPermission("x@y", blobref1, Perm_Read)
-  if err != nil {
-    t.Fatal(err.String())
-  }
+  allow = perma.HasPermission("x@y", Perm_Read)
   if allow {
     t.Fatal("Expected a deny")
   }
 
-  allow, err = indexer.HasPermission("foo@bar", blobref1, Perm_Read)
-  if err != nil {
-    t.Fatal(err.String())
-  }
+  allow = perma.HasPermission("foo@bar", Perm_Read)
   if !allow {
     t.Fatal("Expected an allow for foo@bar")
   }
 
-  allow, err = indexer.HasPermission("a@b", blobref1, Perm_Invite | Perm_Expel)
-  if err != nil {
-    t.Fatal(err.String())
-  }
+  allow = perma.HasPermission("a@b", Perm_Invite | Perm_Expel)
   if !allow {
     t.Fatal("Expected an allow for Invite a@b")
   }
 
-  users, err := indexer.Followers(blobref1)
-  if err != nil {
-    t.Fatal(err.String())
-  }
+  users := perma.Followers()
   if len(users) != 2 {
     t.Fatalf("Wrong number of users: %v\n", users)
   }

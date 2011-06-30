@@ -125,6 +125,16 @@ func (self *PermaNode) HasKeep(userid string) bool {
   return ok
 }
 
+func (self *PermaNode) HasPermission(userid string, mask int) (ok bool) {
+  if self.Signer() == userid {
+    return true
+  }
+  if self.ot == nil { // permaNode has no content ?
+    return false
+  }
+  return self.ot.HasPermission(userid, mask)
+}
+
 // All nodes participating in Operational Transformation must implement this interface
 type otNode interface {
   abstractNode
@@ -565,8 +575,7 @@ func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
     if perm != nil {
       log.Printf("The user %v accepted the invitation\n", keep.Signer())
       // TODO: Signal this to the application
-      // TODO: Send this user all blobs of the local user that are not in the other user's frontier yet.
-      
+      // Send this user all blobs of the local user that are not in the other user's frontier yet.
       if perma.ot != nil {
 	frontier := perma.ot.Frontier()
 	h := ot.NewHistoryGraph(frontier, keep.Dependencies())
@@ -575,8 +584,14 @@ func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
 	  for x := range perma.ot.History(true) {
 	    history_node := x.(otNode)
 	    if !h.SubstituteBlob(history_node.BlobRef(), history_node.Dependencies()) {
+	      // Send nodes created by the local user
 	      if history_node.Signer() == self.userID {
 		forwards = append(forwards, history_node.BlobRef())
+              // Send keeps that rely on a permission given by the local user
+	      } else if k, ok := x.(*keepNode); ok && k.permission != "" {
+		if p, e := self.Permission(k.permission); e == nil && p != nil && p.Signer() == self.userID {
+		  forwards = append(forwards, history_node.BlobRef())		  
+		}
 	      }
 	    }
 	    if h.Test() {
@@ -594,28 +609,6 @@ func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
     }
   }
   return true
-}
-
-func (self *Indexer) HasPermission(userid string, blobref string, mask int) (ok bool, err os.Error) {
-  perma, err := self.PermaNode(blobref)
-  if err != nil || perma == nil {
-    err = os.NewError("No such perma node")
-    return false, err
-  }
-  if perma.ot == nil { // permaNode has no content ?
-    return false, nil
-  }
-  return perma.ot.HasPermission(userid, mask), nil
-}
-
-func (self *Indexer) Followers(blobref string) (users []string, err os.Error) {
-  perma, err := self.PermaNode(blobref)
-  if err != nil || perma == nil {
-    err = os.NewError("No such perma node")
-    return nil, err
-  }
-  users = perma.Followers()
-  return
 }
 
 func (self *Indexer) hasBlobs(blobrefs []string) bool {
