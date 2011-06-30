@@ -119,12 +119,19 @@ func TestFederation(t *testing.T) {
   if len(p.Followers()) != 4 {
     t.Fatal("Indexer1 has wrong number of followers")
   }
+  log.Printf("Content: %v\n", p.OT().Content()) 
+  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
+    t.Fatal("Wrong document content")
+  }
   p, err = indexer2.PermaNode(blobref1)
   if err != nil {
     t.Fatal("Not a perma node")
   }
   if len(p.Followers()) != 4 {
     t.Fatal("Indexer2 has wrong number of followers", p.Followers())
+  }
+  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
+    t.Fatal("Wrong document content")
   }
   p, err = indexer3.PermaNode(blobref1)
   if err != nil {
@@ -133,11 +140,17 @@ func TestFederation(t *testing.T) {
   if len(p.Followers()) != 4 {
     t.Fatal("Indexer3 has wrong number of followers", p.Followers())
   }
+  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
+    t.Fatal("Wrong document content")
+  }
   p, err = indexer4.PermaNode(blobref1)
   if err != nil {
     t.Fatal("Not a perma node")
   }
   if len(p.Followers()) != 4 {
     t.Fatal("Indexer3 has wrong number of followers", p.Followers())
+  }  
+  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
+    t.Fatal("Wrong document content")
   }
 }
