@@ -8,6 +8,7 @@ import (
 
 type OTHistory interface {
   Frontier() ot.Frontier
+  Content() interface{}
 }
 
 type otHistory struct {
@@ -29,6 +30,10 @@ type otHistory struct {
 
 func newOTHistory() *otHistory {
   return &otHistory{frontier: make(ot.Frontier), members: make(map[string]otNode), permissions:make(map[string]int)}
+}
+
+func (self *otHistory) Content() interface{} {
+  return self.content
 }
 
 func (self *otHistory) HasApplied(blobref string) bool {

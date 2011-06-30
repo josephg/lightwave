@@ -6,6 +6,7 @@ import (
   "json"
   "log"
   "os"
+  "time"
   lst "container/list"
 )
 
@@ -15,7 +16,7 @@ import (
 type superSchema struct {
   // Allowed value are "permanode", "mutation", "permission", "keep"
   Type    string "type"
-
+  Time    string "t"
   Signer string "signer"
   
   Permission string "permission"
@@ -54,6 +55,7 @@ type node struct {
   // BlobRef of the parent
   parent string
   signer string
+  time int64
 }
 
 // The blobref of the parent node or the empty string
@@ -66,11 +68,16 @@ func (self *node) Signer() string {
   return self.signer
 }
 
+func (self *node) Timestamp() int64 {
+  return self.time
+}
+
 // All nodes must implement this interface
 type abstractNode interface {
   BlobRef() string
   Parent() string
   Signer() string
+  Timestamp() int64
 }
 
 type PermaNode struct {
@@ -309,12 +316,18 @@ func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result int
   if schema.Signer == "" {
     return nil, os.NewError("Missing signer")
   }
+  var tstruct *time.Time
+  tstruct, err = time.Parse(time.RFC3339, schema.Time)
+  if err != nil || tstruct == nil {
+    return
+  }
+  t := tstruct.Seconds()
   switch schema.Type {
   case "keep":
-    n := &keepNode{blobref: blobref, node: node{signer: schema.Signer, parent: schema.PermaNode}, dependencies: schema.Dependencies, permission: schema.Permission}
+    n := &keepNode{blobref: blobref, node: node{time:t, signer: schema.Signer, parent: schema.PermaNode}, dependencies: schema.Dependencies, permission: schema.Permission}
     return n, nil
   case "permanode":
-    n := &PermaNode{blobref: blobref, node: node{signer: schema.Signer, parent: schema.PermaNode}, keeps: make(map[string]string), pendingInvitations: make(map[string]string)}
+    n := &PermaNode{blobref: blobref, node: node{time:t, signer: schema.Signer, parent: schema.PermaNode}, keeps: make(map[string]string), pendingInvitations: make(map[string]string)}
     return n, nil
   case "mutation":
     if schema.Operation == nil {
@@ -324,7 +337,7 @@ func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result int
     if schema.Site == "" {
       err = os.NewError("mutation is lacking a site identifier")
     }
-    n := &mutationNode{node: node{signer: schema.Signer, parent: schema.PermaNode}}
+    n := &mutationNode{node: node{time:t, signer: schema.Signer, parent: schema.PermaNode}}
     n.mutation.Operation = *schema.Operation
     n.mutation.ID = blobref
     n.mutation.Site = schema.Site
@@ -335,7 +348,7 @@ func (self *Indexer) decodeNode(schema *superSchema, blobref string) (result int
       err = os.NewError("permission is lacking a target user")
       return
     }
-    n := &permissionNode{node: node{signer: schema.Signer, parent: schema.PermaNode}}
+    n := &permissionNode{node: node{time:t, signer: schema.Signer, parent: schema.PermaNode}}
     n.permission.ID = blobref
     n.permission.Dependencies = schema.Dependencies
     n.permission.User = schema.User

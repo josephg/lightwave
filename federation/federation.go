@@ -285,7 +285,7 @@ func (self *Federation) AcceptInvitation(blobref string) (err os.Error) {
   }
 
   // Create a keep on the permaNode.
-  keepJson := map[string]interface{}{ "signer": self.userID, "permission": blobref, "perma":schema.PermaNode, "dep": []string{blobref}}
+  keepJson := map[string]interface{}{ "signer": self.userID, "permission": blobref, "perma":schema.PermaNode, "dep": []string{blobref}, "t":"2006-01-02T15:04:05+07:00"}
   keepBlob, err := json.Marshal(keepJson)
   if err != nil {
     panic(err.String())

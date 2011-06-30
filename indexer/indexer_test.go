@@ -21,9 +21,9 @@ func TestPermanode(t *testing.T) {
   store := NewSimpleBlobStore()
   indexer := NewIndexer("a@b", store, &dummyFederation{})
   
-  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
+  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref1 := NewBlobRef(blob1)
-  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "perma":"` + blobref1 + `"}`)
+  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref2 := NewBlobRef(blob2)
   
   store.StoreBlob(blob1, blobref1)
@@ -43,9 +43,9 @@ func TestPermanode2(t *testing.T) {
   store := NewSimpleBlobStore()
   indexer := NewIndexer("a@b", store, &dummyFederation{})
   
-  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
+  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref1 := NewBlobRef(blob1)
-  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "perma":"` + blobref1 + `"}`)
+  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref2 := NewBlobRef(blob2)
 
   // Insert them in the wrong order
@@ -67,21 +67,21 @@ func TestPermanode3(t *testing.T) {
   store := NewSimpleBlobStore()
   indexer := NewIndexer("a@b", store, fed)
   
-  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
+  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2007-01-02T15:04:05+07:00"}`)
   blobref1 := NewBlobRef(blob1)
-  blob1b := []byte(`{"type":"keep", "signer":"a@b", "perma":"` + blobref1 + `"}`)
+  blob1b := []byte(`{"type":"keep", "signer":"a@b", "perma":"` + blobref1 + `", "t":"2007-01-02T15:04:05+07:00"}`)
   blobref1b := NewBlobRef(blob1b)
-  blob2 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "site":"site1", "dep":[], "op":{"$t":["Hello World"]}}`)
+  blob2 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "site":"site1", "dep":[], "op":{"$t":["Hello World"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref2 := NewBlobRef(blob2)
-  blob3 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "site":"site2", "dep":[], "op":{"$t":["Olla!!"]}}`)
+  blob3 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "site":"site2", "dep":[], "op":{"$t":["Olla!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref3 := NewBlobRef(blob3)
-  blob4 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}}`)
+  blob4 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref4 := NewBlobRef(blob4)
   // Grant user foo@bar read access. At the same time this serves as an invitation
-  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "signer":"a@b", "action":"invite", "dep":["` + blobref4 + `"], "user":"foo@bar", "allow":` + fmt.Sprintf("%v", Perm_Read) + `, "deny":0}`)
+  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "signer":"a@b", "action":"invite", "dep":["` + blobref4 + `"], "user":"foo@bar", "allow":` + fmt.Sprintf("%v", Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref5 := NewBlobRef(blob5)
   // Fake a keep
-  blob7 := []byte(`{"type":"keep", "signer":"foo@bar", "permission":"` + blobref5 + `", "perma":"` + blobref1 + `"}`)
+  blob7 := []byte(`{"type":"keep", "signer":"foo@bar", "permission":"` + blobref5 + `", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref7 := NewBlobRef(blob7)
 
   store.StoreBlob(blob1, blobref1)
