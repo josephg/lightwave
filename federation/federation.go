@@ -53,7 +53,6 @@ func (self *Federation) getQueue(domain string) chan<- queueEntry {
 }
 
 func (self *Federation) Forward(blobref string, users []string) {  
-  log.Printf("Forwarding %v to %v\n", blobref, users)
   // Determine the servers that have to be informed
   urls := make(map[string]vec.StringVector)
   for _, user := range users {
@@ -74,7 +73,11 @@ func (self *Federation) Forward(blobref string, users []string) {
     urlList.Push(user[strings.Index(user, "@") + 1:])
     urls[rawurl] = urlList
   }
-  
+
+  if len(urls) > 0 {
+    log.Printf("Forwarding %v to %v\n", blobref, users)
+  }
+
   for url, urlUsers := range urls {
     q := self.getQueue(url)
     q <- queueEntry{urlUsers, blobref}

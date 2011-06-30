@@ -47,22 +47,22 @@ func TestFederation(t *testing.T) {
   ns := &dummyNameService{}
   store1 := NewSimpleBlobStore()
   store2 := NewSimpleBlobStore()
-//  store3 := NewSimpleBlobStore()
+  store3 := NewSimpleBlobStore()
   fed1 := NewFederation("a@alice", "127.0.0.1:8181", ns, store1)
   fed2 := NewFederation("b@bob", "127.0.0.1:8282", ns, store2)
-//  fed3 := NewFederation("c@charly", "127.0.0.1:8383", ns, store3)
+  fed3 := NewFederation("c@charly", "127.0.0.1:8383", ns, store3)
   indexer1 := idx.NewIndexer("a@alice", store1, fed1)
   indexer2 := idx.NewIndexer("b@bob", store2, fed2)
-//  indexer3 := idx.NewIndexer("c@charly", store3, fed3)
+  indexer3 := idx.NewIndexer("c@charly", store3, fed3)
   app1 := &dummyAppIndexer{"a@alice", store1, fed1, t}
   indexer1.AddListener(app1)
   app2 := &dummyAppIndexer{"b@bob", store2, fed2, t}
   indexer2.AddListener(app2)
-//  app3 := &dummyAppIndexer{"c@charly", store3, fed3, t}
-//  indexer3.AddListener(app3)
+  app3 := &dummyAppIndexer{"c@charly", store3, fed3, t}
+  indexer3.AddListener(app3)
   go runFed(t, fed1)
   go runFed(t, fed2)
-//  go runFed(t, fed3)
+  go runFed(t, fed3)
   
   time.Sleep(1000000000 * 2)
 
@@ -81,11 +81,10 @@ func TestFederation(t *testing.T) {
   blobref5 := NewBlobRef(blob5)
   blob7 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site3", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}}`)
   blobref7 := NewBlobRef(blob7)
-  // Invite 
-//  blob8 := []byte(`{"type":"invitation", "signer":"a@alice", "perma":"` + blobref1 + `", "user":"c@charly"}`)
-//  blobref8 := NewBlobRef(blob8)
+  blob8 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"c@charly", "allow":` + fmt.Sprintf("%v", idx.Perm_Read) + `, "deny":0}`)
+  blobref8 := NewBlobRef(blob8)
 
-  log.Printf("Hashes:\n1: %v\n1b: %v\n2: %v\n3: %v\n4: %v\n5: %v\n7: %v\n", blobref1, blobref1b, blobref2, blobref3, blobref4, blobref5, blobref7)
+  log.Printf("Hashes:\n1: %v\n1b: %v\n2: %v\n3: %v\n4: %v\n5: %v\n7: %v\n8: %v\n", blobref1, blobref1b, blobref2, blobref3, blobref4, blobref5, blobref7, blobref8)
   
   // Insert them in the wrong order
   store1.StoreBlob(blob1, blobref1)
@@ -94,6 +93,7 @@ func TestFederation(t *testing.T) {
   store1.StoreBlob(blob3, blobref3)  
   store1.StoreBlob(blob4, blobref4)  
   store1.StoreBlob(blob5, blobref5)
+  store1.StoreBlob(blob8, blobref8)
 
   time.Sleep(1000000000 * 2)
 
@@ -106,21 +106,21 @@ func TestFederation(t *testing.T) {
   if err != nil {
     t.Fatal("Not a perma node")
   }
-  if len(p.Followers()) != 2 {
+  if len(p.Followers()) != 3 {
     t.Fatal("Indexer1 has wrong number of followers")
   }
   p, err = indexer2.PermaNode(blobref1)
   if err != nil {
     t.Fatal("Not a perma node")
   }
-  if len(p.Followers()) != 2 {
+  if len(p.Followers()) != 3 {
     t.Fatal("Indexer2 has wrong number of followers", p.Followers())
   }
-//  p, err = indexer3.PermaNode(blobref1)
-//  if err != nil {
-//    t.Fatal("Not a perma node")
-//  }
-//  if len(p.Followers()) != 3 {
-//    t.Fatal("Indexer3 has wrong number of followers", p.Followers())
-//  }
+  p, err = indexer3.PermaNode(blobref1)
+  if err != nil {
+    t.Fatal("Not a perma node")
+  }
+  if len(p.Followers()) != 3 {
+    t.Fatal("Indexer3 has wrong number of followers", p.Followers())
+  }
 }
