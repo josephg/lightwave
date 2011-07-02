@@ -1,6 +1,7 @@
 package lightwavefed
 
 import (
+  ot "lightwaveot"
   . "lightwavestore"
   idx "lightwaveidx"
   "testing"
@@ -17,8 +18,24 @@ type dummyAppIndexer struct {
   t *testing.T
 }
 
-func (self *dummyAppIndexer) Invitation(invitation_blobref string) {
+func (self *dummyAppIndexer) Invitation(permanode_blobref, invitation_blobref string) {
   go self.fed.AcceptInvitation(invitation_blobref)
+}
+
+func (self *dummyAppIndexer) NewFollower(permanode_blobref, invitation_blobref, keep_blobref, userid string) {
+  log.Printf("APP: New user: %v\n", userid)
+}
+
+func (self *dummyAppIndexer) PermaNode(blobref, invitation_blobref, keep_blobref string) {
+  log.Printf("APP: New permanode")
+}
+
+func (self *dummyAppIndexer) Mutation(blobref string, mutation ot.Mutation) {
+  log.Printf("APP: Mutation")
+}
+
+func (self *dummyAppIndexer) Permission(blobref string, action int, permission ot.Permission) {
+  log.Printf("App: Permission")
 }
 
 type dummyNameService struct {

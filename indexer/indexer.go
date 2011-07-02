@@ -205,7 +205,18 @@ type Federation interface {
 }
 
 type ApplicationIndexer interface {
-  Invitation(invitation_blobref string)
+  // This function is called when an invitation has been received
+  Invitation(permanode_blobref, invitation_blobref string)
+  // This function is called when a new user has been added to a perma node.
+  NewFollower(permanode_blobref string, invitation_blobref, keep_blobref, userid string)
+  // This function is called when a perma node has been added
+  PermaNode(permanode_blobref string, invitation_blobref, keep_blobref string)
+  // This function is called when a mutation has been applied.
+  // The mutation passed in the parameter is already transformed
+  Mutation(permanode_blobref string, mutation ot.Mutation)
+  // This function is called when a permission mutation has been applied.
+  // The permission passed in the parameter is already transformed
+  Permission(permanode_blobref string, action int, permission ot.Permission)
 }
 
 // ------------------------------------------------------
@@ -496,7 +507,7 @@ func (self *Indexer) handleInvitation(perma *PermaNode, perm *permissionNode) bo
   self.openInvitations[perma.BlobRef()] = perm.BlobRef()
   // Signal to the next layer that an invitation has been received
   for _, app := range self.appIndexers {
-    app.Invitation(perm.BlobRef())
+    app.Invitation(perma.BlobRef(), perm.BlobRef())
   }
   return true
 }
@@ -520,6 +531,9 @@ func (self *Indexer) handlePermission(perma *PermaNode, perm *permissionNode) bo
   default:
     panic("Unknown action type")
   }
+  for _, app := range self.appIndexers {
+    app.Permission(perma.BlobRef(), perm.action, perm.permission)
+  }  
   return true
 }
 
@@ -583,11 +597,17 @@ func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
     }
     self.openInvitations[perma.BlobRef()] = "", false
     log.Printf("The local user accepted the invitation\n")
-    // TODO: Signal this to the application
+    // Signal this to the application
+    for _, app := range self.appIndexers {
+      app.PermaNode(perma.BlobRef(), perm.BlobRef(), keep.BlobRef())
+    }
   } else {
     if perm != nil {
       log.Printf("The user %v accepted the invitation\n", keep.Signer())
-      // TODO: Signal this to the application
+      // Signal this to the application
+      for _, app := range self.appIndexers {
+	app.NewFollower(perma.BlobRef(), perm.BlobRef(), keep.BlobRef(), perm.permission.User)
+      }
       // Send this user all blobs of the local user that are not in the other user's frontier yet.
       if perma.ot != nil {
 	frontier := perma.ot.Frontier()
@@ -618,7 +638,10 @@ func (self *Indexer) handleKeep(perma *PermaNode, keep *keepNode) bool {
       }
     } else {
       log.Printf("The user %v keeps his own perma node\n", keep.Signer())
-      // TODO: Signal this to the application
+      // Signal this to the application
+      for _, app := range self.appIndexers {
+	app.PermaNode(perma.BlobRef(), "", keep.BlobRef())
+      }
     }
   }
   return true
