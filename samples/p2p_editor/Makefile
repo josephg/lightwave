@@ -4,7 +4,6 @@ TARG=p2peditor
 GOFILES=\
 	main.go \
 	editor.go \
-	indexer.go \
-	nameservice.go
+	indexer.go
 
 include $(GOROOT)/src/Make.cmd

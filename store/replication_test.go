@@ -4,34 +4,18 @@ import (
   "testing"
   "time"
   "bytes"
-  "os"
   "fmt"
 )
 
-type dummyNameService struct {
-}
-
-func (self *dummyNameService) Lookup(identity string) (addr string, err os.Error) {
-  switch identity {
-  case "fed1.com":
-    return ":8787", nil
-  case "fed2.com":
-    return ":8686", nil
-  }
-  return "", os.NewError("Unknown host")
-}
-      
-
 func TestReplication(t *testing.T) {
-  ns := &dummyNameService{}
   store1 := NewSimpleBlobStore()
   store2 := NewSimpleBlobStore()
-  fed1 := NewReplication("fed1.com", ns, store1)
-  fed2 := NewReplication("fed2.com", ns, store2)
+  rep1 := NewReplication("a@alice", store1, ":8181", "")
+  rep2 := NewReplication("a@alice", store2, ":8282", ":8181")
 
   // Add some keys to both stores
   for i := 0; i < 1000; i++ {
-    blob := []byte(fmt.Sprintf("{\"x\"=\"m%v\"}", i))
+    blob := []byte(fmt.Sprintf("{\"z\":\"m%v\"}", i))
     store1.StoreBlob(blob, "")
     store2.StoreBlob(blob, "")
   }
@@ -47,13 +31,14 @@ func TestReplication(t *testing.T) {
     store1.StoreBlob([]byte(fmt.Sprintf("{\"y\":%v}", i)), "")
   }
 
-  go fed1.Listen()
-  time.Sleep(100000)
-  
-  err := fed2.Dial("fed1.com")
-  if err != nil {
-    t.Fatal("Could not connect")
-  }
+  go rep1.Listen()
+  go rep2.Listen()
+//  time.Sleep(100000)
+//  
+//  err := fed2.Dial("fed1.com")
+//  if err != nil {
+//    t.Fatal("Could not connect")
+//  }
 
   // Wait for synchronization to happen
   time.Sleep(3000000000)

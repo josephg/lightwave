@@ -21,17 +21,24 @@ const (
   connStreaming = 4
 )
 
+type NameService interface {
+  // Returns a string of the form "hostname:port", "Ip-address:port" or ":port".
+  // Real life applications will use DNS A-records + default ports or DNS SRV-records
+  // to perform the lookup. For demos we can hardcode it.
+  Lookup(userID string) (addr string, err os.Error)
+}
+
 type Federation struct {
   userID string
   addr string
   mutex sync.Mutex
   store store.BlobStore
-  ns store.NameService
+  ns NameService
   indexer *idx.Indexer
   queues map[string]*queue
 }
 
-func NewFederation(userid, addr string, ns store.NameService, store store.BlobStore) *Federation {
+func NewFederation(userid, addr string, ns NameService, store store.BlobStore) *Federation {
   fed := &Federation{userID: userid, ns: ns, store: store, addr: addr, queues: make(map[string]*queue)}
   return fed
 }

@@ -6,6 +6,7 @@ import (
   "json"
   "net"
   "log"
+  "time"
 )
 
 const (
@@ -14,25 +15,29 @@ const (
   connStreaming = 4
 )
 
+const (
+  ReconnectDelay = 20
+)
+
 type Replication struct {
-  identity string
+  userID string
   mutex sync.Mutex
+  // The value in the map denotes the state of the connection as specified
+  // by the conn* constants.
   connections map[*Connection]int
   store BlobStore
-  ns NameService
+  // The empty string or the network address of a master
+  masterAddr string
+  laddr string
 }
 
-type NameService interface {
-  // Returns a string of the form "hostname:port", "Ip-address:port" or ":port".
-  // Real life applications will use DNS A-records + default ports or DNS SRV-records
-  // to perform the lookup. For demos we can hardcode it.
-  Lookup(identity string) (addr string, err os.Error)
-}
-
-func NewReplication(identity string, ns NameService, store BlobStore) *Replication {
-  fed := &Replication{store: store, connections: make(map[*Connection]int), identity: identity, ns: ns}
-  store.AddListener(fed)
-  return fed
+func NewReplication(userID string, store BlobStore, laddr string, masterAddr string) *Replication {
+  rep := &Replication{store: store, connections: make(map[*Connection]int), userID: userID, masterAddr: masterAddr, laddr: laddr}
+  store.AddListener(rep)
+  if masterAddr != "" {
+    go rep.dialMaster(masterAddr)
+  }
+  return rep
 }
 
 func (self *Replication) registerConnection(conn *Connection, kind int) {
@@ -48,12 +53,7 @@ func (self *Replication) unregisterConnection(conn *Connection) {
 }
 
 func (self *Replication) Listen() (err os.Error) {
-  addr, err := self.ns.Lookup(self.identity)
-  if err != nil {
-    log.Printf("Failed to lookup my own address")
-    return err
-  }
-  l, err := net.Listen("tcp", addr)
+  l, err := net.Listen("tcp", self.laddr)
   if err != nil {
     return
   }
@@ -63,9 +63,9 @@ func (self *Replication) Listen() (err os.Error) {
       log.Printf("ERR ACCEPT: %v", err)
       continue
     }
-    conn := newConnection(c, self)
+    conn := newConnection(c, self, nil)
     self.registerConnection(conn, connServer)
-    conn.Send("HELO", self.identity)
+    conn.Send("HELO", self.userID)
     // This tells the other side to start sending BLOBs as they come in
     conn.Send("OPEN", nil)
   }
@@ -73,22 +73,28 @@ func (self *Replication) Listen() (err os.Error) {
 }
 
 // Creates a connection to another peer
-func (self *Replication) Dial(identity string) (err os.Error) {
-  raddr, err := self.ns.Lookup(identity)
-  if err != nil {
-    return err
+func (self *Replication) dialMaster(raddr string) (err os.Error) {
+  ch := make(chan os.Error)
+  for {
+    c, err := net.Dial("tcp", raddr)
+    if err != nil {
+      log.Printf("Failed connecting to %v, will retry ...\n", raddr)
+      time.Sleep(1000000000 * ReconnectDelay)
+      continue
+    }
+    log.Printf("Connection established")
+    conn := newConnection(c, self, ch)
+    self.registerConnection(conn, connClient)
+    conn.Send("HELO", self.userID)
+    // This tells the other side to start sending BLOBs as they come in
+    conn.Send("OPEN", nil)
+    // This initiates the syncing
+    conn.Send("THASH", nil)
+    // Wait for some error
+    <-ch
+    log.Printf("Connection is broken. Will retry ...\n")
+    time.Sleep(1000000000 * ReconnectDelay)
   }
-  c, err := net.Dial("tcp", raddr)
-  if err != nil {
-    return err
-  }
-  conn := newConnection(c, self)
-  self.registerConnection(conn, connClient)
-  conn.Send("HELO", self.identity)
-  // This tells the other side to start sending BLOBs as they come in
-  conn.Send("OPEN", nil)
-  // This initiates the syncing
-  conn.Send("THASH", nil)
   return
 }
 
@@ -96,13 +102,16 @@ func (self *Replication) Dial(identity string) (err os.Error) {
 func (self *Replication) HandleBlob(blob []byte, blobref string) {
   for connection, flags := range self.connections {
     if flags & connStreaming == connStreaming {
-      connection.Send("BLOB", json.RawMessage(blob))
+      // Do not send the blob on the same connection on which it has been received
+      if !connection.hasReceivedBlob(blobref) {
+	connection.Send("BLOB", json.RawMessage(blob))
+      }
     }
   }
 }
 
 func (self *Replication) HandleMessage(msg Message) {
-  if msg.Cmd != "HELO" && msg.connection.identity == "" {
+  if msg.Cmd != "HELO" && msg.connection.userID == "" {
     log.Printf("ERR: Missing HELO")
     return
   }
@@ -133,15 +142,20 @@ func (self *Replication) HandleMessage(msg Message) {
 
 // Handles the 'HELO' command
 func (self *Replication) heloHandler(msg Message) {
-  if msg.connection.identity != "" {
+  if msg.connection.userID != "" {
     log.Printf("Error: Second HELO is being sent")
   }
-  var identity string
-  if msg.DecodePayload(&identity) != nil {
+  var userID string
+  if msg.DecodePayload(&userID) != nil {
     log.Printf("Error in HELO request")
     return
   }
-  msg.connection.identity = identity
+  if userID != self.userID {
+    log.Printf("Error: syncing replicas owned by multiple users is not allowed")
+    msg.connection.Close()
+    return
+  }
+  msg.connection.userID = userID
 }
 
 // Handles the 'BLOB' command
@@ -150,7 +164,10 @@ func (self *Replication) blobHandler(msg Message) {
     log.Printf("Blob message without payload detected")
     return
   }
-  self.store.StoreBlob([]byte(*msg.Payload), "")
+  blob := []byte(*msg.Payload)
+  blobref := NewBlobRef(blob)
+  msg.connection.addReceivedBlock(blobref)
+  self.store.StoreBlob(blob, blobref)
 }
 
 // Handles the 'OPEN' command

@@ -2,31 +2,28 @@ P2PEditor is a simple collaborative editor that runs in a terminal window.
 
 Launch the first instance like this:
 
-./p2peditor -l "fed1.com" 2>out
+./p2peditor -u "b@bob" -l ":8181" 2>out
 
-This editor does not behave as if it owns the domain "fed1.com".
-The file nameservice.com maps domain names (e.g. fed1.com) to local ports for testing purposes:
+The editor will create its own blob store and accept replication connections via port 8181.
+The editor is running on behalf of user "b@bob".
+The above command line redirects the debug output to 'out' to avoid interference with the UI.
 
-fed1.com -> localhost 8181
-fed2.com -> localhost 8282
-...
-fed5.com -> localhost 8585
-
-In real systems, the nameservice will use DNS to lookup the respective servers.
-
-The above command line redirects the debug output to 'out' and listens on localhost port 8181.
-Now open more console and start more editors. These editors must know how to contact each other.
+Now open more consoles and start more editors. These editors must know how to contact each other.
 Therefore, you can tell each editor to which other editor it should connect.
-Ultimatively, the editors form an unstructured P2P network.
+Ultimatively, the editors form a directed graph.
+All editors are running the replication protocol, i.e. they try to keep each other in sync.
+This scenario is useful if one user is replicating his blobs on multiple machines.
 
-./p2peditor -l "fed2.com" -p "fed1.com" 2>out2
+To start a second editor for user "b@bob@ proceed as follows:
 
-This starts a second editor and makes it connect with the first one.
+./p2peditor -u "b@bob" -l ":8282" -r ":8181" 2>out2
 
-./p2peditor -l "fed3.com" -p "fed1.com" 2>out2
+The second editor will try to connect to port 8181 to sync itself with this remote blob store.
+Now a third editor can be started as follows:
 
-This starts a third editor and connects it with the second one.
-All edits are flooded between all editors. Thus, if you type in one console, you can see how the others update as well.
+./p2peditor -u "b@bob" -l ":8383" -r ":8181" 2>out3
+
+All edits are flooded between all editors because the replication mechanism keeps them in sync. Thus, if you type in one console, you can see how the others update as well.
 
 KEYBOARD SHORTCUTS
 ==================
