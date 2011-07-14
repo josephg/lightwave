@@ -28,6 +28,4 @@ All edits are flooded between all editors because the replication mechanism keep
 KEYBOARD SHORTCUTS
 ==================
 
-'q': Quit
-
-Yes, these shortcuts mean you cannot type 'q'. Feel free to patch it :-)
+'ESC-q': Quit

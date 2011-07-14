@@ -1,10 +1,8 @@
 include $(GOROOT)/src/Make.inc
 
-TARG=lightwaveidx
+TARG=lightwavetransformer
 GOFILES=\
-	indexer.go \
-	history.go \
-	magic.go \
-	livequery.go
+	transformer.go \
+	api.go
 
 include $(GOROOT)/src/Make.pkg

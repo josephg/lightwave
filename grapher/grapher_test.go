@@ -1,10 +1,11 @@
-package lightwaveidx
+package lightwavegrapher
 
 import (
   . "lightwavestore"
   "testing"
   "fmt"
   "log"
+  "os"
 )
 
 type dummyFederation struct {
@@ -14,15 +15,16 @@ func (self *dummyFederation) Forward(blobref string, users []string) {
   log.Printf("Forwarding %v to %v\n", blobref, users) 
 }
 
-func (self *dummyFederation) SetIndexer(idx *Indexer) {
+func (self *dummyFederation) SetGrapher(idx *Grapher) {
 }
 
-func (self *dummyFederation) DownloadPermaNode(permission_blobref string) {
+func (self *dummyFederation) DownloadPermaNode(permission_blobref string) os.Error {
+  return nil
 }
 
 func TestPermanode(t *testing.T) {
   store := NewSimpleBlobStore()
-  indexer := NewIndexer("a@b", store, &dummyFederation{})
+  indexer := NewGrapher("a@b", store, &dummyFederation{})
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref1 := NewBlobRef(blob1)
@@ -32,11 +34,11 @@ func TestPermanode(t *testing.T) {
   store.StoreBlob(blob1, blobref1)
   store.StoreBlob(blob2, blobref2)
   
-  perma, err := indexer.PermaNode(blobref1)
+  perma, err := indexer.permaNode(blobref1)
   if perma == nil || err != nil {
     t.Fatal("Did not find perma node")
   }
-  perma, err = indexer.PermaNode(blobref2)
+  perma, err = indexer.permaNode(blobref2)
   if perma == nil || err != nil {
     t.Fatal("Did not find perma node")
   }
@@ -44,7 +46,7 @@ func TestPermanode(t *testing.T) {
 
 func TestPermanode2(t *testing.T) {
   store := NewSimpleBlobStore()
-  indexer := NewIndexer("a@b", store, &dummyFederation{})
+  indexer := NewGrapher("a@b", store, &dummyFederation{})
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref1 := NewBlobRef(blob1)
@@ -55,11 +57,11 @@ func TestPermanode2(t *testing.T) {
   store.StoreBlob(blob2, blobref2)  
   store.StoreBlob(blob1, blobref1)
 
-  perma, err := indexer.PermaNode(blobref1)
+  perma, err := indexer.permaNode(blobref1)
   if perma == nil || err != nil {
     t.Fatal("Did not find perma node")
   }
-  perma, err = indexer.PermaNode(blobref2)
+  perma, err = indexer.permaNode(blobref2)
   if perma == nil || err != nil {
     t.Fatal("Did not find perma node")
   }
@@ -68,7 +70,7 @@ func TestPermanode2(t *testing.T) {
 func TestPermanode3(t *testing.T) {
   fed := &dummyFederation{}
   store := NewSimpleBlobStore()
-  indexer := NewIndexer("a@b", store, fed)
+  indexer := NewGrapher("a@b", store, fed)
   
   blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2007-01-02T15:04:05+07:00"}`)
   blobref1 := NewBlobRef(blob1)
@@ -95,38 +97,38 @@ func TestPermanode3(t *testing.T) {
   store.StoreBlob(blob5, blobref5)
   store.StoreBlob(blob7, blobref7)
   
-  perma, err := indexer.PermaNode(blobref1)
+  perma, err := indexer.permaNode(blobref1)
   if perma == nil || err != nil {
     t.Fatal("Did not find perma node")
   }
-  if !perma.HasKeep("a@b") {
+  if !perma.hasKeep("a@b") {
     t.Fatal("Missing a keep")
   }
-  if !perma.HasKeep("foo@bar") {
+  if !perma.hasKeep("foo@bar") {
     t.Fatal("Missing a keep")
   }
 
-  allow := perma.HasPermission("a@b", Perm_Read)
+  allow := perma.hasPermission("a@b", Perm_Read)
   if !allow {
     t.Fatal("Expected an allow for a@b")
   }
 
-  allow = perma.HasPermission("x@y", Perm_Read)
+  allow = perma.hasPermission("x@y", Perm_Read)
   if allow {
     t.Fatal("Expected a deny")
   }
 
-  allow = perma.HasPermission("foo@bar", Perm_Read)
+  allow = perma.hasPermission("foo@bar", Perm_Read)
   if !allow {
     t.Fatal("Expected an allow for foo@bar")
   }
 
-  allow = perma.HasPermission("a@b", Perm_Invite | Perm_Expel)
+  allow = perma.hasPermission("a@b", Perm_Invite | Perm_Expel)
   if !allow {
     t.Fatal("Expected an allow for Invite a@b")
   }
 
-  users := perma.Followers()
+  users := perma.followers()
   if len(users) != 2 {
     t.Fatalf("Wrong number of users: %v\n", users)
   }
@@ -134,7 +136,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Wrong users")
   }
 
-  users = perma.FollowersWithPermission(Perm_Read)
+  users = perma.followersWithPermission(Perm_Read)
   if len(users) != 2 {
     t.Fatalf("Wrong number of users: %v\n", users)
   }
@@ -142,7 +144,7 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Wrong users")
   }
 
-  users = perma.FollowersWithPermission(Perm_Read | Perm_Invite)
+  users = perma.followersWithPermission(Perm_Read | Perm_Invite)
   if len(users) != 1 {
     t.Fatalf("Wrong number of users: %v\n", users)
   }

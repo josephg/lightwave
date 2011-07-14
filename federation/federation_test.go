@@ -3,7 +3,7 @@ package lightwavefed
 import (
   ot "lightwaveot"
   . "lightwavestore"
-  idx "lightwaveidx"
+  grapher "lightwavegrapher"
   "testing"
   "time"
   "fmt"
@@ -11,30 +11,37 @@ import (
   "os"
 )
 
-type dummyAppIndexer struct {
+type dummyTransformer struct {
   userID string
   store BlobStore
   fed *Federation
+  grapher *grapher.Grapher
   t *testing.T
 }
 
-func (self *dummyAppIndexer) Invitation(permanode_blobref, invitation_blobref string) {
-  go self.fed.AcceptInvitation(invitation_blobref)
+func (self *dummyTransformer) Invitation(permanode_blobref, invitation_blobref, userid string) {
+  _, err := self.grapher.CreateKeepBlob(permanode_blobref, invitation_blobref)
+  if err != nil {
+    self.t.Fatal(err.String())
+  }
 }
 
-func (self *dummyAppIndexer) NewFollower(permanode_blobref, invitation_blobref, keep_blobref, userid string) {
+func (self *dummyTransformer) AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string) {
+}
+
+func (self *dummyTransformer) NewFollower(permanode_blobref, invitation_blobref, keep_blobref, userid string) {
   log.Printf("APP: New user: %v\n", userid)
 }
 
-func (self *dummyAppIndexer) PermaNode(blobref, invitation_blobref, keep_blobref string) {
+func (self *dummyTransformer) PermaNode(blobref, invitation_blobref, keep_blobref string) {
   log.Printf("APP: New permanode")
 }
 
-func (self *dummyAppIndexer) Mutation(blobref string, mutation ot.Mutation) {
+func (self *dummyTransformer) Mutation(blobref, mut_blobref string, mutation []byte, rollback int, concurrent []string) {
   log.Printf("APP: Mutation")
 }
 
-func (self *dummyAppIndexer) Permission(blobref string, action int, permission ot.Permission) {
+func (self *dummyTransformer) Permission(blobref string, action int, permission ot.Permission) {
   log.Printf("App: Permission")
 }
 
@@ -72,18 +79,18 @@ func TestFederation(t *testing.T) {
   fed2 := NewFederation("b@bob", "127.0.0.1:8282", ns, store2)
   fed3 := NewFederation("c@charly", "127.0.0.1:8383", ns, store3)
   fed4 := NewFederation("d@daisy", "127.0.0.1:8484", ns, store4)
-  indexer1 := idx.NewIndexer("a@alice", store1, fed1)
-  indexer2 := idx.NewIndexer("b@bob", store2, fed2)
-  indexer3 := idx.NewIndexer("c@charly", store3, fed3)
-  indexer4 := idx.NewIndexer("d@daisy", store4, fed4)
-  app1 := &dummyAppIndexer{"a@alice", store1, fed1, t}
-  indexer1.AddListener(app1)
-  app2 := &dummyAppIndexer{"b@bob", store2, fed2, t}
-  indexer2.AddListener(app2)
-  app3 := &dummyAppIndexer{"c@charly", store3, fed3, t}
-  indexer3.AddListener(app3)
-  app4 := &dummyAppIndexer{"d@daisy", store4, fed4, t}
-  indexer4.AddListener(app4)
+  grapher1 := grapher.NewGrapher("a@alice", store1, fed1)
+  grapher2 := grapher.NewGrapher("b@bob", store2, fed2)
+  grapher3 := grapher.NewGrapher("c@charly", store3, fed3)
+  grapher4 := grapher.NewGrapher("d@daisy", store4, fed4)
+  app1 := &dummyTransformer{"a@alice", store1, fed1, grapher1, t}
+  grapher1.AddListener(app1)
+  app2 := &dummyTransformer{"b@bob", store2, fed2, grapher2, t}
+  grapher2.AddListener(app2)
+  app3 := &dummyTransformer{"c@charly", store3, fed3, grapher3, t}
+  grapher3.AddListener(app3)
+  app4 := &dummyTransformer{"d@daisy", store4, fed4, grapher4, t}
+  grapher4.AddListener(app4)
   go runFed(t, fed1)
   go runFed(t, fed2)
   go runFed(t, fed3)
@@ -102,13 +109,13 @@ func TestFederation(t *testing.T) {
   blob4 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref4 := NewBlobRef(blob4)
   // Grant user foo@bar read access
-  blob5 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"b@bob", "allow":` + fmt.Sprintf("%v", idx.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob5 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"b@bob", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref5 := NewBlobRef(blob5)
   blob7 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site3", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref7 := NewBlobRef(blob7)
-  blob8 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"c@charly", "allow":` + fmt.Sprintf("%v", idx.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob8 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"c@charly", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref8 := NewBlobRef(blob8)
-  blob9 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"d@daisy", "allow":` + fmt.Sprintf("%v", idx.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob9 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"d@daisy", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref9 := NewBlobRef(blob9)
 
   log.Printf("Hashes:\n1: %v\n1b: %v\n2: %v\n3: %v\n4: %v\n5: %v\n7: %v\n8: %v\n", blobref1, blobref1b, blobref2, blobref3, blobref4, blobref5, blobref7, blobref8)
@@ -129,45 +136,32 @@ func TestFederation(t *testing.T) {
 
   time.Sleep(1000000000 * 2)
   
-  p, err := indexer1.PermaNode(blobref1)
+  followers, err := grapher1.Followers(blobref1)
   if err != nil {
-    t.Fatal("Not a perma node")
+    t.Fatal(err.String())
   }
-  if len(p.Followers()) != 4 {
+  if len(followers) != 4 {
     t.Fatal("Indexer1 has wrong number of followers")
   }
-  log.Printf("Content: %v\n", p.OT().Content()) 
-  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
-    t.Fatal("Wrong document content")
-  }
-  p, err = indexer2.PermaNode(blobref1)
+  followers, err = grapher2.Followers(blobref1)
   if err != nil {
-    t.Fatal("Not a perma node")
+    t.Fatal(err.String())
   }
-  if len(p.Followers()) != 4 {
-    t.Fatal("Indexer2 has wrong number of followers", p.Followers())
+  if len(followers) != 4 {
+    t.Fatal("Indexer2 has wrong number of followers")
   }
-  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
-    t.Fatal("Wrong document content")
-  }
-  p, err = indexer3.PermaNode(blobref1)
+  followers, err = grapher3.Followers(blobref1)
   if err != nil {
-    t.Fatal("Not a perma node")
+    t.Fatal(err.String())
   }
-  if len(p.Followers()) != 4 {
-    t.Fatal("Indexer3 has wrong number of followers", p.Followers())
+  if len(followers) != 4 {
+    t.Fatal("Indexer3 has wrong number of followers")
   }
-  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
-    t.Fatal("Wrong document content")
-  }
-  p, err = indexer4.PermaNode(blobref1)
+  followers, err = grapher4.Followers(blobref1)
   if err != nil {
-    t.Fatal("Not a perma node")
+    t.Fatal(err.String())
   }
-  if len(p.Followers()) != 4 {
-    t.Fatal("Indexer3 has wrong number of followers", p.Followers())
-  }  
-  if fmt.Sprintf("%v", p.OT().Content()) != "Hello World??Olla!!!!" {
-    t.Fatal("Wrong document content")
+  if len(followers) != 4 {
+    t.Fatal("Indexer4 has wrong number of followers")
   }
 }

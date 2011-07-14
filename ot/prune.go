@@ -5,7 +5,7 @@ import (
   "fmt"
 )
 
-func pruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err os.Error) {
+func PruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err os.Error) {
   started := false
   var u Mutation
   for _, mut := range muts {

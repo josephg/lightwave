@@ -181,7 +181,7 @@ func TestPruning(t *testing.T) {
       for j := 0; j < len(subset); j++ {
         undolist[all[subset[j]].ID] = true
       }
-      seq3, err := pruneMutationSeq(seq, undolist)
+      seq3, err := PruneMutationSeq(seq, undolist)
       if err != nil {
 	t.Fatalf("ERR: %v\n", err.String())
       }
@@ -251,7 +251,7 @@ func TestPruningAndComposing(t *testing.T) {
       }
       
       // Undo mutation k in seq
-      seq3, err := pruneMutationSeq(seq, map[string]bool{seq[k].ID: true})
+      seq3, err := PruneMutationSeq(seq, map[string]bool{seq[k].ID: true})
       if err != nil {
 	t.Fatalf("ERR: %v, k=%v", err.String(), k)
       }

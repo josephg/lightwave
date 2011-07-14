@@ -4,6 +4,8 @@ import (
   . "curses"
   . "lightwaveot"
   . "lightwavestore"
+  tf "lightwavetransformer"
+  grapher "lightwavegrapher"
   "os"
   "fmt"
   "strings"
@@ -11,8 +13,11 @@ import (
 )
 
 type Editor struct {
+  userID string
   store BlobStore
-  frontier Frontier
+  grapher *grapher.Grapher
+  api tf.UniAPI
+//  frontier Frontier
   text string
   tombs vec.IntVector
   // Required during mutations
@@ -22,12 +27,48 @@ type Editor struct {
   ScrollX, ScrollY int
   ranges []*TextRange  // The first range is the cursor. Other ranges are cursors of other users
   site string // The site identifier used in Mutation
+  // The document we are currently editing
+  permaBlobRef string
+  // List of all perma nodes
+  permaBlobs []string
+  invitations map[string]string
 }
 
-func NewEditor(store BlobStore, indexer *Indexer) *Editor {
-  e := &Editor{store:store, Rows: *Rows, Columns: *Cols, frontier:make(Frontier), site: uuid()}
-  indexer.AddListener(e)
+func NewEditor(userid string, store BlobStore, grapher *grapher.Grapher, api tf.UniAPI) *Editor {
+  e := &Editor{userID: userid, store:store, grapher: grapher, api: api, Rows: *Rows, Columns: *Cols, site: uuid(), invitations: make(map[string]string)}
+  api.SetApplication(e)
   return e
+}
+
+// Application interface
+func (self *Editor) Invitation(permanode_blobref, invitation_blobref string) {
+  self.invitations[permanode_blobref] = invitation_blobref
+}
+
+// Application interface
+func (self *Editor) AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string) {
+}
+
+// Application interface
+func (self *Editor) NewFollower(permanode_blobref string, invitation_blobref, keep_blobref, userid string) {
+}
+
+// Application interface
+func (self *Editor) PermaNode(permanode_blobref string, invitation_blobref, keep_blobref string) {
+  self.permaBlobs = append(self.permaBlobs, permanode_blobref)
+}
+
+// Application interface
+func (self *Editor) Mutation(permanode_blobref string, mut interface{}) {
+  mutation, ok := mut.(Mutation)
+  if !ok {
+    panic("Unexpected mutation type")
+  }
+  self.HandleMutation(mutation)
+}
+
+// Application interface
+func (self *Editor) Permission(permanode_blobref string, action int, permission Permission) {
 }
 
 func (self *Editor) Begin() {
@@ -191,6 +232,7 @@ func (self *Editor) Refresh() {
       linepos++
     }
   }
+  Stdwin.Addstr(0, self.Rows - 1, "ESC-q=Quit ESC-i=Invite ESC-l=List", 0)
   // Show the cursor
   linepos, line = self.CursorToScreenPos(self.Cursor())
   Stdwin.Move(linepos - self.ScrollX, line - self.ScrollY)
@@ -198,16 +240,99 @@ func (self *Editor) Refresh() {
 
 func (self *Editor) Loop() {
   for {
+    Stdwin.Clear()
+    Stdwin.Addstr(1, 1, "1. New document", 0)
+    Stdwin.Addstr(1, 2, "2. Browse documents", 0)
+    Stdwin.Addstr(1, 3, "3. Browse invitations", 0)
+    Stdwin.Addstr(1, 4, "4. Quit", 0)
+    Stdwin.Addstr(1, 6, "Enter a number: ", 0)
+    Stdwin.Refresh()
     inp := Stdwin.Getch()
-    //panic(fmt.Sprintf("KEY %v", inp))
+    switch inp {
+    case '1':
+      perma, err := self.grapher.CreatePermaBlob()
+      if err != nil {
+	panic(err.String())
+      }
+      _, err = self.grapher.CreateKeepBlob(perma, "")
+      if err != nil {
+	panic(err.String())
+      }
+      self.open(perma)
+      self.editLoop()
+    case '2':
+      Stdwin.Clear()
+      Stdwin.Addstr(1, 0, "Browse documents", 0)
+      for i, name := range self.permaBlobs {
+	Stdwin.Addstr(1, 2 + i, fmt.Sprintf("%v: %v", i + 1, name) , 0)
+      }
+      Stdwin.Addstr(0, self.Rows - 1, "ESC=Menu", 0)
+      Stdwin.Refresh()
+      inp := Stdwin.Getch()
+      inp = inp - int('1')
+      if inp >= 0 && inp < len(self.permaBlobs) {
+	self.open(self.permaBlobs[inp])
+	self.editLoop()
+      }
+    case '3':
+      Stdwin.Clear()
+      Stdwin.Addstr(1, 0, "Browse Invitations", 0)
+      i := 0
+      invitations := []string{}
+      for name, _ := range self.invitations {
+	Stdwin.Addstr(1, 2 + i, fmt.Sprintf("%v: %v", i + 1, name) , 0)
+	i++
+	invitations = append(invitations, name)
+      }
+      Stdwin.Addstr(0, self.Rows - 1, "ESC=Menu", 0)
+      Stdwin.Refresh()
+      inp := Stdwin.Getch()
+      inp = inp - int('1')
+      if inp >= 0 && inp < len(invitations) {
+	_, err := self.grapher.CreateKeepBlob(invitations[inp], self.invitations[invitations[inp]])
+	if err != nil {
+	  panic(err.String())
+	}
+	self.open(invitations[inp])
+	self.editLoop()
+      }
+    case '4':
+      return
+    }
+  }
+}
+
+func (self *Editor) editLoop() {
+  for {
+    inp := Stdwin.Getch()
+    // panic(fmt.Sprintf("KEY %v", inp))
     linePos, line := self.CursorToScreenPos(self.Cursor())
     switch inp {
-    case 'q':
-      return
-//    case 's':
-//      federation.Suspend()
-//    case 'r':
-//      federation.Resume()
+    case 27: // ESC
+      inp := Stdwin.Getch()
+      switch inp {
+      case 'i':
+	Stdwin.Addstr(0, self.Rows - 1, "Invite: ", 0)
+	Stdwin.Clrtoeol()
+	entered := false
+	userid := ""
+	for !entered {
+	  inp := Stdwin.Getch()
+	  switch inp {
+	  case KEY_ENTER, 13, 10:
+	    entered = true
+	    self.Refresh()
+	  default:
+	    userid = userid + string(inp)
+	    Stdwin.Addstr(len(userid) + 7, self.Rows - 1, string(inp), 0)
+	  }
+	}
+	frontier, _ := self.api.Frontier(self.permaBlobRef)
+	self.grapher.CreatePermissionBlob(self.permaBlobRef, frontier, userid, grapher.Perm_Read | grapher.Perm_Write | grapher.Perm_Invite, 0, grapher.PermAction_Invite)
+      case 'l':
+      case 'q':
+	return
+      }
     case KEY_LEFT:
       if line == 0 && linePos == 0 {
 	continue
@@ -268,13 +393,18 @@ func (self *Editor) Loop() {
 	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
       }
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
-      mut.Dependencies = self.frontier.IDs()
+      frontier, _ := self.api.Frontier(self.permaBlobRef)
+      mut.Dependencies = frontier
       mut.Site = self.site
-      blob, blobref, err := EncodeMutation(mut, EncNormal)
-      if err !=  nil {
+      _, err := self.grapher.CreateMutationBlob(self.permaBlobRef, mut)
+      if err != nil {
 	panic(err.String())
       }
-      self.store.StoreBlob(blob, blobref)
+//      blob, blobref, err := EncodeMutation(mut, EncNormal)
+//      if err !=  nil {
+//	panic(err.String())
+//      }
+//      self.store.StoreBlob(blob, blobref)
     default:
       if inp == KEY_ENTER || inp == 13 {
 	inp = 10
@@ -292,14 +422,20 @@ func (self *Editor) Loop() {
 	ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
       }
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
-      mut.Dependencies = self.frontier.IDs()
+      frontier, _ := self.api.Frontier(self.permaBlobRef)
+      mut.Dependencies = frontier
       mut.Site = self.site
-      blob, blobref, err := EncodeMutation(mut, EncNormal)
-      if err !=  nil {
+      _, err := self.grapher.CreateMutationBlob(self.permaBlobRef, mut)
+      if err != nil {
 	panic(err.String())
       }
-      self.store.StoreBlob(blob, blobref)
     }
+//      blob, blobref, err := EncodeMutation(mut, EncNormal)
+//      if err !=  nil {
+//	panic(err.String())
+//      }
+//      self.store.StoreBlob(blob, blobref)
+//    }
   }
 }
 
@@ -310,7 +446,7 @@ func (self *Editor) HandleMutation(mut Mutation) {
   if err != nil {
     panic(err.String())
   }
-  self.frontier.Add(mut)
+//  self.frontier.Add(mut)
   Stdwin.Refresh()
 }
 
@@ -329,6 +465,23 @@ func startGoCurses() (err os.Error) {
     return
   }
   return
+}
+
+func (self *Editor) open(perma_blobref string) {
+  if self.permaBlobRef != "" {
+    self.api.Close(self.permaBlobRef)
+  }
+  self.permaBlobRef = perma_blobref
+  self.tombs = vec.IntVector{}
+  self.text = ""
+//  self.frontier = make(Frontier)
+  self.ScrollX = 0
+  self.ScrollY = 0
+  self.ranges = []*TextRange{&TextRange{TextMarker{0}, TextMarker{0}}}
+  Stdwin.Clear()
+  self.Refresh()
+  Stdwin.Refresh()
+  self.api.Open(self.permaBlobRef, 0)
 }
 
 func stopGoCurses() {

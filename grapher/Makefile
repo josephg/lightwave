@@ -1,10 +1,9 @@
 include $(GOROOT)/src/Make.inc
 
-TARG=lightwaveidx
+TARG=lightwavegrapher
 GOFILES=\
-	indexer.go \
-	history.go \
+	grapher.go \
 	magic.go \
-	livequery.go
+	graph.go
 
 include $(GOROOT)/src/Make.pkg

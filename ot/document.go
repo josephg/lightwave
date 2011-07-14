@@ -238,14 +238,13 @@ func execute(input interface{}, op Operation) (output interface{}, err os.Error)
   case NoOp:
     return input, nil
   case StringOp:
+    if input == nil {
+      input = NewSimpleText("")
+    }
     text, ok := input.(Text)
     if !ok {
-      if input == nil {
-	text = NewSimpleText("")
-      } else {
-	err = os.NewError("Type mismatch: Not a string")
-	return
-      }
+      err = os.NewError("Type mismatch: Not a string")
+      return
     }
     err = executeString(text, op.Operations)
     output = text
