@@ -13,6 +13,7 @@ import (
   "io"
   "bytes"
   "json"
+  "fmt"
 )
 
 const (
@@ -30,7 +31,7 @@ type NameService interface {
 
 type Federation struct {
   userID string
-  addr string
+  domain string
   mutex sync.Mutex
   store store.BlobStore
   ns NameService
@@ -38,8 +39,13 @@ type Federation struct {
   queues map[string]*queue
 }
 
-func NewFederation(userid, addr string, ns NameService, store store.BlobStore) *Federation {
-  fed := &Federation{userID: userid, ns: ns, store: store, addr: addr, queues: make(map[string]*queue)}
+func NewFederation(userid, domain string, port int, mux *http.ServeMux, ns NameService, store store.BlobStore) *Federation {
+  fed := &Federation{userID: userid, ns: ns, store: store, domain: domain, queues: make(map[string]*queue)}
+  f := func(w http.ResponseWriter, req *http.Request) {
+    fed.handleRequest(w, req)
+  }
+  pattern := fmt.Sprintf("%v:%v/fed", domain, port)
+  mux.HandleFunc(pattern, f)
   return fed
 }
 
@@ -91,21 +97,20 @@ func (self *Federation) Forward(blobref string, users []string) {
   }
 }
 
-func (self *Federation) Listen() (err os.Error) {
-  mux := http.NewServeMux()
-  f := func(w http.ResponseWriter, req *http.Request) {
-    self.handleRequest(w, req)
-  }
-  mux.HandleFunc("/fed", f)
-
+//func (self *Federation) Listen(mux http.ServeMux) (err os.Error) {
+//  f := func(w http.ResponseWriter, req *http.Request) {
+//    self.handleRequest(w, req)
+//  }
+//  mux.HandleFunc(fmt.Sprintf("%v/fed", self.domain), f)
+//
   // Accept incoming connections
-  server := &http.Server{Addr: self.addr, Handler: mux}
-  err = server.ListenAndServe()
-  if err != nil {
-    log.Printf("ListenAndServe: %v\n", err.String())
-  }
-  return
-}
+//  server := &http.Server{Addr: self.addr, Handler: mux}
+//  err = server.ListenAndServe()
+//  if err != nil {
+//    log.Printf("ListenAndServe: %v\n", err.String())
+//  }
+//  return
+//}
 
 func (self *Federation) handleRequest(w http.ResponseWriter, req *http.Request) {
   switch req.Method {

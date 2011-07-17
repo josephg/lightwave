@@ -7,7 +7,7 @@ import (
 )
 
 // -----------------------------------------------------
-// The tree structure that the indexer is building up
+// The tree structure that the grapher is building up
 
 // Abstract base class for nodes
 type node struct {
@@ -129,6 +129,10 @@ func newPermaNode() *permaNode {
 // abstractNode interface
 func (self *permaNode) BlobRef() string {
   return self.blobref
+}
+
+func (self *permaNode) sequenceNumber() int {
+  return len(self.appliedBlobs)
 }
 
 func (self *permaNode) followersWithPermission(bits int) (users []string) {
@@ -262,9 +266,9 @@ func (self *permaNode) apply(perma *permaNode, newnode otNode) (deps []string, r
       if x, ok := history_node.(*permissionNode); ok {
 	reverse_permissions = append(reverse_permissions, x)
       }
-      if _, ok := history_node.(*mutationNode); ok {
+//      if _, ok := history_node.(*mutationNode); ok {
 	rollback++
-      }
+//      }
       if h.Test() {
 	break
       }
@@ -326,6 +330,40 @@ func (self *permaNode) apply(perma *permaNode, newnode otNode) (deps []string, r
   // Send information about rollbacks and prunes to the composer
   for c, _ := range prune {
     concurrent = append(concurrent, c)
+  }
+  return
+}
+
+func (self *permaNode) transform(perm *permissionNode, applyAtSeqNumber int) (tperm *permissionNode, err os.Error) {
+  var reverse_permissions []*permissionNode
+  i := self.sequenceNumber()
+  if i < applyAtSeqNumber {
+    return nil, os.NewError("Invalid sequence number")
+  }
+  for x := range self.historyNodes(true) {
+    if i == applyAtSeqNumber {
+      break
+    }
+    history_node := x.(otNode)
+    if x, ok := history_node.(*permissionNode); ok {
+      reverse_permissions = append(reverse_permissions, x)
+    }
+  }
+  if i != applyAtSeqNumber {
+    return nil, os.NewError("Invalid sequence number")
+  }
+  
+  // Reverse the mutation history, such that oldest are first in the list.
+  // This is ugly but prepending in the above loops is too slow.
+  permissions := make([]*permissionNode, len(reverse_permissions))
+  for i := 0; i < len(permissions); i++ {
+    permissions[i] = reverse_permissions[len(reverse_permissions) - 1 - i]
+  }
+  
+  _, tperm, err = transformPermissionSeq(permissions, perm)
+  if err != nil {
+    log.Printf("TRANSFORM ERR: %v", err)
+    return
   }
   return
 }

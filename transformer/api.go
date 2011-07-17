@@ -1,27 +1,37 @@
 package lightwavetransformer
 
 import (
-  ot "lightwaveot"
+  grapher "lightwavegrapher"
   "os"
   "sync"
 )
 
 // The API layer as seen by the Transformer
 type API interface {
-  // This function is called when an invitation has been received
-  Invitation(t Transformer, permanode_blobref, invitation_blobref string, userid string)
-  // This function is called when the local user has accepted an invitation
-  AcceptedInvitation(t Transformer, permanode_blobref, invitation_blobref string, keep_blobref string)
-  // This function is called when a new user has been added to a perma node.
-  NewFollower(t Transformer, permanode_blobref string, invitation_blobref, keep_blobref, userid string)
-  // This function is called when a perma node has been added
-  PermaNode(t Transformer, permanode_blobref string, invitation_blobref, keep_blobref string)
+  // This function is called when an invitation has been received.
+  // The user can now download the document and issue a keep to follow it.
+  Signal_ReceivedInvitation(t Transformer, permission *Permission)
+  // This function is called when the local user has accepted an invitation by creating a keep blob
+  Signal_AcceptedInvitation(t Transformer, keep *Keep)
+  Blob_Keep(t Transformer, keep *Keep, seqNumber int)
   // This function is called when a mutation has been applied.
   // The mutation passed in the parameter is already transformed.
-  Mutation(t Transformer, permanode_blobref string, mutation interface{}, seqNumber int)
+  Blob_Mutation(t Transformer, mut *Mutation, seqNumber int)
   // This function is called when a permission mutation has been applied.
   // The permission passed in the parameter is already transformed
-  Permission(t Transformer, permanode_blobref string, action int, permission ot.Permission)
+  Blob_Permission(t Transformer, permission *Permission, seqNumber int)
+}
+
+type Application interface {
+  Signal_ReceivedInvitation(permission *Permission)
+  // This function is called right after the local user issued his keep but (most of the tim)
+  // before all blobs have been downloaded
+  Signal_AcceptedInvitation(keep *Keep)
+  // This function is called when the keep issued by the local user has been processed.
+  // If the perma blob belongs to someone else, then this means all blobs have been downloaded.
+  // If the perma blob belongs to the local user, then this signal comes directly after Signal_AcceptedInvitation.
+  Signal_ProcessedKeep(keep *Keep)
+  Blob(blob interface{}, seqNumber int)
 }
 
 // The API layer as seen by the application.
@@ -30,28 +40,29 @@ type UniAPI interface {
   SetApplication(app Application)
   Open(perma_blobref string, startWithSeqNumber int) os.Error
   Close(perma_blobref string)
-  Frontier(perma_blobref string) (blobrefs []string, err os.Error)
 }
 
-// The application as seen from the API
-type Application interface {
-  // This function is called when an invitation has been received
-  Invitation(permanode_blobref, invitation_blobref string)
-  // This function is called when the local user has accepted an invitation
-  AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string)
-  // This function is called when a new user has been added to a perma node.
-  NewFollower(permanode_blobref string, invitation_blobref, keep_blobref, userid string)
-  // This function is called when a perma node has been added
-  PermaNode(permanode_blobref string, invitation_blobref, keep_blobref string)
-  // This function is called when a mutation has been applied.
-  // The mutation passed in the parameter is already transformed.
-  Mutation(permanode_blobref string, mutation interface{})
-  // This function is called when a permission mutation has been applied.
-  // The permission passed in the parameter is already transformed
-  Permission(permanode_blobref string, action int, permission ot.Permission)
+const (
+  Signal_ReceivedInvitation = 1 + iota
+  Signal_AcceptedInvitation
+  Blob_Permission
+  Blob_Keep
+  Blob_Mutation
+)
+
+type Keep grapher.Keep
+type Permission grapher.Permission
+type Mutation struct {
+  PermaBlobRef string
+  PermaSigner string
+  MutationBlobRef string
+  MutationSigner string
+  // For example ot.Operation is stored in here
+  Operation interface{}
 }
 
 type uniAPI struct {
+  userID string
   app Application
   // The value is the last mutation sent 
   open map[string]int
@@ -60,8 +71,8 @@ type uniAPI struct {
   mutex sync.Mutex
 }
 
-func NewUniAPI() (appInterface UniAPI, transformerInterface API) {
-  a := &uniAPI{open: make(map[string]int), permas: make(map[string]Transformer), queues: make(map[string]int)}
+func NewUniAPI(userid string) (appInterface UniAPI, transformerInterface API) {
+  a := &uniAPI{userID: userid, open: make(map[string]int), permas: make(map[string]Transformer), queues: make(map[string]int)}
   return a, a
 }
 
@@ -69,23 +80,19 @@ func (self *uniAPI) SetApplication(app Application) {
   self.app = app
 }
 
-func (self *uniAPI) Frontier(perma_blobref string) (blobrefs []string, err os.Error) {
-  t, ok := self.permas[perma_blobref]
-  if !ok {
-    return nil, os.NewError("Unknown perma")
-  }
-  return t.Frontier(perma_blobref)
-}
-
 func (self *uniAPI) Open(perma_blobref string, startWithSeqNumber int) (err os.Error) {
   self.mutex.Lock()
   defer self.mutex.Unlock()
+  // Is already open?
+  if _, ok := self.open[perma_blobref]; ok {
+    return os.NewError("Cannot open twice")
+  }
   // TODO: Check permissions
   self.open[perma_blobref] = startWithSeqNumber
   // Send all messages queued so far.
   t, ok := self.permas[perma_blobref]
   if ok {
-    err = t.RepeatMutations(perma_blobref, startWithSeqNumber) 
+    err = t.Repeat(perma_blobref, startWithSeqNumber) 
   }
   return
 }
@@ -97,32 +104,44 @@ func (self *uniAPI) Close(perma_blobref string) {
   return
 }
 
-func (self* uniAPI) Invitation(t Transformer, permanode_blobref, invitation_blobref string, userid string) {
-  self.app.Invitation(permanode_blobref, invitation_blobref)
+func (self* uniAPI) Signal_ReceivedInvitation(t Transformer, permission *Permission) {
+  self.app.Signal_ReceivedInvitation(permission)
 }
 
-func (self* uniAPI) AcceptedInvitation(t Transformer, permanode_blobref, invitation_blobref string, keep_blobref string) {
-  self.app.AcceptedInvitation(permanode_blobref, invitation_blobref, keep_blobref)
+func (self* uniAPI) Signal_AcceptedInvitation(t Transformer, keep *Keep) {
+  self.app.Signal_AcceptedInvitation(keep)
 }
 
-func (self* uniAPI) NewFollower(t Transformer, permanode_blobref string, invitation_blobref, keep_blobref, userid string) {
-  self.app.NewFollower(permanode_blobref, invitation_blobref, keep_blobref, userid)
+func (self* uniAPI) Blob_Keep(t Transformer, keep *Keep, seqNumber int) {
+  self.blob(t, keep.PermaBlobRef, keep, seqNumber)
 }
 
-func (self* uniAPI) PermaNode(t Transformer, permanode_blobref string, invitation_blobref, keep_blobref string) {
+func (self* uniAPI) Blob_Mutation(t Transformer, mutation *Mutation, seqNumber int) {
+  self.blob(t, mutation.PermaBlobRef, mutation, seqNumber)
+}
+
+func (self* uniAPI) Blob_Permission(t Transformer, permission *Permission, seqNumber int) {
+  self.blob(t, permission.PermaBlobRef, permission, seqNumber)
+}
+
+func (self* uniAPI) blob(t Transformer, permanode_blobref string, blob interface{}, seqNumber int) {
   self.mutex.Lock()
-  self.permas[permanode_blobref] = t
-  self.mutex.Unlock()
-  self.app.PermaNode(permanode_blobref, invitation_blobref, keep_blobref)
-}
-
-func (self* uniAPI) Mutation(t Transformer, permanode_blobref string, mutation interface{}, seqNumber int) {
-  self.mutex.Lock()
+  // Remember that this perma blob exists
+  _, ok := self.permas[permanode_blobref]
+  if !ok {
+    self.permas[permanode_blobref] = t
+  }
   // Is this perma blob opened?
   nextSeqNumber, ok := self.open[permanode_blobref]
   if !ok {
+    // Is this a new keep of the local user? If yes, send it. Otherwise ignore it
+    if keep, ok := blob.(*Keep); ok && keep.KeepSigner == self.userID {
+      self.mutex.Unlock()
+      self.app.Signal_ProcessedKeep(keep)
+      return
+    }
     self.mutex.Unlock()
-    return
+    return      
   }
   if nextSeqNumber > seqNumber {
     // Ignore this mutation. We have seen it already (should not happen anyway)
@@ -138,6 +157,7 @@ func (self* uniAPI) Mutation(t Transformer, permanode_blobref string, mutation i
     self.mutex.Unlock()
     return
   }
+  // Store the next expected sequence number
   self.open[permanode_blobref] = seqNumber + 1
   // Is there a need to continue with queued mutations?
   cont := -1
@@ -147,18 +167,10 @@ func (self* uniAPI) Mutation(t Transformer, permanode_blobref string, mutation i
     self.queues[permanode_blobref] = 0, false
   }
   self.mutex.Unlock()
-  self.app.Mutation(permanode_blobref, mutation)
+  // Notify the application
+  self.app.Blob(blob, seqNumber)
+  // Ask to repeat further blobs in case we have already seen some
   if cont != -1 {
-    t.RepeatMutations(permanode_blobref, cont)
-  }
-}
-
-func (self* uniAPI) Permission(t Transformer, permanode_blobref string, action int, permission ot.Permission) {
-  self.mutex.Lock()
-  if _, ok := self.open[permanode_blobref]; ok {
-    self.mutex.Unlock()
-    self.app.Permission(permanode_blobref, action, permission)
-  } else {
-    self.mutex.Unlock()
+    t.Repeat(permanode_blobref, cont)
   }
 }

@@ -12,8 +12,7 @@ import (
 
 type Transformer interface {
   SetAPI(api API)
-  RepeatMutations(perma_blobref string, startWithSeqNumber int) (err os.Error)
-  Frontier(perma_blobref string) (blobrefs []string, err os.Error)
+  Repeat(perma_blobref string, startWithSeqNumber int) (err os.Error)
 }
 
 type transformer struct {
@@ -22,13 +21,13 @@ type transformer struct {
   fed *fed.Federation
   grapher *grapher.Grapher
   api API
-  appliedMutations map[string][]ot.Mutation
-  seqNumbers map[string]int
+  // The interface{} can contain a ot.Mutation, Keep or Permission struct
+  appliedBlobs map[string][]interface{}
   mutex sync.Mutex
 }
 
 func NewTransformer(userid string, store store.BlobStore, fed *fed.Federation, grapher *grapher.Grapher) (api_interface Transformer) {
-  t := &transformer{userID: userid, store: store, fed: fed, grapher: grapher, appliedMutations: make(map[string][]ot.Mutation), seqNumbers: make(map[string]int)}
+  t := &transformer{userID: userid, store: store, fed: fed, grapher: grapher, appliedBlobs: make(map[string][]interface{})}
   grapher.AddListener(t)
   return t
 }
@@ -38,128 +37,167 @@ func (self *transformer) SetAPI(api API) {
   self.api = api
 }
 
-func (self *transformer) Frontier(perma_blobref string) (blobrefs []string, err os.Error) {
-  return self.grapher.Frontier(perma_blobref)
-}
-
 // Interface towards the API
-func (self *transformer) RepeatMutations(perma_blobref string, startWithSeqNumber int) (err os.Error) {
+func (self *transformer) Repeat(perma_blobref string, startWithSeqNumber int) (err os.Error) {
   self.mutex.Lock()
   defer self.mutex.Unlock()
-  muts, ok := self.appliedMutations[perma_blobref]
+  blobs, ok := self.appliedBlobs[perma_blobref]
   if !ok {
     return os.NewError("Sequence number out of range")
   }
-  max_seq, ok := self.seqNumbers[perma_blobref]
-  if !ok {
-    max_seq = 0
-  }
-  if startWithSeqNumber > max_seq {
+  if startWithSeqNumber > len(blobs) {
     return os.NewError("Sequence number out of range")
   }
-  if startWithSeqNumber == max_seq {
+  if startWithSeqNumber == len(blobs) {
     return nil
   }
-  seq_count := 0
-  send_muts := make([]interface{}, max_seq - startWithSeqNumber)
-  for i := len(muts) - 1; seq_count < max_seq - startWithSeqNumber; i-- {
-    mut := muts[i]
-    if mut.ID != "" {
-      seq_count++
-      send_muts[len(send_muts) - seq_count] = mut
-    }
-  }
+  send_blobs := blobs[startWithSeqNumber:]
   
   f := func() {
-    for i, m := range send_muts {
-      self.api.Mutation(self, perma_blobref, m, startWithSeqNumber + i)
+    for i, m := range send_blobs {
+      switch m.(type) {
+      case *Mutation:
+	self.api.Blob_Mutation(self, m.(*Mutation), startWithSeqNumber + i)
+      case *Keep:
+	self.api.Blob_Keep(self, m.(*Keep), startWithSeqNumber + i)
+      case *Permission:
+	self.api.Blob_Permission(self, m.(*Permission), startWithSeqNumber + i)
+      default:
+	log.Printf("ERR: %v", m)
+	panic("Unknown blob type")
+      }
     }
   }
   go f()
   return
 }
 
-// Interface towards the Grapher
-func (self *transformer) Invitation(permanode_blobref, invitation_blobref string, userid string) {
-  self.api.Invitation(self, permanode_blobref, invitation_blobref, userid)
-}
-
-// Interface towards the Grapher
-func (self *transformer) AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string) {
-  self.api.AcceptedInvitation(self, permanode_blobref, invitation_blobref, keep_blobref)
-}
-
-// Interface towards the Grapher
-func (self *transformer) NewFollower(permanode_blobref, invitation_blobref, keep_blobref, userid string) {
-  self.api.NewFollower(self, permanode_blobref, invitation_blobref, keep_blobref, userid)
-}
-
-// Interface towards the Grapher
-func (self *transformer) PermaNode(blobref, invitation_blobref, keep_blobref string) {
-  self.api.PermaNode(self, blobref, invitation_blobref, keep_blobref)
-}
-
-// Interface towards the Grapher
-func (self *transformer) Permission(blobref string, action int, permission ot.Permission) {
-  self.api.Permission(self, blobref, action, permission)
-}
-
-// Interface towards the Grapher
-func (self *transformer) Mutation(blobref, mut_blobref string, mutation []byte, rollback int, concurrent []string) {
-  mut, err := self.handleMutation(blobref, mut_blobref, mutation, rollback, concurrent)
-  if err != nil {
-    self.mutex.Lock()
-    defer self.mutex.Unlock()
-    log.Printf("ERR Transformer: %v\n", err)
-    app_muts, ok := self.appliedMutations[blobref]
-    if !ok {
-      app_muts = []ot.Mutation{}
-    }
-    self.appliedMutations[blobref] = append(app_muts, ot.Mutation{})
-    return
-  } else {
-    seqNumber := 0
-    if i, ok := self.seqNumbers[blobref]; ok {
-      seqNumber = i
-    }
-    self.api.Mutation(self, blobref, mut, seqNumber)
-    self.seqNumbers[blobref] = seqNumber + 1
-  }
-}
-
-func (self *transformer) handleMutation(blobref, mut_blobref string, mutation []byte, rollback int, concurrent []string) (result ot.Mutation, err os.Error) {
+func (self *transformer) Transform(mutation *grapher.Mutation) (err os.Error) {
   self.mutex.Lock()
   defer self.mutex.Unlock()
   
   var mut ot.Mutation
-  err = mut.UnmarshalJSON(mutation)
-  if err != nil {
-    return ot.Mutation{}, err
+  switch mutation.Operation.(type) {
+  case ot.Operation:
+    mut.Operation = mutation.Operation.(ot.Operation)
+  case []byte:
+    err = mut.Operation.UnmarshalJSON(mutation.Operation.([]byte))
+    if err != nil {
+      return err
+    }
+  default:
+    panic("Unknown OT operation")
   }
-  mut.ID = mut_blobref
-
+  mut.ID = mutation.MutationBlobRef
+  mut.Site = mutation.MutationSigner
+  
   // Get the list of mutations applied so far for the perma blob
-  app_muts, ok := self.appliedMutations[blobref]
+  app_blobs, ok := self.appliedBlobs[mutation.PermaBlobRef]
   if !ok {
-    app_muts = []ot.Mutation{}
+    app_blobs = []interface{}{}
+  }
+  // Determine which blobs must be rolled back. Skip those which are not mutations
+  muts := []ot.Mutation{}
+  for _, m := range app_blobs[len(app_blobs) - mutation.Rollback:] {
+    if mm, ok := m.(*Mutation); ok {
+      muts = append(muts, ot.Mutation{ID:mm.MutationBlobRef, Site:mm.MutationSigner, Operation:mm.Operation.(ot.Operation)})
+    }
+  }
+    
+  // Transform 'mut' to apply it locally
+  _, pmut, err := ot.TransformSeq(muts, mut)
+  if err != nil {
+    log.Printf("TRANSFORM ERR: %v", err)
+    return err
+  }
+  
+  mutation.Operation = pmut.Operation
+  return nil
+}
+
+// Interface towards the Grapher
+func (self *transformer) Signal_ReceivedInvitation(permission *grapher.Permission) {
+  self.api.Signal_ReceivedInvitation(self, (*Permission)(permission))
+}
+
+// Interface towards the Grapher
+func (self *transformer) Signal_AcceptedInvitation(keep *grapher.Keep) {
+  self.api.Signal_AcceptedInvitation(self, (*Keep)(keep))
+}
+
+// Interface towards the Grapher
+func (self *transformer) Blob_Keep(keep *grapher.Keep, keep_deps []string) {
+  app_blobs, ok := self.appliedBlobs[keep.PermaBlobRef]
+  if !ok {
+    app_blobs = []interface{}{}
+  }
+  self.appliedBlobs[keep.PermaBlobRef] = append(app_blobs, (*Keep)(keep))
+  self.api.Blob_Keep(self, (*Keep)(keep), len(app_blobs))
+}
+
+// Interface towards the Grapher
+func (self *transformer) Blob_Permission(permission *grapher.Permission, perm_deps []string) {
+  app_blobs, ok := self.appliedBlobs[permission.PermaBlobRef]
+  if !ok {
+    app_blobs = []interface{}{}
+  }
+  self.appliedBlobs[permission.PermaBlobRef] = append(app_blobs, (*Permission)(permission))
+  self.api.Blob_Permission(self, (*Permission)(permission), len(app_blobs))
+}
+
+// Interface towards the Grapher
+func (self *transformer) Blob_Mutation(mutation *grapher.Mutation) os.Error {
+  mut, seq, err := self.handleMutation(mutation)
+  if err != nil {
+    return err
+    log.Printf("ERR Transformer: %v\n", err)
+  }
+  self.api.Blob_Mutation(self, mut, seq)
+  return nil
+}
+
+func (self *transformer) handleMutation(mutation *grapher.Mutation) (result *Mutation, seq int, err os.Error) {
+  self.mutex.Lock()
+  defer self.mutex.Unlock()
+  
+  log.Printf("Rollback %v, concurrent %v", mutation.Rollback, mutation.Concurrent)
+  var mut ot.Mutation
+  switch mutation.Operation.(type) {
+  case ot.Operation:
+    mut.Operation = mutation.Operation.(ot.Operation)
+  case []byte:
+    err = mut.Operation.UnmarshalJSON(mutation.Operation.([]byte))
+    if err != nil {
+      return nil, 0, err
+    }
+  default:
+    panic("Unknown OT operation")
+  }
+  mut.ID = mutation.MutationBlobRef
+  mut.Site = mutation.MutationSigner
+  
+  // Get the list of mutations applied so far for the perma blob
+  app_blobs, ok := self.appliedBlobs[mutation.PermaBlobRef]
+  if !ok {
+    app_blobs = []interface{}{}
   }
   // Determine which mutations must be rolled back. Skip those which are not valid
   muts := []ot.Mutation{}
-  for _, m := range app_muts[len(app_muts) - rollback:] {
-    if m.ID != "" {
-      muts = append(muts, m)
+  for _, m := range app_blobs[len(app_blobs) - mutation.Rollback:] {
+    if mm, ok := m.(*Mutation); ok {
+      muts = append(muts, ot.Mutation{ID:mm.MutationBlobRef, Site:mm.MutationSigner, Operation:mm.Operation.(ot.Operation)})
     }
   }
 
   // Prune all mutations that have been applied locally but do not belong to the history of the new mutation
   prune := map[string]bool{}
-  for _, p := range concurrent {
+  for _, p := range mutation.Concurrent {
     prune[p] = true
   }
   pmuts, e := ot.PruneMutationSeq(muts, prune)
   if e != nil {
     log.Printf("Prune Error: %v\n", e)
-    return ot.Mutation{}, e
+    return nil, 0, e
   }
     
   // Transform 'mut' to apply it locally
@@ -176,7 +214,14 @@ func (self *transformer) handleMutation(blobref, mut_blobref string, mutation []
     }
   }
   
-  app_muts = append(app_muts, pmuts[0])
-  self.appliedMutations[blobref] = app_muts
-  return pmuts[0], nil
+  result = &Mutation{}
+  result.PermaBlobRef = mutation.PermaBlobRef
+  result.PermaSigner = mutation.PermaSigner
+  result.MutationBlobRef = mutation.MutationBlobRef
+  result.MutationSigner = mutation.MutationSigner
+  result.Operation = pmuts[0].Operation
+  app_blobs = append(app_blobs, result)
+  self.appliedBlobs[mutation.PermaBlobRef] = app_blobs
+  seq = len(app_blobs) - 1
+  return
 }

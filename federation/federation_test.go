@@ -1,7 +1,6 @@
 package lightwavefed
 
 import (
-  ot "lightwaveot"
   . "lightwavestore"
   grapher "lightwavegrapher"
   "testing"
@@ -9,6 +8,8 @@ import (
   "fmt"
   "log"
   "os"
+  "http"
+  "strings"
 )
 
 type dummyTransformer struct {
@@ -19,53 +20,62 @@ type dummyTransformer struct {
   t *testing.T
 }
 
-func (self *dummyTransformer) Invitation(permanode_blobref, invitation_blobref, userid string) {
-  _, err := self.grapher.CreateKeepBlob(permanode_blobref, invitation_blobref)
+func (self *dummyTransformer) Signal_ReceivedInvitation(permission *grapher.Permission) {
+  log.Printf("APP %v: Received Invitation", self.userID)
+  // Automatically accept the invitation
+  _, err := self.grapher.CreateKeepBlob(permission.PermaBlobRef, permission.PermissionBlobRef)
   if err != nil {
     self.t.Fatal(err.String())
   }
 }
 
-func (self *dummyTransformer) AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string) {
+func (self *dummyTransformer) Signal_AcceptedInvitation(keep *grapher.Keep) {
+  log.Printf("APP %v: Accepted Invitation", self.userID)
 }
 
-func (self *dummyTransformer) NewFollower(permanode_blobref, invitation_blobref, keep_blobref, userid string) {
-  log.Printf("APP: New user: %v\n", userid)
+func (self *dummyTransformer) Blob_Keep(keep *grapher.Keep, keep_deps []string) {
+  log.Printf("APP %v: Keep", self.userID)
 }
 
-func (self *dummyTransformer) PermaNode(blobref, invitation_blobref, keep_blobref string) {
-  log.Printf("APP: New permanode")
+func (self *dummyTransformer) Blob_Mutation(mutation *grapher.Mutation) os.Error {
+  log.Printf("APP %v: Mutation", self.userID)
+  return nil
 }
 
-func (self *dummyTransformer) Mutation(blobref, mut_blobref string, mutation []byte, rollback int, concurrent []string) {
-  log.Printf("APP: Mutation")
+func (self *dummyTransformer) Blob_Permission(permission *grapher.Permission, perm_deps []string) {
+  log.Printf("APP %v: Permission", self.userID)
 }
 
-func (self *dummyTransformer) Permission(blobref string, action int, permission ot.Permission) {
-  log.Printf("App: Permission")
+func (self *dummyTransformer) Transform(mutation *grapher.Mutation) (err os.Error) {
+  return
 }
 
 type dummyNameService struct {
 }
 
 func (self *dummyNameService) Lookup(identity string) (url string, err os.Error) {
-  switch identity {
-  case "a@alice":
-    return "http://localhost:8181/fed", nil
-  case "b@bob":
-    return "http://localhost:8282/fed", nil
-  case "c@charly":
-    return "http://localhost:8383/fed", nil
-  case "d@daisy":
-    return "http://localhost:8484/fed", nil
+  i := strings.Index(identity, "@")
+  if i == -1 {
+    panic("Malformed user ID")
   }
-  return "", os.NewError("Unknown identity")
+  return fmt.Sprintf("http://%v:8181/fed", identity[i+1:]), nil
+//  switch identity {
+//  case "a@alice":
+//    return "http://localhost:8181/fed", nil
+//  case "b@bob":
+//    return "http://localhost:8282/fed", nil
+//  case "c@charly":
+//    return "http://localhost:8383/fed", nil
+ // case "d@daisy":
+//    return "http://localhost:8484/fed", nil
+//  }
+//  return "", os.NewError("Unknown identity")
 }
 
-func runFed(t *testing.T, fed *Federation) {
-  err := fed.Listen()
+func listen(t *testing.T) {
+  err := http.ListenAndServe(":8181", nil)
   if err != nil {
-    t.Fatal(err.String())
+    t.Fatal("ListenAndServe: ", err.String())
   }
 }
 
@@ -75,10 +85,10 @@ func TestFederation(t *testing.T) {
   store2 := NewSimpleBlobStore()
   store3 := NewSimpleBlobStore()
   store4 := NewSimpleBlobStore()
-  fed1 := NewFederation("a@alice", "127.0.0.1:8181", ns, store1)
-  fed2 := NewFederation("b@bob", "127.0.0.1:8282", ns, store2)
-  fed3 := NewFederation("c@charly", "127.0.0.1:8383", ns, store3)
-  fed4 := NewFederation("d@daisy", "127.0.0.1:8484", ns, store4)
+  fed1 := NewFederation("a@alice", "alice", 8181, http.DefaultServeMux, ns, store1)
+  fed2 := NewFederation("b@bob", "bob", 8181, http.DefaultServeMux, ns, store2)
+  fed3 := NewFederation("c@charly", "charly", 8181, http.DefaultServeMux, ns, store3)
+  fed4 := NewFederation("d@daisy", "daisy", 8181, http.DefaultServeMux, ns, store4)
   grapher1 := grapher.NewGrapher("a@alice", store1, fed1)
   grapher2 := grapher.NewGrapher("b@bob", store2, fed2)
   grapher3 := grapher.NewGrapher("c@charly", store3, fed3)
@@ -91,10 +101,7 @@ func TestFederation(t *testing.T) {
   grapher3.AddListener(app3)
   app4 := &dummyTransformer{"d@daisy", store4, fed4, grapher4, t}
   grapher4.AddListener(app4)
-  go runFed(t, fed1)
-  go runFed(t, fed2)
-  go runFed(t, fed3)
-  go runFed(t, fed4)
+  go listen(t)
   
   time.Sleep(1000000000 * 2)
 
@@ -102,16 +109,16 @@ func TestFederation(t *testing.T) {
   blobref1 := NewBlobRef(blob1)
   blob1b := []byte(`{"type":"keep", "signer":"a@alice", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
   blobref1b := NewBlobRef(blob1b)  
-  blob2 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref1b + `"], "op":{"$t":["Hello World"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob2 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref1b + `"], "op":{"$t":["Hello World"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref2 := NewBlobRef(blob2)
-  blob3 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site2", "dep":[], "op":{"$t":["Olla!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob3 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":[], "op":{"$t":["Olla!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref3 := NewBlobRef(blob3)
-  blob4 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site1", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob4 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref4 := NewBlobRef(blob4)
   // Grant user foo@bar read access
   blob5 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"b@bob", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref5 := NewBlobRef(blob5)
-  blob7 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "site":"site3", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob7 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref7 := NewBlobRef(blob7)
   blob8 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"c@charly", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
   blobref8 := NewBlobRef(blob8)

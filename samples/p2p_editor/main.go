@@ -9,6 +9,9 @@ import (
   tf "lightwavetransformer"
   "flag"
   "os"
+  "http"
+//  "strings"
+  "fmt"
 )
 
 type dummyNameService struct {
@@ -36,9 +39,12 @@ func main() {
   flag.StringVar(&laddr, "l", "", "Network address of the local store port, e.g. ':6161'")
   var raddr string
   flag.StringVar(&raddr, "r", "", "Network address of a remote store port to sync with, e.g. 'fed2.com:6161' (optional)")
-  var faddr string
-  flag.StringVar(&faddr, "f", "", "Network address of the local federation port, e.g. ':8181' (optional)")
+  var port int
+  flag.IntVar(&port, "p", 0, "Port for accepting HTTP connections")
   flag.Parse()
+  
+//  i := strings.Index(userid, "@")
+//  domain := userid[i+1:]
   
   // Start Curses
   err := startGoCurses()
@@ -51,14 +57,14 @@ func main() {
   // Initialize Store, Indexer and Network
   s := store.NewSimpleBlobStore()
   var federation *fed.Federation
-  if faddr != "" {
+  if port != 0 {
     ns := &dummyNameService{}
-    federation = fed.NewFederation(userid, faddr, ns, s)
-    go federation.Listen()
+    federation = fed.NewFederation(userid, "localhost", port, http.DefaultServeMux, ns, s)
+    go http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
   }
   grapher := grapher.NewGrapher(userid, s, federation)
   transformer := tf.NewTransformer(userid, s, federation, grapher)
-  app_api, transformer_api := tf.NewUniAPI()
+  app_api, transformer_api := tf.NewUniAPI(userid)
   transformer.SetAPI(transformer_api)
   
   if raddr != "" && laddr != "" {

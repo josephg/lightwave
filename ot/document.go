@@ -229,11 +229,11 @@ func (self *TombStream) SkipToEnd() (count int) {
 // Execution of mutations
 
 func Execute(input interface{}, mut Mutation) (output interface{}, err os.Error) {
-  output, err = execute(input, mut.Operation)
+  output, err = ExecuteOperation(input, mut.Operation)
   return
 }
 
-func execute(input interface{}, op Operation) (output interface{}, err os.Error) {
+func ExecuteOperation(input interface{}, op Operation) (output interface{}, err os.Error) {
   switch op.Kind {
   case NoOp:
     return input, nil
@@ -338,9 +338,9 @@ func executeObject(obj Object, ops []Operation) (err os.Error) {
 	op := exec_op.Operations[0]
 	switch op.Kind {
 	case StringOp:
-	  val, err = execute(NewSimpleText(""), op)
+	  val, err = ExecuteOperation(NewSimpleText(""), op)
 	case ObjectOp:
-	  val, err = execute(NewSimpleObject(), op)
+	  val, err = ExecuteOperation(NewSimpleObject(), op)
 	case ArrayOp:
 	  // TODO
 	}
@@ -352,7 +352,7 @@ func executeObject(obj Object, ops []Operation) (err os.Error) {
       }
       version = pos - 1
     case StringOp, ObjectOp, ArrayOp:
-      val, err = execute(val, exec_op)
+      val, err = ExecuteOperation(val, exec_op)
       if err != nil {
         return
       }

@@ -17,7 +17,6 @@ type Editor struct {
   store BlobStore
   grapher *grapher.Grapher
   api tf.UniAPI
-//  frontier Frontier
   text string
   tombs vec.IntVector
   // Required during mutations
@@ -26,50 +25,60 @@ type Editor struct {
   Rows, Columns int
   ScrollX, ScrollY int
   ranges []*TextRange  // The first range is the cursor. Other ranges are cursors of other users
-  site string // The site identifier used in Mutation
   // The document we are currently editing
   permaBlobRef string
   // List of all perma nodes
   permaBlobs []string
   invitations map[string]string
+  seqNumber int
 }
 
 func NewEditor(userid string, store BlobStore, grapher *grapher.Grapher, api tf.UniAPI) *Editor {
-  e := &Editor{userID: userid, store:store, grapher: grapher, api: api, Rows: *Rows, Columns: *Cols, site: uuid(), invitations: make(map[string]string)}
+  e := &Editor{userID: userid, store:store, grapher: grapher, api: api, Rows: *Rows, Columns: *Cols, invitations: make(map[string]string)}
   api.SetApplication(e)
   return e
 }
 
 // Application interface
-func (self *Editor) Invitation(permanode_blobref, invitation_blobref string) {
-  self.invitations[permanode_blobref] = invitation_blobref
+func (self *Editor) Signal_ReceivedInvitation(permission *tf.Permission) {
+  self.invitations[permission.PermaBlobRef] = permission.PermissionBlobRef
 }
 
 // Application interface
-func (self *Editor) AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string) {
+func (self *Editor) Signal_AcceptedInvitation(Keep *tf.Keep) {
+}
+
+func (self *Editor) Signal_ProcessedKeep(keep *tf.Keep) {
+  self.permaBlobs = append(self.permaBlobs, keep.PermaBlobRef)
 }
 
 // Application interface
-func (self *Editor) NewFollower(permanode_blobref string, invitation_blobref, keep_blobref, userid string) {
-}
-
-// Application interface
-func (self *Editor) PermaNode(permanode_blobref string, invitation_blobref, keep_blobref string) {
-  self.permaBlobs = append(self.permaBlobs, permanode_blobref)
-}
-
-// Application interface
-func (self *Editor) Mutation(permanode_blobref string, mut interface{}) {
-  mutation, ok := mut.(Mutation)
-  if !ok {
-    panic("Unexpected mutation type")
+func (self *Editor) Blob(blob interface{}, seqNumber int) {
+  switch blob.(type) {
+  case *tf.Keep:
+    // Do nothing yet
+  case *tf.Permission:
+    // Do nothing yet
+  case *tf.Mutation:
+    mut := blob.(*tf.Mutation)
+    op, ok := mut.Operation.(Operation)
+    if !ok {
+      panic("Unknown operator kind")
+    }
+    _, err := ExecuteOperation(self, op)
+    if err != nil {
+      panic(err.String())
+    }
+    Stdwin.Refresh()
+  default:
+    panic("Unknown blob kind")
   }
-  self.HandleMutation(mutation)
+  
+  if seqNumber >= 0 {
+    self.seqNumber = seqNumber + 1
+  }
 }
 
-// Application interface
-func (self *Editor) Permission(permanode_blobref string, action int, permission Permission) {
-}
 
 func (self *Editor) Begin() {
   self.mutPos = 0
@@ -327,8 +336,7 @@ func (self *Editor) editLoop() {
 	    Stdwin.Addstr(len(userid) + 7, self.Rows - 1, string(inp), 0)
 	  }
 	}
-	frontier, _ := self.api.Frontier(self.permaBlobRef)
-	self.grapher.CreatePermissionBlob(self.permaBlobRef, frontier, userid, grapher.Perm_Read | grapher.Perm_Write | grapher.Perm_Invite, 0, grapher.PermAction_Invite)
+	self.grapher.CreatePermissionBlob(self.permaBlobRef, self.seqNumber, userid, grapher.Perm_Read | grapher.Perm_Write | grapher.Perm_Invite, 0, grapher.PermAction_Invite)
       case 'l':
       case 'q':
 	return
@@ -379,7 +387,6 @@ func (self *Editor) editLoop() {
       if line == 0 && linePos == 0 {
 	continue
       }
-      var mut Mutation
       var ops []Operation
       stream := NewTombStream(&self.tombs)
       skipped, _ := stream.SkipChars(self.Cursor() - 1)
@@ -392,24 +399,14 @@ func (self *Editor) editLoop() {
       if skipped > 0 {
 	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
       }
-      mut.Operation = Operation{Kind: StringOp, Operations: ops}
-      frontier, _ := self.api.Frontier(self.permaBlobRef)
-      mut.Dependencies = frontier
-      mut.Site = self.site
-      _, err := self.grapher.CreateMutationBlob(self.permaBlobRef, mut)
+      _, err := self.grapher.CreateMutationBlob(self.permaBlobRef, Operation{Kind: StringOp, Operations: ops}, self.seqNumber)
       if err != nil {
 	panic(err.String())
       }
-//      blob, blobref, err := EncodeMutation(mut, EncNormal)
-//      if err !=  nil {
-//	panic(err.String())
-//      }
-//      self.store.StoreBlob(blob, blobref)
     default:
       if inp == KEY_ENTER || inp == 13 {
 	inp = 10
       }
-      var mut Mutation
       var ops []Operation
       stream := NewTombStream(&self.tombs)
       skipped, _ := stream.SkipChars(self.Cursor())
@@ -421,33 +418,12 @@ func (self *Editor) editLoop() {
       if skipped > 0 {
 	ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
       }
-      mut.Operation = Operation{Kind: StringOp, Operations: ops}
-      frontier, _ := self.api.Frontier(self.permaBlobRef)
-      mut.Dependencies = frontier
-      mut.Site = self.site
-      _, err := self.grapher.CreateMutationBlob(self.permaBlobRef, mut)
+      _, err := self.grapher.CreateMutationBlob(self.permaBlobRef, Operation{Kind: StringOp, Operations: ops}, self.seqNumber)
       if err != nil {
 	panic(err.String())
       }
     }
-//      blob, blobref, err := EncodeMutation(mut, EncNormal)
-//      if err !=  nil {
-//	panic(err.String())
-//      }
-//      self.store.StoreBlob(blob, blobref)
-//    }
   }
-}
-
-// interface IndexListener
-func (self *Editor) HandleMutation(mut Mutation) {
-//  log.Printf("Apply %v", mut)
-  _, err := Execute(self, mut)
-  if err != nil {
-    panic(err.String())
-  }
-//  self.frontier.Add(mut)
-  Stdwin.Refresh()
 }
 
 func startGoCurses() (err os.Error) {
@@ -474,7 +450,7 @@ func (self *Editor) open(perma_blobref string) {
   self.permaBlobRef = perma_blobref
   self.tombs = vec.IntVector{}
   self.text = ""
-//  self.frontier = make(Frontier)
+  self.seqNumber = 0
   self.ScrollX = 0
   self.ScrollY = 0
   self.ranges = []*TextRange{&TextRange{TextMarker{0}, TextMarker{0}}}
@@ -488,6 +464,7 @@ func stopGoCurses() {
   Endwin()
 }
 
+/*
 func uuid() string {
   f, _ := os.OpenFile("/dev/urandom", os.O_RDONLY, 0) 
   b := make([]byte, 16) 
@@ -495,3 +472,4 @@ func uuid() string {
   f.Close() 
   return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]) 
 }
+*/

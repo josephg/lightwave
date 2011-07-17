@@ -26,8 +26,6 @@ type superSchema struct {
 //  Sig    string "sig"
 
   Dependencies []string "dep"
-//  AppliedAt int "at"
-//  Site string "site"
   
   Random string "random"
   PermaNode string "perma"
@@ -35,6 +33,8 @@ type superSchema struct {
   User string "user"
   Allow int "allow"
   Deny int "deny"
+  
+  Operation *json.RawMessage "op"
 }
 
 // -----------------------------------------------------
@@ -58,22 +58,47 @@ type Federation interface {
 }
 
 type Transformer interface {
-  // This function is called when an invitation has been received
-  Invitation(permanode_blobref, invitation_blobref string, userid string)
-  // This function is called when the local user has accepted an invitation
-  AcceptedInvitation(permanode_blobref, invitation_blobref string, keep_blobref string)
-  // This function is called when a new user has been added to a perma node.
-  NewFollower(permanode_blobref string, invitation_blobref, keep_blobref, userid string)
-  // This function is called when a perma node has been added
-  PermaNode(permanode_blobref string, invitation_blobref, keep_blobref string)
+  Signal_AcceptedInvitation(keep *Keep)
+  Signal_ReceivedInvitation(permission *Permission)
   // This function is called when a mutation has been applied.
   // The mutation passed in the parameter is not transformed.
   // The parameter concurrent lists the blobrefs of all already applied mutations
   // to which this one is concurrent. This indicates which transformation need to be computed.
-  Mutation(permanode_blobref string, mutation_blobref string,mutation []byte, rollback int, concurrent []string)
+  Blob_Mutation(mutation *Mutation) os.Error
   // This function is called when a permission mutation has been applied.
   // The permission passed in the parameter is already transformed
-  Permission(permanode_blobref string, action int, permission ot.Permission)
+  Blob_Permission(permission *Permission, deps []string)
+  Blob_Keep(keep *Keep, deps []string)
+  Transform(mutation_input *Mutation) (err os.Error)
+}
+
+type Keep struct {
+  PermaBlobRef string
+  PermaSigner string
+  KeepBlobRef string
+  KeepSigner string
+  PermissionBlobRef string
+  PermissionSigner string
+}
+
+type Permission struct {
+  PermaBlobRef string
+  PermaSigner string
+  PermissionBlobRef string
+  PermissionSigner string
+  Action int
+  ot.Permission
+}
+
+type Mutation struct {
+  PermaBlobRef string
+  PermaSigner string
+  MutationBlobRef string
+  MutationSigner string
+  // This is either []byte or an already decoded operation, for example ot.Operation.
+  Operation interface{}
+  Rollback int
+  Concurrent []string
 }
 
 // ------------------------------------------------------
@@ -100,10 +125,6 @@ type Grapher struct {
   // The keys are the blobrefs of the invitation.
   // The map holds invitations that have not yet been accepted by the local user.
   openInvitations map[string]string
-  // The keys are blobrefs to permaNodes that are kept by command of a keep.
-  // The values are the blobrefs of the respective keep blocks.
-  // This list contains only keeps of the local user
-//  keeps map[string]string
   store BlobStore
   fed Federation
   // 'user@domain' of the local user.
@@ -228,18 +249,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     n.permissions = map[string]int{n.signer: ^0}
     return n, nil
   case "mutation":
-//    if schema.Mutation == nil {
-//      err = os.NewError("mutation is lacking data")
-//      return
-//    }
-//    if schema.Site == "" {
-//      err = os.NewError("mutation is lacking a site identifier")
-//    }
     n := &mutationNode{node: node{time:t, signer: schema.Signer, parent: schema.PermaNode}, blobref: blobref, dependencies: schema.Dependencies}
-//    n.mutation.Operation = *schema.Operation
-//    n.mutation.ID = blobref
-//    n.mutation.Site = schema.Site
-//    n.mutation.Dependencies = schema.Dependencies
     return n, nil
   case "permission":
     if schema.User == "" {
@@ -265,7 +275,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     }
     return n, nil    
   default:
-    log.Printf("Unknown schema type")
+    log.Printf("Err: Unknown schema type")
   }
   return nil, os.NewError("Unknown schema type")
 }
@@ -289,10 +299,7 @@ func (self *Grapher) HandleBlob(blob []byte, blobref string) {
   if self.fed != nil && signer == self.userID {
     users := perma.followersWithPermission(Perm_Read)
     if len(users) > 0 {
-      log.Printf("Forwarding ... to %v\n", users)
       self.fed.Forward(blobref, users)
-    } else {
-      println("There is no one to forward to")
     }
   }
 
@@ -303,7 +310,7 @@ func (self *Grapher) HandleBlob(blob []byte, blobref string) {
   for _, dep := range self.dequeue(blobref) {
     b, err := self.store.GetBlob(dep)
     if err != nil {
-      log.Printf("Failed retrieving blob: %v\n", err)
+      log.Printf("Err: Failed retrieving blob: %v\n", err)
       continue
     }
     self.HandleBlob(b, dep)
@@ -315,13 +322,13 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
   var schema superSchema
   err := json.Unmarshal(blob, &schema)
   if err != nil {
-    log.Printf("Malformed schema blob: %v\n", err)
+    log.Printf("Err: Malformed schema blob: %v\n", err)
     return nil, "", false
   }
 
   newnode, err := self.decodeNode(&schema, blobref)
   if err != nil {
-    log.Printf("Schema blob is not valid: %v\n", err)
+    log.Printf("Err: Schema blob is not valid: %v\n", err)
     return nil, "", false
   }
   ptr := newnode.(abstractNode)
@@ -334,7 +341,7 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
       return nil, "", false
     }
     if perma, ok = p.(*permaNode); !ok {
-      log.Printf("The specified node is not a perma node")
+      log.Printf("Err: The specified node is not a perma node")
       return nil, "", false
     }
   }
@@ -342,12 +349,11 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
   case *permaNode:
     perma = newnode.(*permaNode)
     self.nodes[blobref] = newnode
-    log.Printf("Added a permanode successfully")
     processed = true
     return
   case otNode:
     if perma == nil {
-      log.Printf("Permission or mutation without a permanode")
+      log.Printf("Err: Permission or mutation without a permanode")
       return nil, "", false
     }
     // Is this an invitation? Then we cannot apply it, because most data is missing.
@@ -359,7 +365,6 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
     } else if keep, ok := newnode.(*keepNode); ok {
       processed = self.checkKeep(perma, keep)
       if !processed {
-	log.Printf("Keep blob failed at inspection\n")
 	return
       }
     }
@@ -374,7 +379,6 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
       return nil, "", false
     }
     self.nodes[blobref] = newnode
-    log.Printf("Applied blob %v at %v\n", ptr.BlobRef(), self.userID)
 
     processed = true
     if _, ok := newnode.(*permissionNode); ok {
@@ -382,7 +386,11 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
     } else if _, ok := newnode.(*keepNode); ok {
       processed = self.handleKeep(perma, newnode.(*keepNode))
     } else if _, ok := newnode.(*mutationNode); ok {
-      processed = self.handleMutation(perma, newnode.(*mutationNode), blob, rollback, concurrent)
+      processed = self.handleMutation(perma, newnode.(*mutationNode), schema.Operation, rollback, concurrent)
+    }
+    
+    if processed {
+      log.Printf("Grapher processed blob %v at %v\n", ptr.BlobRef(), self.userID)
     }
     return
   }
@@ -392,18 +400,29 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
 }
 
 func (self *Grapher) handleInvitation(perma *permaNode, perm *permissionNode) bool {
-  log.Printf("Handling invitation at %v\n", self.userID)
   self.openInvitations[perma.BlobRef()] = perm.BlobRef()
   // Signal to the next layer that an invitation has been received
+  p := &Permission{perma.BlobRef(), perma.Signer(), perm.BlobRef(), perm.Signer(), perm.action, perm.permission}
   for _, transformer := range self.transformers {
-    transformer.Invitation(perma.BlobRef(), perm.BlobRef(), perm.permission.User)
+    transformer.Signal_ReceivedInvitation(p)
   }
   return true
 }
 
-func (self *Grapher) handleMutation(perma *permaNode, mut *mutationNode, blob []byte, rollback int, concurrent []string) bool {
+func (self *Grapher) handleMutation(perma *permaNode, mut *mutationNode, operation *json.RawMessage, rollback int, concurrent []string) bool {
+  var bytes []byte
+  if operation != nil {
+    bytes = []byte(*operation)
+  } else {
+    bytes = []byte{}
+  }
+
+  m := &Mutation{perma.BlobRef(), perma.Signer(), mut.BlobRef(), mut.Signer(), bytes, rollback, concurrent}
   for _, transformer := range self.transformers {
-    transformer.Mutation(perma.BlobRef(), mut.BlobRef(), blob, rollback, concurrent)
+    err := transformer.Blob_Mutation(m)
+    if err != nil {
+      return false
+    }
   }
   return true
 }
@@ -417,7 +436,6 @@ func (self *Grapher) handlePermission(perma *permaNode, perm *permissionNode) bo
   case PermAction_Invite:
     // Add the invitation to remember that this user has been invited.
     perma.pendingInvitations[perm.permission.User] = perm.BlobRef()
-    log.Printf("User %v has been invited\n", perm.permission.User)
     // Forward the invitation to the user being invited
     if self.fed != nil && perm.Signer() == self.userID {
       self.fed.Forward(perm.BlobRef(), []string{perm.permission.User})
@@ -427,8 +445,9 @@ func (self *Grapher) handlePermission(perma *permaNode, perm *permissionNode) bo
   default:
     panic("Unknown action type")
   }
+  p := &Permission{perma.BlobRef(), perma.Signer(), perm.BlobRef(), perm.Signer(), perm.action, perm.permission}
   for _, transformer := range self.transformers {
-    transformer.Permission(perma.BlobRef(), perm.action, perm.permission)
+    transformer.Blob_Permission(p, perm.Dependencies())
   }  
   return true
 }
@@ -436,48 +455,52 @@ func (self *Grapher) handlePermission(perma *permaNode, perm *permissionNode) bo
 func (self *Grapher) checkKeep(perma *permaNode, keep *keepNode) bool {
   // The signer of the keep is not the signer of the permanode?
   // In this case he must present a valid invitation
-  if keep.Signer() != perma.Signer() {
-    if keep.permission == "" {
-      log.Printf("Err: Keep on a foreign permanode is missing a reference to a permission blob")
-      return false
-    }
+  if keep.Signer() == perma.Signer() {
+    return true
+  }
+  
+  if keep.permission == "" {
+    log.Printf("Err: Keep on a foreign permanode is missing a reference to a permission blob")
+    return false
+  }
     
+  var err os.Error
+  perm, err := self.permission(keep.permission)
+  // Not an invitation?
+  if err != nil {
+    log.Printf("Err: Keep references a permision that is something else or malformed")
+    return false
+  }
+  // Permission has not yet been received or processed? -> enqueue
+  if perm == nil {
+    self.enqueue(keep.BlobRef(), []string{keep.permission})
     // The local user accepted the invitation?
     if keep.Signer() == self.userID {
       if self.fed != nil {
 	go self.fed.DownloadPermaNode(keep.permission)
       }
-      for _, transformer := range self.transformers {
-	transformer.AcceptedInvitation(perma.BlobRef(), keep.permission, keep.BlobRef())
-      }
     }
-
-    var err os.Error
-    perm, err := self.permission(keep.permission)
-    // Not an invitation?
-    if err != nil {
-      log.Printf("Err: Keep references a permision that is something else or malformed")
-      return false
+    return false
+  }
+  // TODO: Is the permission still valid or has it been overruled?
+  
+  // The invitation has indeed been issued for the user who issued the keep? If not -> error
+  if perm.permission.User != keep.Signer() {
+    log.Printf("Err: Keep references an invitation targeted at a different user")
+    return false
+  }
+  
+  // The local user accepted the invitation?
+  if keep.Signer() == self.userID {
+    k := &Keep{perma.BlobRef(), perma.Signer(), keep.BlobRef(), keep.Signer(), perm.BlobRef(), perm.Signer()}
+    for _, transformer := range self.transformers {
+      transformer.Signal_AcceptedInvitation(k)
     }
-    // Permission has not yet been received or processed? -> enqueue
-    if perm == nil {
-      log.Printf("Waiting for permission cited by the keep")
-      self.enqueue(keep.BlobRef(), []string{keep.permission})
-      return false
-    }
-    // TODO: Is the permission still valid or has it been overruled?
-    
-    // The invitation has indeed been issued for the user who issued the keep? If not -> error
-    if perm.permission.User != keep.Signer() {
-      log.Printf("Err: Keep references an invitation targeted at a different user")
-      return false
-    }    
   }
   return true
 }
 
 func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
-  log.Printf("Handling Keep from %v at %v\n", keep.Signer(), self.userID)
   var perm *permissionNode
   // The signer of the keep is not the signer of the permanode?
   // In this case he must present a valid invitation
@@ -496,6 +519,16 @@ func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
   // This keep is new. The permaNode has a new user.
   perma.keeps[keep.Signer()] = keep.BlobRef()
   log.Printf("Processing keep of %v\n", keep.Signer())
+  // Signal the keep to the application
+  var k *Keep
+  if perm != nil {
+    k = &Keep{perma.BlobRef(), perma.Signer(), keep.BlobRef(), keep.Signer(), perm.BlobRef(), perm.Signer()}
+  } else {
+    k = &Keep{perma.BlobRef(), perma.Signer(), keep.BlobRef(), keep.Signer(), "", ""}
+  }
+  for _, transformer := range self.transformers {
+    transformer.Blob_Keep(k, keep.Dependencies())
+  }
   
   // This implies that the local user is accepting an invitation?
   if perm != nil && perm.permission.User == self.userID {
@@ -505,17 +538,9 @@ func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
     }
     self.openInvitations[perma.BlobRef()] = "", false
     log.Printf("The local user accepted the invitation\nREF=%v\n", keep.BlobRef())
-    // Signal this to the application
-    for _, transformer := range self.transformers {
-      transformer.PermaNode(perma.BlobRef(), perm.BlobRef(), keep.BlobRef())
-    }
   } else if perm != nil {
     // Some other user is accepting his invitation?
     log.Printf("The user %v accepted the invitation\n", keep.Signer())
-    // Signal this to the application
-    for _, transformer := range self.transformers {
-      transformer.NewFollower(perma.BlobRef(), perm.BlobRef(), keep.BlobRef(), perm.permission.User)
-    }
     // Send this user all blobs of the local user that are not in the other user's frontier yet.
     if self.fed != nil {
       frontier := perma.frontier
@@ -544,14 +569,7 @@ func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
 	self.fed.Forward(f, []string{keep.Signer()})
       }
     }
-  } else if keep.Signer() == self.userID {
-    // The local user keeps his own perma node
-    log.Printf("The user %v keeps his own perma node\n", keep.Signer())
-    // Signal this to the application
-    for _, transformer := range self.transformers {
-      transformer.PermaNode(perma.BlobRef(), "", keep.BlobRef())
-    }
-  }
+  }    
   return true
 }
 
@@ -599,8 +617,28 @@ func (self *Grapher) CreateKeepBlob(perma_blobref, permission_blobref string) (b
   return keepBlobRef, nil
 }
 
-func (self *Grapher) CreatePermissionBlob(perma_blobref string, dependencies []string, userid string, allow int, deny int, action int) (blobref string, err os.Error) {
-  permJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": dependencies, "t":"2006-01-02T15:04:05+07:00", "user": userid, "allow":allow, "deny": deny}
+func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber int, userid string, allow int, deny int, action int) (blobref string, err os.Error) {
+  perma, e := self.permaNode(perma_blobref)
+  if e != nil {
+    err = e
+    return
+  }  
+  permNode := &permissionNode{node:node{signer:self.userID, parent: perma_blobref}}
+  permNode.permission.ID = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
+  permNode.permission.User = userid
+  permNode.permission.Allow = allow
+  permNode.permission.Deny = deny
+  permNode.action = action
+  permNode, err = perma.transform(permNode, applyAtSeqNumber)
+  if err != nil {
+    return
+  }
+  frontier, e := self.Frontier(perma_blobref)
+  if e != nil {
+    err = e
+    return
+  }  
+  permJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": frontier, "t":"2006-01-02T15:04:05+07:00", "user": userid, "allow":allow, "deny": deny}
   // TODO: Get time correctly
   switch action {
   case PermAction_Invite:
@@ -623,20 +661,42 @@ func (self *Grapher) CreatePermissionBlob(perma_blobref string, dependencies []s
   return permBlobRef, nil
 }
 
-func (self *Grapher) CreateMutationBlob(perma_blobref string, mut ot.Mutation) (blobref string, err os.Error) {
-  // TODO: Site should go away
-  mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": mut.Dependencies, "t":"2006-01-02T15:04:05+07:00", "site": mut.Site}
+func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interface{}, applyAtSeqNumber int) (blobref string, err os.Error) {
+  perma, e := self.permaNode(perma_blobref)
+  if e != nil {
+    err = e
+    return
+  }  
+  // TODO
+  if len(self.transformers) == 0 {
+    panic("No transformer")
+  }
+  // Update the operation such that it can be applied after all currently applied operations
+  var m Mutation
+  m.PermaBlobRef = perma_blobref
+  m.PermaSigner = perma.Signer()
+  m.MutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
+  m.MutationSigner = self.userID
+  m.Operation = operation
+  m.Rollback = perma.sequenceNumber() - applyAtSeqNumber
+  err = self.transformers[0].Transform(&m)
+  if e != nil {
+    return
+  }
+  frontier, e := self.Frontier(perma_blobref)
+  if e != nil {
+    err = e
+    return
+  }  
+  mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": frontier, "t":"2006-01-02T15:04:05+07:00"}
   // TODO: Get time correctly
+  op := m.Operation.(ot.Operation) // The following two lines work around a problem in GO/JSON
+  mutJson["op"] = &op
   schema, err := json.Marshal(mutJson)
   if err != nil {
     panic(err.String())
   }
-  op, err := mut.Operation.MarshalJSON()
-  if err != nil {
-    panic(err.String())
-  }
-  mutBlob := append([]byte(`{"type":"mutation","op":`), op...)
-  mutBlob = append(mutBlob, ',')
+  mutBlob := []byte(`{"type":"mutation",`)
   mutBlob = append(mutBlob, schema[1:]...)
   log.Printf("Storing mut %v\n", string(mutBlob))
   mutBlobRef := NewBlobRef(mutBlob)
