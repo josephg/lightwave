@@ -146,17 +146,7 @@ func (self *transformer) Blob_Permission(permission *grapher.Permission, perm_de
 }
 
 // Interface towards the Grapher
-func (self *transformer) Blob_Mutation(mutation *grapher.Mutation) os.Error {
-  mut, seq, err := self.handleMutation(mutation)
-  if err != nil {
-    return err
-    log.Printf("ERR Transformer: %v\n", err)
-  }
-  self.api.Blob_Mutation(self, mut, seq)
-  return nil
-}
-
-func (self *transformer) handleMutation(mutation *grapher.Mutation) (result *Mutation, seq int, err os.Error) {
+func (self *transformer) Blob_Mutation(mutation *grapher.Mutation) (err os.Error) {
   self.mutex.Lock()
   defer self.mutex.Unlock()
   
@@ -168,7 +158,7 @@ func (self *transformer) handleMutation(mutation *grapher.Mutation) (result *Mut
   case []byte:
     err = mut.Operation.UnmarshalJSON(mutation.Operation.([]byte))
     if err != nil {
-      return nil, 0, err
+      return err
     }
   default:
     panic("Unknown OT operation")
@@ -197,7 +187,7 @@ func (self *transformer) handleMutation(mutation *grapher.Mutation) (result *Mut
   pmuts, e := ot.PruneMutationSeq(muts, prune)
   if e != nil {
     log.Printf("Prune Error: %v\n", e)
-    return nil, 0, e
+    return e
   }
     
   // Transform 'mut' to apply it locally
@@ -214,7 +204,7 @@ func (self *transformer) handleMutation(mutation *grapher.Mutation) (result *Mut
     }
   }
   
-  result = &Mutation{}
+  result := &Mutation{}
   result.PermaBlobRef = mutation.PermaBlobRef
   result.PermaSigner = mutation.PermaSigner
   result.MutationBlobRef = mutation.MutationBlobRef
@@ -222,6 +212,9 @@ func (self *transformer) handleMutation(mutation *grapher.Mutation) (result *Mut
   result.Operation = pmuts[0].Operation
   app_blobs = append(app_blobs, result)
   self.appliedBlobs[mutation.PermaBlobRef] = app_blobs
-  seq = len(app_blobs) - 1
-  return
+  seq := len(app_blobs) - 1
+  self.api.Blob_Mutation(self, result, seq)
+  
+  return nil
+  
 }
