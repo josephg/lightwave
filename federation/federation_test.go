@@ -94,13 +94,13 @@ func TestFederation(t *testing.T) {
   grapher3 := grapher.NewGrapher("c@charly", store3, fed3)
   grapher4 := grapher.NewGrapher("d@daisy", store4, fed4)
   app1 := &dummyTransformer{"a@alice", store1, fed1, grapher1, t}
-  grapher1.AddListener(app1)
+  grapher1.SetTransformer(app1)
   app2 := &dummyTransformer{"b@bob", store2, fed2, grapher2, t}
-  grapher2.AddListener(app2)
+  grapher2.SetTransformer(app2)
   app3 := &dummyTransformer{"c@charly", store3, fed3, grapher3, t}
-  grapher3.AddListener(app3)
+  grapher3.SetTransformer(app3)
   app4 := &dummyTransformer{"d@daisy", store4, fed4, grapher4, t}
-  grapher4.AddListener(app4)
+  grapher4.SetTransformer(app4)
   go listen(t)
   
   time.Sleep(1000000000 * 2)

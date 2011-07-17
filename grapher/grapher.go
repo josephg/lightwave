@@ -129,7 +129,7 @@ type Grapher struct {
   fed Federation
   // 'user@domain' of the local user.
   userID string 
-  transformers []Transformer
+  transformer Transformer
 }
 
 // Creates a new indexer for the specified user based on the blob store.
@@ -144,8 +144,8 @@ func NewGrapher(userid string, store BlobStore, fed Federation) *Grapher {
   return idx
 }
 
-func (self *Grapher) AddListener(transformer Transformer) {
-  self.transformers = append(self.transformers, transformer)
+func (self *Grapher) SetTransformer(transformer Transformer) {
+  self.transformer = transformer
 }
 
 func (self *Grapher) Frontier(blobref string) (frontier []string, err os.Error) {
@@ -403,8 +403,8 @@ func (self *Grapher) handleInvitation(perma *permaNode, perm *permissionNode) bo
   self.openInvitations[perma.BlobRef()] = perm.BlobRef()
   // Signal to the next layer that an invitation has been received
   p := &Permission{perma.BlobRef(), perma.Signer(), perm.BlobRef(), perm.Signer(), perm.action, perm.permission}
-  for _, transformer := range self.transformers {
-    transformer.Signal_ReceivedInvitation(p)
+  if self.transformer != nil {
+    self.transformer.Signal_ReceivedInvitation(p)
   }
   return true
 }
@@ -418,8 +418,8 @@ func (self *Grapher) handleMutation(perma *permaNode, mut *mutationNode, operati
   }
 
   m := &Mutation{perma.BlobRef(), perma.Signer(), mut.BlobRef(), mut.Signer(), bytes, rollback, concurrent}
-  for _, transformer := range self.transformers {
-    err := transformer.Blob_Mutation(m)
+  if self.transformer != nil {
+    err := self.transformer.Blob_Mutation(m)
     if err != nil {
       return false
     }
@@ -446,8 +446,8 @@ func (self *Grapher) handlePermission(perma *permaNode, perm *permissionNode) bo
     panic("Unknown action type")
   }
   p := &Permission{perma.BlobRef(), perma.Signer(), perm.BlobRef(), perm.Signer(), perm.action, perm.permission}
-  for _, transformer := range self.transformers {
-    transformer.Blob_Permission(p, perm.Dependencies())
+  if self.transformer != nil {
+    self.transformer.Blob_Permission(p, perm.Dependencies())
   }  
   return true
 }
@@ -493,8 +493,8 @@ func (self *Grapher) checkKeep(perma *permaNode, keep *keepNode) bool {
   // The local user accepted the invitation?
   if keep.Signer() == self.userID {
     k := &Keep{perma.BlobRef(), perma.Signer(), keep.BlobRef(), keep.Signer(), perm.BlobRef(), perm.Signer()}
-    for _, transformer := range self.transformers {
-      transformer.Signal_AcceptedInvitation(k)
+    if self.transformer != nil {
+      self.transformer.Signal_AcceptedInvitation(k)
     }
   }
   return true
@@ -526,8 +526,8 @@ func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
   } else {
     k = &Keep{perma.BlobRef(), perma.Signer(), keep.BlobRef(), keep.Signer(), "", ""}
   }
-  for _, transformer := range self.transformers {
-    transformer.Blob_Keep(k, keep.Dependencies())
+  if self.transformer != nil {
+    self.transformer.Blob_Keep(k, keep.Dependencies())
   }
   
   // This implies that the local user is accepting an invitation?
@@ -667,10 +667,6 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
     err = e
     return
   }  
-  // TODO
-  if len(self.transformers) == 0 {
-    panic("No transformer")
-  }
   // Update the operation such that it can be applied after all currently applied operations
   var m Mutation
   m.PermaBlobRef = perma_blobref
@@ -679,7 +675,7 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   m.MutationSigner = self.userID
   m.Operation = operation
   m.Rollback = perma.sequenceNumber() - applyAtSeqNumber
-  err = self.transformers[0].Transform(&m)
+  err = self.transformer.Transform(&m)
   if e != nil {
     return
   }

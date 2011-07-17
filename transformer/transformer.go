@@ -28,7 +28,7 @@ type transformer struct {
 
 func NewTransformer(userid string, store store.BlobStore, fed *fed.Federation, grapher *grapher.Grapher) (api_interface Transformer) {
   t := &transformer{userID: userid, store: store, fed: fed, grapher: grapher, appliedBlobs: make(map[string][]interface{})}
-  grapher.AddListener(t)
+  grapher.SetTransformer(t)
   return t
 }
 

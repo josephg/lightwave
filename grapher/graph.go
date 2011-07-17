@@ -69,6 +69,7 @@ type mutationNode struct {
   node
   dependencies []string
   blobref string
+  // TODO: Storing this here is a waste of memory
   mutation []byte
 }
 
