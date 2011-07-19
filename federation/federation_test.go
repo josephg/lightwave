@@ -12,15 +12,13 @@ import (
   "strings"
 )
 
-type dummyTransformer struct {
+type dummyApi struct {
   userID string
-  store BlobStore
-  fed *Federation
   grapher *grapher.Grapher
   t *testing.T
 }
 
-func (self *dummyTransformer) Signal_ReceivedInvitation(permission *grapher.Permission) {
+func (self *dummyApi) Signal_ReceivedInvitation(permission *grapher.Permission) {
   log.Printf("APP %v: Received Invitation", self.userID)
   // Automatically accept the invitation
   _, err := self.grapher.CreateKeepBlob(permission.PermaBlobRef, permission.PermissionBlobRef)
@@ -29,25 +27,20 @@ func (self *dummyTransformer) Signal_ReceivedInvitation(permission *grapher.Perm
   }
 }
 
-func (self *dummyTransformer) Signal_AcceptedInvitation(keep *grapher.Keep) {
+func (self *dummyApi) Signal_AcceptedInvitation(keep *grapher.Keep) {
   log.Printf("APP %v: Accepted Invitation", self.userID)
 }
 
-func (self *dummyTransformer) Blob_Keep(keep *grapher.Keep, keep_deps []string) {
+func (self *dummyApi) Blob_Keep(keep *grapher.Keep, seqNumber int) {
   log.Printf("APP %v: Keep", self.userID)
 }
 
-func (self *dummyTransformer) Blob_Mutation(mutation *grapher.Mutation) os.Error {
+func (self *dummyApi) Blob_Mutation(mutation *grapher.Mutation, seqNumber int) {
   log.Printf("APP %v: Mutation", self.userID)
-  return nil
 }
 
-func (self *dummyTransformer) Blob_Permission(permission *grapher.Permission, perm_deps []string) {
+func (self *dummyApi) Blob_Permission(permission *grapher.Permission, seqNumber int) {
   log.Printf("APP %v: Permission", self.userID)
-}
-
-func (self *dummyTransformer) Transform(mutation *grapher.Mutation) (err os.Error) {
-  return
 }
 
 type dummyNameService struct {
@@ -93,14 +86,14 @@ func TestFederation(t *testing.T) {
   grapher2 := grapher.NewGrapher("b@bob", store2, fed2)
   grapher3 := grapher.NewGrapher("c@charly", store3, fed3)
   grapher4 := grapher.NewGrapher("d@daisy", store4, fed4)
-  app1 := &dummyTransformer{"a@alice", store1, fed1, grapher1, t}
-  grapher1.SetTransformer(app1)
-  app2 := &dummyTransformer{"b@bob", store2, fed2, grapher2, t}
-  grapher2.SetTransformer(app2)
-  app3 := &dummyTransformer{"c@charly", store3, fed3, grapher3, t}
-  grapher3.SetTransformer(app3)
-  app4 := &dummyTransformer{"d@daisy", store4, fed4, grapher4, t}
-  grapher4.SetTransformer(app4)
+  app1 := &dummyApi{"a@alice", grapher1, t}
+  grapher1.SetAPI(app1)
+  app2 := &dummyApi{"b@bob", grapher2, t}
+  grapher2.SetAPI(app2)
+  app3 := &dummyApi{"c@charly", grapher3, t}
+  grapher3.SetAPI(app3)
+  app4 := &dummyApi{"d@daisy", grapher4, t}
+  grapher4.SetAPI(app4)
   go listen(t)
   
   time.Sleep(1000000000 * 2)

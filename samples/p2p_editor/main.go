@@ -7,10 +7,10 @@ import (
   fed "lightwavefed"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
+  api "lightwaveapi"
   "flag"
   "os"
   "http"
-//  "strings"
   "fmt"
 )
 
@@ -43,9 +43,6 @@ func main() {
   flag.IntVar(&port, "p", 0, "Port for accepting HTTP connections")
   flag.Parse()
   
-//  i := strings.Index(userid, "@")
-//  domain := userid[i+1:]
-  
   // Start Curses
   err := startGoCurses()
   defer stopGoCurses()
@@ -63,9 +60,8 @@ func main() {
     go http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
   }
   grapher := grapher.NewGrapher(userid, s, federation)
-  transformer := tf.NewTransformer(userid, s, federation, grapher)
-  app_api, transformer_api := tf.NewUniAPI(userid)
-  transformer.SetAPI(transformer_api)
+  tf.NewTransformer(grapher)
+  a := api.NewUniAPI(userid, grapher)
   
   if raddr != "" && laddr != "" {
     replication := store.NewReplication(userid, s, laddr, raddr)
@@ -74,7 +70,7 @@ func main() {
   }    
   
   // Launch the UI
-  editor := NewEditor(userid, s, grapher, app_api)
+  editor := NewEditor(userid, grapher, a)
   editor.ranges = []*ot.TextRange{&ot.TextRange{ot.TextMarker{0}, ot.TextMarker{0}}}
   editor.Refresh()
   

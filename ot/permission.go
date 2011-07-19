@@ -12,7 +12,7 @@ import (
 type Permission struct {
   // This property is not serialized
   ID string
-  Dependencies []string "dep"
+  Deps []string "dep"
   // A 1 bit explicitly allows something
   Allow int "allow"
   // A 1 bit explicitly denies something

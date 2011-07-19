@@ -9,34 +9,12 @@ import (
 // -----------------------------------------------------
 // The tree structure that the grapher is building up
 
-// Abstract base class for nodes
-type node struct {
-  // BlobRef of the parent
-  parent string
-  signer string
-  time int64
-}
-
-// The blobref of the parent node or the empty string
-func (self *node) Parent() string {
-  return self.parent
-}
-
-// The userid of the signer
-func (self *node) Signer() string {
-  return self.signer
-}
-
-func (self *node) Timestamp() int64 {
-  return self.time
-}
-
 // All nodes must implement this interface
 type abstractNode interface {
   BlobRef() string
-  Parent() string
   Signer() string
-  Timestamp() int64
+  PermaBlobRef() string
+//  Timestamp() int64
 }
 
 // All nodes participating in Operational Transformation must implement this interface
@@ -52,29 +30,48 @@ const (
 )
 
 type permissionNode struct {
-  node
-  permission ot.Permission
+  ot.Permission
+  permaBlobRef string
+  permissionBlobRef string
+  permissionSigner string
   action int
 }
 
 func (self *permissionNode) BlobRef() string {
-  return self.permission.ID
+  return self.ID
+}
+
+func (self *permissionNode) Signer() string {
+  return self.permissionSigner
+}
+
+func (self *permissionNode) PermaBlobRef() string {
+  return self.permaBlobRef
 }
 
 func (self *permissionNode) Dependencies() []string {
-  return self.permission.Dependencies
+  return self.Deps
 }
 
 type mutationNode struct {
-  node
+  permaBlobRef string
+  mutationBlobRef string
+  mutationSigner string
+  // This is either []byte or an already decoded operation, for example ot.Operation.
+  operation interface{}
   dependencies []string
-  blobref string
-  // TODO: Storing this here is a waste of memory
-  mutation []byte
 }
 
 func (self *mutationNode) BlobRef() string {
-  return self.blobref
+  return self.mutationBlobRef
+}
+
+func (self *mutationNode) Signer() string {
+  return self.mutationSigner
+}
+
+func (self *mutationNode) PermaBlobRef() string {
+  return self.permaBlobRef
 }
 
 func (self *mutationNode) Dependencies() []string {
@@ -82,14 +79,23 @@ func (self *mutationNode) Dependencies() []string {
 }
 
 type keepNode struct {
-  node
-  blobref string
+  permaBlobRef string
+  keepBlobRef string
+  keepSigner string
+  permissionBlobRef string
   dependencies []string
-  permission string
 }
 
 func (self *keepNode) BlobRef() string {
-  return self.blobref
+  return self.keepBlobRef
+}
+
+func (self *keepNode) Signer() string {
+  return self.keepSigner
+}
+
+func (self *keepNode) PermaBlobRef() string {
+  return self.permaBlobRef
 }
 
 func (self *keepNode) Dependencies() []string {
@@ -100,7 +106,8 @@ func (self *keepNode) Dependencies() []string {
 // permaNode
 
 type permaNode struct {
-  node
+  grapher *Grapher
+  signer string
   // The blobref of this node
   blobref string
   // The keys are userids. The values are blobrefs of the keep-blob.
@@ -123,13 +130,23 @@ type permaNode struct {
   frontier ot.Frontier
 }
 
-func newPermaNode() *permaNode {
-  return &permaNode{frontier: make(ot.Frontier), members: make(map[string]otNode), keeps:make(map[string]string), pendingInvitations: make(map[string]string), permissions: make(map[string]int) }
+func newPermaNode(grapher *Grapher) *permaNode {
+  return &permaNode{grapher: grapher, frontier: make(ot.Frontier), members: make(map[string]otNode), keeps:make(map[string]string), pendingInvitations: make(map[string]string), permissions: make(map[string]int) }
+}
+
+// abstractNode interface
+func (self *permaNode) PermaBlobRef() string {
+  return ""
 }
 
 // abstractNode interface
 func (self *permaNode) BlobRef() string {
   return self.blobref
+}
+
+// abstractNode interface
+func (self *permaNode) Signer() string {
+  return self.signer
 }
 
 func (self *permaNode) sequenceNumber() int {
@@ -207,6 +224,39 @@ func (self *permaNode) historyNodes(reverse bool) <-chan interface{} {
   return ch
 }
 
+func (self *permaNode) historySlice(startSeqNumber int, endSeqNumber int) <-chan interface{} {
+  ch := make(chan interface{})
+  f := func() {
+    for _, id := range self.appliedBlobs[startSeqNumber:endSeqNumber] {
+      n := self.members[id]
+      switch n.(type) {
+      case *mutationNode:
+	mut := n.(*mutationNode)
+	ch <- &Mutation{self.BlobRef(), self.Signer(), mut.BlobRef(), mut.Signer(), mut.operation}
+      case *keepNode:
+	keep := n.(*keepNode)
+	if keep.permissionBlobRef != "" {
+	  perm, err := self.grapher.permission(keep.permissionBlobRef)
+	  if err != nil {
+	    panic("Lost a permission")
+	  }
+	  ch <- &Keep{self.BlobRef(), self.Signer(), keep.BlobRef(), keep.Signer(), perm.BlobRef(), perm.Signer()}
+	} else {
+	  ch <- &Keep{self.BlobRef(), self.Signer(), keep.BlobRef(), keep.Signer(), "", ""}
+	}
+      case *permissionNode:
+	perm := n.(*permissionNode)
+	ch <- &Permission{self.BlobRef(), self.Signer(), perm.BlobRef(), perm.Signer(), perm.action, perm.User, perm.Allow, perm.Deny}
+      default:
+	panic("Unknown blob type")
+      }
+    }
+    close(ch)
+  }
+  go f()
+  return ch
+}
+
 // Implements the Builder interface
 func (self *permaNode) historyBlobRefs(reverse bool) <-chan string {
   ch := make(chan string)
@@ -232,7 +282,7 @@ func (self *permaNode) historyBlobRefs(reverse bool) <-chan string {
 
 // If deps is not empty, then the node could not be applied because it depends on
 // blobs that have not yet been applied.
-func (self *permaNode) apply(perma *permaNode, newnode otNode) (deps []string, rollback int, concurrent []string, err os.Error) {
+func (self *permaNode) apply(newnode otNode, transformer Transformer) (deps []string, err os.Error) {
   // The mutation has already been applied?
   if self.hasApplied(newnode.BlobRef()) {
     return
@@ -247,9 +297,25 @@ func (self *permaNode) apply(perma *permaNode, newnode otNode) (deps []string, r
     }
   }
   if unsatisfied {
-    return deps, 0, nil, nil
+    return deps, nil
   }
 
+  if perm, ok := newnode.(*permissionNode); ok {
+    err = self.applyPermission(perm)
+  } else if mut, ok := newnode.(*mutationNode); ok {
+    err = self.applyMutation(mut, transformer)
+  }
+
+  if err == nil {
+    self.appliedBlobs = append(self.appliedBlobs, newnode.BlobRef())
+    self.members[newnode.BlobRef()] = newnode
+    self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
+  }
+  
+  return nil, err
+}
+
+func (self *permaNode) applyPermission(newnode *permissionNode) (err os.Error) {
   // Find out how far back we have to go in history to find a common anchor point for transformation
   h := ot.NewHistoryGraph(self.frontier, newnode.Dependencies())
   reverse_permissions := []*permissionNode{}
@@ -267,75 +333,95 @@ func (self *permaNode) apply(perma *permaNode, newnode otNode) (deps []string, r
       if x, ok := history_node.(*permissionNode); ok {
 	reverse_permissions = append(reverse_permissions, x)
       }
-//      if _, ok := history_node.(*mutationNode); ok {
-	rollback++
-//      }
       if h.Test() {
 	break
       }
     }
   }
 
-  // PermissionNodes are handled by the permaNode directly via the code below.
-  // MutationNodes are passed on to the Transformer.
-  // KeepNodes and PermaNodes are handled directly by the Grapher since they need no
-  // transformation.
-  if _, ok := newnode.(*permissionNode); ok {
-    // Reverse the mutation history, such that oldest are first in the list.
-    // This is ugly but prepending in the above loops is too slow.
-    permissions := make([]*permissionNode, len(reverse_permissions))
-    for i := 0; i < len(permissions); i++ {
-      permissions[i] = reverse_permissions[len(reverse_permissions) - 1 - i]
-    }
+  // Reverse the mutation history, such that oldest are first in the list.
+  // This is ugly but prepending in the above loops is too slow.
+  permissions := make([]*permissionNode, len(reverse_permissions))
+  for i := 0; i < len(permissions); i++ {
+    permissions[i] = reverse_permissions[len(reverse_permissions) - 1 - i]
+  }
   
-    // Prune all mutations that have been applied locally but do not belong to the history of the new mutation
-    pnodes, e := prunePermissionSeq(permissions, prune)
-    if e != nil {
-      log.Printf("Prune Error: %v\n", e)
-      err = e
-      return
-    }
+  // Prune all mutations that have been applied locally but do not belong to the history of the new mutation
+  pnodes, e := prunePermissionSeq(permissions, prune)
+  if e != nil {
+    log.Printf("Prune Error: %v\n", e)
+    err = e
+    return
+  }
     
-    // Transform 'mut' to apply it locally
-    pnodes = append(pnodes, newnode.(*permissionNode))
-    println(len(pnodes))
-    for _, n := range permissions {
-      if n.BlobRef() != pnodes[0].BlobRef() && ok {
-	pnodes, _, err = transformPermissionSeq(pnodes, n)
-	if err != nil {
-	  log.Printf("TRANSFORM ERR: %v", err)
-	  return
-	}
-      } else {
-	pnodes = pnodes[1:]
+  // Transform 'newnode' to apply it locally
+  pnodes = append(pnodes, newnode)
+  println(len(pnodes))
+  for _, n := range permissions {
+    if n.BlobRef() != pnodes[0].BlobRef() {
+      pnodes, _, err = transformPermissionSeq(pnodes, n)
+      if err != nil {
+	log.Printf("TRANSFORM ERR: %v", err)
+	return
       }
-    }
-    newnode = pnodes[0]
-  }
-
-  self.appliedBlobs = append(self.appliedBlobs, newnode.BlobRef())
-  self.members[newnode.BlobRef()] = newnode
-  self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
-  
-  if perm, ok := newnode.(*permissionNode); ok {
-    bits, ok := perma.permissions[perm.permission.User]
-    if !ok {
-      bits = 0
-    }
-    bits, err = ot.ExecutePermission(bits, perm.permission)
-    if err == nil {
-      perma.permissions[perm.permission.User] = bits
+    } else {
+      pnodes = pnodes[1:]
     }
   }
-  
-  // Send information about rollbacks and prunes to the composer
-  for c, _ := range prune {
-    concurrent = append(concurrent, c)
+  *newnode = *pnodes[0]
+    
+  bits, ok := self.permissions[newnode.User]
+  if !ok {
+    bits = 0
   }
+  bits, err = ot.ExecutePermission(bits, newnode.Permission)
+  if err == nil {
+    self.permissions[newnode.User] = bits
+  }  
   return
 }
 
-func (self *permaNode) transform(perm *permissionNode, applyAtSeqNumber int) (tperm *permissionNode, err os.Error) {
+func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transformer) (err os.Error) {
+  if transformer == nil {
+    return
+  }
+
+  // Find out how far back we have to go in history to find a common anchor point for transformation
+  h := ot.NewHistoryGraph(self.frontier, newnode.Dependencies())
+  prune := map[string]bool{}
+  rollback := 0
+  // Need to rollback?
+  if !h.Test() {
+    // Go back in history until our history is equal to (or earlier than) that of 'mut'.
+    // On the way remember which mutations of our history do not belong to the
+    // history of 'mut' because these must be pruned.
+    for x := range self.historyNodes(true) {
+      history_node := x.(otNode)
+      if !h.SubstituteBlob(history_node.BlobRef(), history_node.Dependencies()) {
+	prune[history_node.BlobRef()] = true
+      }
+      rollback++
+      if h.Test() {
+	break
+      }
+    }
+  }
+
+  m := &Mutation{self.BlobRef(), self.Signer(), newnode.BlobRef(), newnode.Signer(), newnode.operation}
+  concurrent := []string{}
+  for c, _ := range prune {
+    concurrent = append(concurrent, c)
+  }
+  
+  err = transformer.TransformMutation(m, self.historySlice(self.sequenceNumber() - rollback, self.sequenceNumber()), concurrent)
+  if err != nil {
+    return err
+  }
+  newnode.operation = m.Operation
+  return
+}
+
+func (self *permaNode) transformLocalPermission(perm *permissionNode, applyAtSeqNumber int) (tperm *permissionNode, err os.Error) {
   var reverse_permissions []*permissionNode
   i := self.sequenceNumber()
   if i < applyAtSeqNumber {
@@ -387,7 +473,7 @@ func transformPermissionSeq(nodes []*permissionNode, node *permissionNode) (tnod
 func transformPermission(node1 *permissionNode, node2 *permissionNode) (tnode1, tnode2 *permissionNode, err os.Error) {
   p1 := *node1
   p2 := *node2
-  p1.permission, p2.permission, err = ot.TransformPermission(node1.permission, node2.permission)
+  p1.Permission, p2.Permission, err = ot.TransformPermission(node1.Permission, node2.Permission)
   tnode1 = &p1
   tnode2 = &p2
   return
@@ -398,7 +484,7 @@ func prunePermissionSeq(nodes []*permissionNode, prune map[string]bool) (result 
     // This mutation/permission is not to be pruned?
     if _, is_prune := prune[n.BlobRef()]; !is_prune {
       p := *n
-      p.permission, err = ot.PrunePermission(n.permission, prune)
+      p.Permission, err = ot.PrunePermission(n.Permission, prune)
       result = append(result, &p)
       if err != nil {
 	return

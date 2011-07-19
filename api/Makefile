@@ -1,7 +1,7 @@
 include $(GOROOT)/src/Make.inc
 
-TARG=lightwavetransformer
+TARG=lightwaveapi
 GOFILES=\
-	transformer.go
+	api.go
 
 include $(GOROOT)/src/Make.pkg

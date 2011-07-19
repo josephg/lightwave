@@ -3,9 +3,8 @@ package main
 import (
   . "curses"
   . "lightwaveot"
-  . "lightwavestore"
-  tf "lightwavetransformer"
   grapher "lightwavegrapher"
+  api "lightwaveapi"
   "os"
   "fmt"
   "strings"
@@ -14,9 +13,8 @@ import (
 
 type Editor struct {
   userID string
-  store BlobStore
   grapher *grapher.Grapher
-  api tf.UniAPI
+  api api.API
   text string
   tombs vec.IntVector
   // Required during mutations
@@ -33,34 +31,34 @@ type Editor struct {
   seqNumber int
 }
 
-func NewEditor(userid string, store BlobStore, grapher *grapher.Grapher, api tf.UniAPI) *Editor {
-  e := &Editor{userID: userid, store:store, grapher: grapher, api: api, Rows: *Rows, Columns: *Cols, invitations: make(map[string]string)}
+func NewEditor(userid string, grapher *grapher.Grapher, api api.API) *Editor {
+  e := &Editor{userID: userid, grapher: grapher, api: api, Rows: *Rows, Columns: *Cols, invitations: make(map[string]string)}
   api.SetApplication(e)
   return e
 }
 
 // Application interface
-func (self *Editor) Signal_ReceivedInvitation(permission *tf.Permission) {
+func (self *Editor) Signal_ReceivedInvitation(permission *grapher.Permission) {
   self.invitations[permission.PermaBlobRef] = permission.PermissionBlobRef
 }
 
 // Application interface
-func (self *Editor) Signal_AcceptedInvitation(Keep *tf.Keep) {
+func (self *Editor) Signal_AcceptedInvitation(Keep *grapher.Keep) {
 }
 
-func (self *Editor) Signal_ProcessedKeep(keep *tf.Keep) {
+func (self *Editor) Signal_ProcessedKeep(keep *grapher.Keep) {
   self.permaBlobs = append(self.permaBlobs, keep.PermaBlobRef)
 }
 
 // Application interface
 func (self *Editor) Blob(blob interface{}, seqNumber int) {
   switch blob.(type) {
-  case *tf.Keep:
+  case *grapher.Keep:
     // Do nothing yet
-  case *tf.Permission:
+  case *grapher.Permission:
     // Do nothing yet
-  case *tf.Mutation:
-    mut := blob.(*tf.Mutation)
+  case *grapher.Mutation:
+    mut := blob.(*grapher.Mutation)
     op, ok := mut.Operation.(Operation)
     if !ok {
       panic("Unknown operator kind")

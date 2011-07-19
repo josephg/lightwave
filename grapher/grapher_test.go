@@ -102,10 +102,10 @@ func TestPermanode3(t *testing.T) {
     t.Fatal("Did not find perma node")
   }
   if !perma.hasKeep("a@b") {
-    t.Fatal("Missing a keep")
+    t.Fatal("Missing a keep for a@b")
   }
   if !perma.hasKeep("foo@bar") {
-    t.Fatal("Missing a keep")
+    t.Fatal("Missing a keep for foo@bar")
   }
 
   allow := perma.hasPermission("a@b", Perm_Read)
