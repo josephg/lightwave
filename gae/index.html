@@ -1,0 +1,76 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+<script type="text/javascript" src="/_ah/channel/jsapi"></script>
+<title>Lightwave Testing</title>
+</head>
+
+<body>
+<h1>Hello {{userid}}</h1>
+
+<div>
+  <textarea id="t1" style="width:100%">{"type":"permanode", "signer":"a@alice", "random":"perma1abc"}</textarea><br>
+  <input type="submit" value="Send" onclick="send1()">
+</div>
+<br>
+<div>
+  <textarea id="t2" style="width:100%">{"type":"keep", "signer":"a@alice", "perma":"a6491e0c813d7131694bb0504132ed99e901121b2e03fbe3580f1cce271d31ac"}</textarea><br>
+  <input type="submit" value="Send" onclick="send2()">
+</div>
+<br>
+<div>
+  <textarea id="t3" style="width:100%">{"type":"mutation", "signer":"a@alice", "perma":"a6491e0c813d7131694bb0504132ed99e901121b2e03fbe3580f1cce271d31ac", "dep":["88dadb53a6a1941c50bc215547b0f5fd82bddb9e5d3d2873f8d2b1b599ada500"], "op":{"$t":["Hello World"]}}</textarea><br>
+  <input type="submit" value="Send" onclick="send3()">
+</div>
+
+<h1>Result</h1>
+<div id="out"></div>
+
+<div>Logout <a href="{{logout}}">here</a>
+<hr>
+<address></address>
+<!-- hhmts start --> Last modified: Thu Jul 21 14:06:01 CEST 2011 <!-- hhmts end -->
+
+<script type="text/javascript">
+function send1() {
+  post("/private/submit", document.getElementById("t1").value)
+}
+
+function send2() {
+  post("/private/submit", document.getElementById("t2").value)
+}
+
+function send3() {
+  post("/private/submit", document.getElementById("t3").value)
+}
+
+function post(url, data) {
+  var xmlHttp = null;
+  try {
+    // Mozilla, Opera, Safari sowie Internet Explorer (ab v7)
+    xmlHttp = new XMLHttpRequest();
+  } catch(e) {
+    try {
+        // MS Internet Explorer (ab v6)
+        xmlHttp  = new ActiveXObject("Microsoft.XMLHTTP");
+    } catch(e) {
+        try {
+            // MS Internet Explorer (ab v5)
+            xmlHttp  = new ActiveXObject("Msxml2.XMLHTTP");
+        } catch(e) {
+            xmlHttp  = null;
+        }
+    }
+  }
+  if (xmlHttp) {
+    xmlHttp.open('POST', url, true);
+    xmlHttp.onreadystatechange = function () {
+        if (xmlHttp.readyState == 4) {
+           document.getElementById("out").innerText = xmlHttp.responseText
+//            alert(xmlHttp.responseText);
+        }
+    };
+    xmlHttp.send(data);
+  }
+}
+</script>
+</body> </html>

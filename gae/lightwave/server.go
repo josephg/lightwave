@@ -1,12 +1,18 @@
 package lightwave
 
 import (
+  "log"
   "fmt"
   "os"
+  "io/ioutil"
   "appengine"
   "appengine/datastore"
-//  "appengine/user"
+//  "appengine/channel"
+  "appengine/user"
   "http"
+  "bytes"
+  "template"
+  "strconv"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
 )
@@ -26,15 +32,99 @@ type GraphNode struct {
   Arr []string
 }
 
+var (
+  frontPageTmpl    *template.Template
+  frontPageTmplErr os.Error
+)
+
 func init() {
-  http.HandleFunc("/", handle)
+  frontPageTmpl = template.New(nil)
+  frontPageTmpl.SetDelims("{{", "}}")
+  if err := frontPageTmpl.ParseFile("index.html"); err != nil {
+    frontPageTmplErr = fmt.Errorf("tmpl.ParseFile failed: %v", err)
+    return
+  }
+
+  http.HandleFunc("/", handleFrontPage)
+  http.HandleFunc("/private/submit", handleSubmit)
+  
+  // HACK
   http.HandleFunc("/write", handleWriteGraph)
   http.HandleFunc("/write2", handleWriteNode)
   http.HandleFunc("/blob", handleBlob)
+  // END HACK
+  
+  // http.HandleFunc("/channelreq", handleChannelReq)
+  http.HandleFunc("/_ah/channel/connected/", handleConnect)
+  http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
 }
 
-func handle(w http.ResponseWriter, r *http.Request) {
-  fmt.Fprint(w, "<html><body>Hello LightWave demo</body></html>")
+func handleFrontPage(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    url, _ := user.LoginURL(c, "/")
+    fmt.Fprintf(w, `<a href="%s">Sign in or register</a>`, url)
+    return
+  }
+  url, _ := user.LogoutURL(c, "/")
+  //    fmt.Fprintf(w, `Welcome, %s! (<a href="%s">sign out</a>)`, u, url)
+
+  if frontPageTmplErr != nil {
+    w.WriteHeader(http.StatusInternalServerError) // 500
+    fmt.Fprintf(w, "Page template is bad: %v", frontPageTmplErr)
+    return
+  }
+
+  b := new(bytes.Buffer)
+  data := map[string]interface{}{ "userid":  u.String(), "logout": url }
+  if err := frontPageTmpl.Execute(b, data); err != nil {
+    w.WriteHeader(http.StatusInternalServerError) // 500
+    fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
+    return
+  }
+
+  w.Header().Set("Content-Length", strconv.Itoa(b.Len()))
+  b.WriteTo(w)
+}
+
+/*
+func handleChannelReq(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  tok, err := channel.Create(c, "player1")
+  if err != nil {
+    http.Error(w, "Couldn't create Channel", http.StatusInternalServerError)
+    c.Errorf("channel.Create: %v", err)
+    return
+  }
+  fmt.Fprintf(w, `{"token":"%v"}`, tok)
+}
+*/
+
+func handleConnect(w http.ResponseWriter, r *http.Request) {
+  log.Printf("CONNECT")
+}
+
+func handleDisconnect(w http.ResponseWriter, r *http.Request) {
+  log.Printf("DISCONNECT")
+}
+
+func handleSubmit(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  s := newStore(c)
+  g := grapher.NewGrapher("a@b", s, s, nil)
+  s.SetGrapher(g)
+  tf.NewTransformer(g)
+
+  blob, err := ioutil.ReadAll(r.Body)
+  if err != nil {
+    http.Error(w, "Error reading request body", http.StatusInternalServerError)
+    return
+  }
+  r.Body.Close()
+  blobref, _ := s.StoreBlob(blob, "")
+    
+  fmt.Fprint(w, blobref)
 }
 
 func handleBlob(w http.ResponseWriter, r *http.Request) {

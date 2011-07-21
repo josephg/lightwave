@@ -13,6 +13,14 @@ type blobStruct struct {
   data []byte
 }
 
+type pendingStruct struct {
+  WaitingForCount int64
+}
+
+type missingStruct struct {
+  Pending []string
+}
+
 type store struct {
   c appengine.Context
   grapher *grapher.Grapher
@@ -155,11 +163,60 @@ func (self *store) GetOTNodesDescending(perma_blobref string) (ch <-chan map[str
   return channel, nil
 }
 
-func (self *store) Enqueue(perma_blobref string, blobref string, dependencies []string) os.Error {
+func (self *store) Enqueue(perma_blobref string, blobref string, dependencies []string) (err os.Error) {
+  parent := datastore.NewKey("perma", perma_blobref, 0, nil)
+  key := datastore.NewKey("pending", blobref, 0, parent)
+  p := pendingStruct{int64(len(dependencies))}
+  // Store it
+  _, err = datastore.Put(self.c, key, &p)
+  if err != nil {
+    return
+  }
+  for _, dep := range dependencies {
+    key := datastore.NewKey("missing", dep, 0, parent)
+    var m missingStruct
+    if err = datastore.Get(self.c, key, &m); err != nil {
+      if err != datastore.ErrNoSuchEntity {
+	return
+      }
+    }
+    m.Pending = append(m.Pending, blobref)
+    // Store it
+    _, err = datastore.Put(self.c, key, &m)
+    if err != nil {
+      return err
+    }
+  }
   return nil
 }
 
 func (self *store) Dequeue(perma_blobref string, blobref string) (blobrefs []string, err os.Error) {
+  parent := datastore.NewKey("perma", perma_blobref, 0, nil)
+  key := datastore.NewKey("missing", blobref, 0, parent)
+  var m missingStruct
+  if err = datastore.Get(self.c, key, &m); err != nil {
+    if err == datastore.ErrNoSuchEntity {
+      return nil, nil
+    }
+  }
+  err = datastore.Delete(self.c, key)
+  if err != nil {
+    return
+  }
+  for _, dep := range m.Pending {
+    key := datastore.NewKey("pending", dep, 0, parent)
+    var p pendingStruct
+    if err = datastore.Get(self.c, key, &m); err != nil {
+      if err != datastore.ErrNoSuchEntity {
+	continue
+      }
+    }
+    p.WaitingForCount--
+    if p.WaitingForCount == 0 {
+      blobrefs = append(blobrefs, dep)
+      datastore.Delete(self.c, key)
+    }
+  }
   return
 }
 
