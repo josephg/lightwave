@@ -4,6 +4,7 @@ TARG=lightwavegrapher
 GOFILES=\
 	grapher.go \
 	magic.go \
-	graph.go
+	graph.go \
+	simplestore.go
 
 include $(GOROOT)/src/Make.pkg

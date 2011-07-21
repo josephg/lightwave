@@ -14,14 +14,33 @@ func NewBlobRef(blob []byte) string {
   return string(hex.EncodeToString(h.Sum()))
 }
 
+type blobStruct struct {
+  data []byte
+  ref string
+}
+
 type SimpleBlobStore struct {
   listeners []BlobStoreListener
   blobs map[string][]byte
   hashTree *SimpleHashTree
+  channel chan blobStruct
 }
 
 func NewSimpleBlobStore() *SimpleBlobStore {
   s := &SimpleBlobStore{blobs:make(map[string][]byte), hashTree: NewSimpleHashTree()}
+  
+  s.channel = make(chan blobStruct, 1000)
+  f := func() {
+    for {
+      var b blobStruct
+      b = <-s.channel
+      for _, l := range s.listeners {
+	l.HandleBlob(b.data, b.ref)
+      }    
+    }
+  }
+  go f()
+  
   return s
 }
 
@@ -29,7 +48,7 @@ func (self *SimpleBlobStore) Enumerate() (result map[string][]byte) {
   return self.blobs
 }
 
-func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) {
+func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) (finalBlobRef string, err os.Error) {
   // Empty blob reference?
   if len(blobref) == 0 {
     blobref = NewBlobRef(blob)
@@ -37,14 +56,16 @@ func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) {
   // The blob is already known?
   if _, ok := self.blobs[blobref]; ok {
     log.Printf("Blob is already known\n")
-    return
+    return blobref, nil
   }
   self.hashTree.Add(blobref)
   // Store the blob and allow for its further processing
   self.blobs[blobref] = blob
-  for _, l := range self.listeners {
-    l.HandleBlob(blob, blobref)
-  }
+//  for _, l := range self.listeners {
+//    l.HandleBlob(blob, blobref)
+//  }
+  self.channel <- blobStruct{blob, blobref}
+  return blobref, nil
 }
 
 func (self *SimpleBlobStore) HashTree() HashTree {

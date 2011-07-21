@@ -12,35 +12,35 @@ import (
   "strings"
 )
 
-type dummyApi struct {
+type dummyAPI struct {
   userID string
   grapher *grapher.Grapher
   t *testing.T
 }
 
-func (self *dummyApi) Signal_ReceivedInvitation(permission *grapher.Permission) {
+func (self *dummyAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
   log.Printf("APP %v: Received Invitation", self.userID)
   // Automatically accept the invitation
-  _, err := self.grapher.CreateKeepBlob(permission.PermaBlobRef, permission.PermissionBlobRef)
+  _, err := self.grapher.CreateKeepBlob(perma.BlobRef(), permission.BlobRef())
   if err != nil {
     self.t.Fatal(err.String())
   }
 }
 
-func (self *dummyApi) Signal_AcceptedInvitation(keep *grapher.Keep) {
+func (self *dummyAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, perm grapher.PermissionNode, keep grapher.KeepNode) {
   log.Printf("APP %v: Accepted Invitation", self.userID)
 }
 
-func (self *dummyApi) Blob_Keep(keep *grapher.Keep, seqNumber int) {
+func (self *dummyAPI) Blob_Keep(perma grapher.PermaNode, perm grapher.PermissionNode, keep grapher.KeepNode) {
   log.Printf("APP %v: Keep", self.userID)
 }
 
-func (self *dummyApi) Blob_Mutation(mutation *grapher.Mutation, seqNumber int) {
-  log.Printf("APP %v: Mutation", self.userID)
+func (self *dummyAPI) Blob_Permission(perma grapher.PermaNode, perm grapher.PermissionNode) {
+  log.Printf("APP %v: Permission", self.userID)
 }
 
-func (self *dummyApi) Blob_Permission(permission *grapher.Permission, seqNumber int) {
-  log.Printf("APP %v: Permission", self.userID)
+func (self *dummyAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
+  log.Printf("APP %v: Mutation", self.userID)
 }
 
 type dummyNameService struct {
@@ -78,21 +78,29 @@ func TestFederation(t *testing.T) {
   store2 := NewSimpleBlobStore()
   store3 := NewSimpleBlobStore()
   store4 := NewSimpleBlobStore()
+  sg1 := grapher.NewSimpleGraphStore()
+  sg2 := grapher.NewSimpleGraphStore()
+  sg3 := grapher.NewSimpleGraphStore()
+  sg4 := grapher.NewSimpleGraphStore()
   fed1 := NewFederation("a@alice", "alice", 8181, http.DefaultServeMux, ns, store1)
   fed2 := NewFederation("b@bob", "bob", 8181, http.DefaultServeMux, ns, store2)
   fed3 := NewFederation("c@charly", "charly", 8181, http.DefaultServeMux, ns, store3)
   fed4 := NewFederation("d@daisy", "daisy", 8181, http.DefaultServeMux, ns, store4)
-  grapher1 := grapher.NewGrapher("a@alice", store1, fed1)
-  grapher2 := grapher.NewGrapher("b@bob", store2, fed2)
-  grapher3 := grapher.NewGrapher("c@charly", store3, fed3)
-  grapher4 := grapher.NewGrapher("d@daisy", store4, fed4)
-  app1 := &dummyApi{"a@alice", grapher1, t}
+  grapher1 := grapher.NewGrapher("a@alice", store1, sg1, fed1)
+  grapher2 := grapher.NewGrapher("b@bob", store2, sg2, fed2)
+  grapher3 := grapher.NewGrapher("c@charly", store3, sg3, fed3)
+  grapher4 := grapher.NewGrapher("d@daisy", store4, sg4, fed4)
+  store1.AddListener(grapher1)
+  store2.AddListener(grapher2)
+  store3.AddListener(grapher3)
+  store4.AddListener(grapher4)
+  app1 := &dummyAPI{"a@alice", grapher1, t}
   grapher1.SetAPI(app1)
-  app2 := &dummyApi{"b@bob", grapher2, t}
+  app2 := &dummyAPI{"b@bob", grapher2, t}
   grapher2.SetAPI(app2)
-  app3 := &dummyApi{"c@charly", grapher3, t}
+  app3 := &dummyAPI{"c@charly", grapher3, t}
   grapher3.SetAPI(app3)
-  app4 := &dummyApi{"d@daisy", grapher4, t}
+  app4 := &dummyAPI{"d@daisy", grapher4, t}
   grapher4.SetAPI(app4)
   go listen(t)
   

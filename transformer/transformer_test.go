@@ -6,6 +6,7 @@ import (
   grapher "lightwavegrapher"
   "testing"
   "log"
+  "time"
 )
 
 type dummyAPI struct {
@@ -13,32 +14,32 @@ type dummyAPI struct {
   text *ot.SimpleText
 }
 
-func (self *dummyAPI) Signal_ReceivedInvitation(permission *grapher.Permission) {
+func (self *dummyAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
 }
 
-func (self *dummyAPI) Signal_AcceptedInvitation(keep *grapher.Keep) {
+func (self *dummyAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, perm grapher.PermissionNode, keep grapher.KeepNode) {
 }
 
-func (self *dummyAPI) Blob_Keep(blob *grapher.Keep, seqNumber int) {
+func (self *dummyAPI) Blob_Keep(perma grapher.PermaNode, perm grapher.PermissionNode, keep grapher.KeepNode) {
 }
 
-func (self *dummyAPI) Blob_Permission(blob *grapher.Permission, seqNumber int) {
+func (self *dummyAPI) Blob_Permission(perma grapher.PermaNode, perm grapher.PermissionNode) {
 }
 
-func (self *dummyAPI) Blob_Mutation(mutation *grapher.Mutation, seqNumber int) {
-  log.Printf("Executing %v\n", mutation.Operation)
+func (self *dummyAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
   var op ot.Operation
-  switch mutation.Operation.(type) {
+  switch mutation.Operation().(type) {
   case ot.Operation:
-    op = mutation.Operation.(ot.Operation)
+    op = mutation.Operation().(ot.Operation)
   case []byte:
-    err := op.UnmarshalJSON(mutation.Operation.([]byte))
+    err := op.UnmarshalJSON(mutation.Operation().([]byte))
     if err != nil {
       self.t.Fatal(err.String())
     }
   default:
     self.t.Fatal("Unknown OT operation")
   }
+  log.Printf("Executing %v\n", op)
   result, err := ot.ExecuteOperation(self.text, op)
   if err != nil {
     self.t.Fatal(err.String())
@@ -53,7 +54,9 @@ func (self *dummyAPI) Blob_Mutation(mutation *grapher.Mutation, seqNumber int) {
 
 func TestTransformer(t *testing.T) {
   s := store.NewSimpleBlobStore()
-  grapher := grapher.NewGrapher("a@b", s, nil)
+  sg := grapher.NewSimpleGraphStore()
+  grapher := grapher.NewGrapher("a@b", s, sg, nil)
+  s.AddListener(grapher)
   NewTransformer(grapher)
   api := &dummyAPI{t: t, text: ot.NewSimpleText("")}
   grapher.SetAPI(api)
@@ -75,6 +78,8 @@ func TestTransformer(t *testing.T) {
   s.StoreBlob(blob3, blobref3)  
   s.StoreBlob(blob4, blobref4)  
   
+  time.Sleep(1000000000 * 2)
+
   if api.text.String() != "Hello World??Olla!!" {
     t.Fatal("Wrong resulting text:" + api.text.String())
   }

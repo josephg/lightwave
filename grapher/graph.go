@@ -4,23 +4,35 @@ import (
   ot "lightwaveot"
   "log"
   "os"
+  "json"
 )
 
 // -----------------------------------------------------
 // The tree structure that the grapher is building up
 
+const (
+  OTNode_Keep = 1 + iota
+  OTNode_Permission
+  OTNode_Mutation
+  OTNode_Perma
+)
+
 // All nodes must implement this interface
-type abstractNode interface {
+type AbstractNode interface {
   BlobRef() string
   Signer() string
   PermaBlobRef() string
+  ToMap() map[string]interface{}
+  FromMap(perma_blobref string, data map[string]interface{})
 //  Timestamp() int64
 }
 
 // All nodes participating in Operational Transformation must implement this interface
-type otNode interface {
-  abstractNode
+type OTNode interface {
+  AbstractNode
   Dependencies() []string
+  SetSequenceNumber(seq int64)
+  SequenceNumber() int64
 }
 
 const (
@@ -29,12 +41,16 @@ const (
   PermAction_Change
 )
 
+type PermissionNode interface {
+  OTNode
+}
+
 type permissionNode struct {
   ot.Permission
   permaBlobRef string
-  permissionBlobRef string
   permissionSigner string
   action int
+  seqNumber int64
 }
 
 func (self *permissionNode) BlobRef() string {
@@ -53,6 +69,67 @@ func (self *permissionNode) Dependencies() []string {
   return self.Deps
 }
 
+func (self *permissionNode) SetSequenceNumber(seq int64) {
+  self.seqNumber = seq
+}
+
+func (self *permissionNode) SequenceNumber() int64 {
+  return self.seqNumber
+}
+
+func (self *permissionNode) ToMap() map[string]interface{} {
+  m := make(map[string]interface{})
+  m["k"] = int64(OTNode_Permission)
+  m["b"] = self.ID
+  m["s"] = self.permissionSigner
+  m["ac"] = self.action
+  m["u"] = self.User
+  m["a"] = int64(self.Allow)
+  m["d"] = int64(self.Deny)
+  m["oa"] = int64(self.OriginalAllow)
+  m["od"] = int64(self.OriginalDeny)
+  ha := make([]int64, len(self.History))
+  hd := make([]int64, len(self.History))
+  hid := make([]string, len(self.History))
+  for i, h := range self.History {
+    ha[i] = int64(h.Allow)
+    hd[i] = int64(h.Deny)
+    hid[i] = h.ID
+  }
+  m["ha"] = ha
+  m["hd"] = hd
+  m["hid"] = hid
+  m["dep"] = self.Deps
+  m["seq"] = self.seqNumber
+  return m
+}
+
+func (self *permissionNode) FromMap(permaBlobRef string, m map[string]interface{}) {
+  self.permaBlobRef = permaBlobRef
+  self.ID = m["b"].(string)
+  self.permissionSigner = m["s"].(string)
+  self.action = m["ac"].(int)
+  self.User = m["u"].(string)
+  self.Allow = int(m["a"].(int64))
+  self.Deny = int(m["d"].(int64))
+  self.OriginalAllow = int(m["oa"].(int64))
+  self.OriginalDeny = int(m["od"].(int64))
+  ha := m["ha"].([]int64)
+  hd := m["hd"].([]int64)
+  hid := m["hid"].([]string)
+  for i := 0; i < len(ha); i++ {
+    self.History = append(self.History, ot.PermissionHistory{ID: hid[i], Allow: int(ha[i]), Deny: int(hd[i])})
+  }
+  self.Deps = m["dep"].([]string)
+  self.seqNumber = m["seq"].(int64)
+}
+
+type MutationNode interface {
+  OTNode
+  Operation() interface{}
+  SetOperation(op interface{})
+}
+
 type mutationNode struct {
   permaBlobRef string
   mutationBlobRef string
@@ -60,6 +137,7 @@ type mutationNode struct {
   // This is either []byte or an already decoded operation, for example ot.Operation.
   operation interface{}
   dependencies []string
+  seqNumber int64
 }
 
 func (self *mutationNode) BlobRef() string {
@@ -78,12 +156,64 @@ func (self *mutationNode) Dependencies() []string {
   return self.dependencies
 }
 
+func (self *mutationNode) Operation() interface{} {
+  return self.operation
+}
+
+func (self *mutationNode) SetOperation(op interface{}) {
+  self.operation = op
+}
+
+func (self *mutationNode) SetSequenceNumber(seq int64) {
+  self.seqNumber = seq
+}
+
+func (self *mutationNode) SequenceNumber() int64 {
+  return self.seqNumber
+}
+
+func (self *mutationNode) ToMap() map[string]interface{} {
+  m := make(map[string]interface{})
+  m["k"] = int64(OTNode_Mutation)
+  m["b"] = self.mutationBlobRef
+  m["s"] = self.mutationSigner
+  switch self.operation.(type) {
+  case []byte:
+    m["op"] = self.operation.([]byte)
+  case json.Marshaler:
+    bytes, e := self.operation.(json.Marshaler).MarshalJSON()
+    if e != nil {
+      panic("Failed marshaling")
+    }
+    m["op"] = bytes
+  default:
+    panic("Cannot serialize")
+  }
+  m["dep"] = self.dependencies
+  m["seq"] = self.seqNumber
+  return m
+}
+
+func (self *mutationNode) FromMap(permaBlobRef string, m map[string]interface{}) {
+  self.permaBlobRef = permaBlobRef
+  self.mutationBlobRef = m["b"].(string)
+  self.mutationSigner = m["s"].(string)
+  self.operation = m["op"].([]byte)
+  self.dependencies = m["dep"].([]string)
+  self.seqNumber = m["seq"].(int64)
+}
+
+type KeepNode interface {
+  OTNode
+}
+
 type keepNode struct {
   permaBlobRef string
   keepBlobRef string
   keepSigner string
   permissionBlobRef string
   dependencies []string
+  seqNumber int64
 }
 
 func (self *keepNode) BlobRef() string {
@@ -102,36 +232,91 @@ func (self *keepNode) Dependencies() []string {
   return self.dependencies
 }
 
+func (self *keepNode) SetSequenceNumber(seq int64) {
+  self.seqNumber = seq
+}
+
+func (self *keepNode) SequenceNumber() int64 {
+  return self.seqNumber
+}
+
+func (self *keepNode) ToMap() map[string]interface{} {
+  m := make(map[string]interface{})
+  m["k"] = int64(OTNode_Keep)
+  m["b"] = self.keepBlobRef
+  m["s"] = self.keepSigner
+  if self.permissionBlobRef != "" {
+    m["p"] = self.permissionBlobRef
+  }
+  m["dep"] = self.dependencies
+  m["seq"] = self.seqNumber
+  return m
+}
+
+func (self *keepNode) FromMap(permaBlobRef string, m map[string]interface{}) {
+  self.permaBlobRef = permaBlobRef
+  self.keepBlobRef = m["b"].(string)
+  self.keepSigner = m["s"].(string)
+  if p, ok := m["p"]; ok {
+    self.permissionBlobRef = p.(string)
+  }
+  self.dependencies = m["dep"].([]string)
+  self.seqNumber = m["seq"].(int64)
+}
+
 // -----------------------------------------------------------------
 // permaNode
+
+type PermaNode interface {
+  AbstractNode
+}
 
 type permaNode struct {
   grapher *Grapher
   signer string
   // The blobref of this node
   blobref string
-  // The keys are userids. The values are blobrefs of the keep-blob.
-  // This map contains keeps of foreign users.
-  // The keep of the local user is not stored here.
-  keeps map[string]string
-  // The keys are userids. The values are blobrefs of the keep-blob.
-  pendingInvitations map[string]string
   // The permission bits for all users
   permissions map[string]int
-  // An ordered list of applied blob references.
-  // The most recent blob is at the end of the list.
-  // These blobs may have been transformed before they have been applied  
-  // TODO: This is a LARGE data structure. Do not keep it in memory ...
-  appliedBlobs []string
-  // The applied (and transformed) mutations
-  // TODO: This is a LARGE data structure. Do not keep it in memory ...
-  members map[string]otNode
   // The current frontier
   frontier ot.Frontier
+  seqNumber int64
 }
 
 func newPermaNode(grapher *Grapher) *permaNode {
-  return &permaNode{grapher: grapher, frontier: make(ot.Frontier), members: make(map[string]otNode), keeps:make(map[string]string), pendingInvitations: make(map[string]string), permissions: make(map[string]int) }
+  return &permaNode{grapher: grapher, frontier: make(ot.Frontier), permissions: make(map[string]int) }
+}
+
+func (self *permaNode) ToMap() map[string]interface{} {
+  m := make(map[string]interface{})
+  m["k"] = int64(OTNode_Perma)
+  m["b"] = self.blobref
+  m["s"] = self.signer
+  m["f"] = self.frontier.IDs()
+  m["n"] = self.seqNumber
+  p2 := []int64{}
+  p1 := []string{}
+  for user, perm := range self.permissions {
+    p1 = append(p1, user)
+    p2 = append(p2, int64(perm))
+  }
+  m["p1"] = p1
+  m["p2"] = p2
+  return m
+}
+
+func (self *permaNode) FromMap(permaBlobRef string, m map[string]interface{}) {
+  self.blobref = m["b"].(string)
+  self.signer = m["s"].(string)
+  self.seqNumber = m["n"].(int64)
+  if f, ok := m["f"]; ok {
+    self.frontier.FromIDs(f.([]string))
+  }
+  p1 := m["p1"].([]string)
+  p2 := m["p2"].([]int64)
+  for i := 0; i < len(p1); i++ {
+    self.permissions[p1[i]] = int(p2[i])
+  }
 }
 
 // abstractNode interface
@@ -149,18 +334,17 @@ func (self *permaNode) Signer() string {
   return self.signer
 }
 
-func (self *permaNode) sequenceNumber() int {
-  return len(self.appliedBlobs)
+func (self *permaNode) sequenceNumber() int64 {
+  return self.seqNumber
 }
 
 func (self *permaNode) followersWithPermission(bits int) (users []string) {
-  for userid, _ := range self.keeps {
-    if self.members != nil && bits != 0 { // Need to check for special permission bits?
+  for userid, allowed := range self.permissions {
+    if allowed & Perm_Keep != Perm_Keep {
+      continue
+    }
+    if bits != 0 { // Need to check for special permission bits?
       if self.signer != userid { // The user is not the owner. Then he needs special permissions
-	allowed, ok := self.permissions[userid]
-	if !ok {
-	  continue
-	}
 	if allowed & bits != bits {
 	  continue
 	}
@@ -172,15 +356,26 @@ func (self *permaNode) followersWithPermission(bits int) (users []string) {
 }
 
 func (self *permaNode) followers() (users []string) {
-  for userid, _ := range self.keeps {
+  for userid, allowed := range self.permissions {
+    if allowed & Perm_Keep != Perm_Keep {
+      continue
+    }
     users = append(users, userid)
   }
   return
 }
 
 func (self *permaNode) hasKeep(userid string) bool {
-  _, ok := self.keeps[userid]
-  return ok
+  return self.hasPermission(userid, Perm_Keep)
+}
+
+func (self *permaNode) addKeep(userid string) {
+  if self.Signer() == userid {
+    return
+  }
+  bits, _ := self.permissions[userid]
+  bits |= Perm_Keep
+  self.permissions[userid] = bits
 }
 
 func (self *permaNode) hasPermission(userid string, mask int) (ok bool) {
@@ -194,123 +389,27 @@ func (self *permaNode) hasPermission(userid string, mask int) (ok bool) {
   return bits & mask == mask
 }
 
-func (self *permaNode) hasApplied(blobref string) bool {
-  if _, ok := self.members[blobref]; ok {
-    return true
-  }
-  return false
-}
-
-// Implements the Builder interface
-func (self *permaNode) historyNodes(reverse bool) <-chan interface{} {
-  ch := make(chan interface{})
-  if reverse {
-    f := func() {
-      for i := len(self.appliedBlobs) - 1; i >= 0; i-- {
-	ch <- self.members[self.appliedBlobs[i]]
-      }
-      close(ch)
-    }
-    go f()
-    return ch
-  }
-  f := func() {
-    for _, id := range self.appliedBlobs {
-      ch <- self.members[id]
-    }
-    close(ch)
-  }
-  go f()
-  return ch
-}
-
-func (self *permaNode) historySlice(startSeqNumber int, endSeqNumber int) <-chan interface{} {
-  ch := make(chan interface{})
-  f := func() {
-    for _, id := range self.appliedBlobs[startSeqNumber:endSeqNumber] {
-      n := self.members[id]
-      switch n.(type) {
-      case *mutationNode:
-	mut := n.(*mutationNode)
-	ch <- &Mutation{self.BlobRef(), self.Signer(), mut.BlobRef(), mut.Signer(), mut.operation}
-      case *keepNode:
-	keep := n.(*keepNode)
-	if keep.permissionBlobRef != "" {
-	  perm, err := self.grapher.permission(keep.permissionBlobRef)
-	  if err != nil {
-	    panic("Lost a permission")
-	  }
-	  ch <- &Keep{self.BlobRef(), self.Signer(), keep.BlobRef(), keep.Signer(), perm.BlobRef(), perm.Signer()}
-	} else {
-	  ch <- &Keep{self.BlobRef(), self.Signer(), keep.BlobRef(), keep.Signer(), "", ""}
-	}
-      case *permissionNode:
-	perm := n.(*permissionNode)
-	ch <- &Permission{self.BlobRef(), self.Signer(), perm.BlobRef(), perm.Signer(), perm.action, perm.User, perm.Allow, perm.Deny}
-      default:
-	panic("Unknown blob type")
-      }
-    }
-    close(ch)
-  }
-  go f()
-  return ch
-}
-
-// Implements the Builder interface
-func (self *permaNode) historyBlobRefs(reverse bool) <-chan string {
-  ch := make(chan string)
-  if reverse {
-    f := func() {
-      for i := len(self.appliedBlobs) - 1; i >= 0; i-- {
-	ch <- self.appliedBlobs[i]
-      }
-      close(ch)
-    }
-    go f()
-    return ch
-  }
-  f := func() {
-    for _, id := range self.appliedBlobs {
-      ch <- id
-    }
-    close(ch)
-  }
-  go f()
-  return ch
-}
-
 // If deps is not empty, then the node could not be applied because it depends on
 // blobs that have not yet been applied.
-func (self *permaNode) apply(newnode otNode, transformer Transformer) (deps []string, err os.Error) {
-  // The mutation has already been applied?
-  if self.hasApplied(newnode.BlobRef()) {
-    return
+func (self *permaNode) apply(newnode OTNode, transformer Transformer) (deps []string, err os.Error) {
+  deps, err = self.grapher.gstore.HasOTNodes(self.BlobRef(), []string{newnode.BlobRef()})
+  if len(deps) == 0 {
+    log.Printf("ALREADY APPLIED")
+    return nil, os.NewError("OTNode has already been applied")
   }
-  // Are all dependencies satisfied, i.e. are all mutations
-  // on which mut depends already processed by the builder?
-  unsatisfied := false
-  for _, dep := range newnode.Dependencies() {
-    if !self.hasApplied(dep) {
-      unsatisfied = true
-      deps = append(deps, dep)
-    }
-  }
-  if unsatisfied {
+  deps, err = self.grapher.gstore.HasOTNodes(self.BlobRef(), newnode.Dependencies())
+  if len(deps) > 0 {
     return deps, nil
   }
-
   if perm, ok := newnode.(*permissionNode); ok {
     err = self.applyPermission(perm)
   } else if mut, ok := newnode.(*mutationNode); ok {
     err = self.applyMutation(mut, transformer)
   }
 
-  if err == nil {
-    self.appliedBlobs = append(self.appliedBlobs, newnode.BlobRef())
-    self.members[newnode.BlobRef()] = newnode
-    self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
-  }
+  self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
+  newnode.SetSequenceNumber(self.seqNumber)
+  self.seqNumber++
   
   return nil, err
 }
@@ -325,8 +424,11 @@ func (self *permaNode) applyPermission(newnode *permissionNode) (err os.Error) {
     // Go back in history until our history is equal to (or earlier than) that of 'mut'.
     // On the way remember which mutations of our history do not belong to the
     // history of 'mut' because these must be pruned.
-    for x := range self.historyNodes(true) {
-      history_node := x.(otNode)
+    ch, err := self.grapher.getOTNodesDescending(self.BlobRef())
+    if err != nil {
+      return err
+    }
+    for history_node := range ch {
       if !h.SubstituteBlob(history_node.BlobRef(), history_node.Dependencies()) {
 	prune[history_node.BlobRef()] = true
       }
@@ -356,7 +458,6 @@ func (self *permaNode) applyPermission(newnode *permissionNode) (err os.Error) {
     
   // Transform 'newnode' to apply it locally
   pnodes = append(pnodes, newnode)
-  println(len(pnodes))
   for _, n := range permissions {
     if n.BlobRef() != pnodes[0].BlobRef() {
       pnodes, _, err = transformPermissionSeq(pnodes, n)
@@ -385,18 +486,20 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
   if transformer == nil {
     return
   }
-
   // Find out how far back we have to go in history to find a common anchor point for transformation
   h := ot.NewHistoryGraph(self.frontier, newnode.Dependencies())
   prune := map[string]bool{}
-  rollback := 0
+  rollback := int64(0)
   // Need to rollback?
   if !h.Test() {
     // Go back in history until our history is equal to (or earlier than) that of 'mut'.
     // On the way remember which mutations of our history do not belong to the
     // history of 'mut' because these must be pruned.
-    for x := range self.historyNodes(true) {
-      history_node := x.(otNode)
+    ch, err := self.grapher.getOTNodesDescending(self.BlobRef())
+    if err != nil {
+      return err
+    }
+    for history_node := range ch {
       if !h.SubstituteBlob(history_node.BlobRef(), history_node.Dependencies()) {
 	prune[history_node.BlobRef()] = true
       }
@@ -407,31 +510,35 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
     }
   }
 
-  m := &Mutation{self.BlobRef(), self.Signer(), newnode.BlobRef(), newnode.Signer(), newnode.operation}
   concurrent := []string{}
   for c, _ := range prune {
     concurrent = append(concurrent, c)
   }
-  
-  err = transformer.TransformMutation(m, self.historySlice(self.sequenceNumber() - rollback, self.sequenceNumber()), concurrent)
+  ch, err := self.grapher.getOTNodesAscending(self.blobref, self.sequenceNumber() - rollback, self.sequenceNumber())
   if err != nil {
     return err
   }
-  newnode.operation = m.Operation
+  err = transformer.TransformMutation(newnode, ch, concurrent)
+  if err != nil {
+    return err
+  }
   return
 }
 
-func (self *permaNode) transformLocalPermission(perm *permissionNode, applyAtSeqNumber int) (tperm *permissionNode, err os.Error) {
+func (self *permaNode) transformLocalPermission(perm *permissionNode, applyAtSeqNumber int64) (tperm *permissionNode, err os.Error) {
   var reverse_permissions []*permissionNode
   i := self.sequenceNumber()
   if i < applyAtSeqNumber {
     return nil, os.NewError("Invalid sequence number")
   }
-  for x := range self.historyNodes(true) {
+  ch, err := self.grapher.getOTNodesDescending(self.BlobRef())
+  if err != nil {
+    return nil, err
+  }
+  for history_node := range ch {
     if i == applyAtSeqNumber {
       break
     }
-    history_node := x.(otNode)
     if x, ok := history_node.(*permissionNode); ok {
       reverse_permissions = append(reverse_permissions, x)
     }

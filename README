@@ -1,23 +1,17 @@
 Build instructions
 ------------------
 
-First you need to build the lightwaveot library.
-The samples need as well the federation library lightwavefed.
+To build the system run
 
-cd ot
-make
-make install
-cd ../federation
-make
-make install
+./all.sh
 
-Now you might want to try the sample code
-cd samples/gocurses
-make
-make install
-cd ../p2p_editor
-make
+See the README of the p2peditor on instructions how to start the demo software.
 
-See the README of the p2peditor on instructions how to start the software.
+samples/p2p_server and samples/p2p_client do not work currently.
 
+If you want to experiment with the Google AppEngine support run
+
+./gae.sh
+
+to setup symlinks.
 Then continue exploring the samples p2p_server and p2p_client

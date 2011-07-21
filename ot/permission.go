@@ -12,24 +12,24 @@ import (
 type Permission struct {
   // This property is not serialized
   ID string
-  Deps []string "dep"
+  Deps []string
   // A 1 bit explicitly allows something
-  Allow int "allow"
+  Allow int
   // A 1 bit explicitly denies something
-  Deny int "deny"
-  User string "user"
-  // This property is not serialized
-  History []permissionHistory
-  // This property is not serialized
+  Deny int
+  User string
+  // This property is required for pruning
+  History []PermissionHistory
+  // This property is required for pruning
   OriginalDeny int
-  // This property is not serialized
+  // This property is required for pruning
   OriginalAllow int
 }
 
-type permissionHistory struct {
-  id string
-  deny int
-  allow int
+type PermissionHistory struct {
+  ID string "id"
+  Deny int "d"
+  Allow int "a"
 }
 
 func (self *Permission) IsValid() bool {
@@ -68,8 +68,8 @@ func TransformPermission(p1, p2 Permission) (tp1, tp2 Permission, err os.Error) 
   tp2.Allow = (p2.Allow &^ p1.Deny) &^ p1.Allow
   tp2.Deny = p2.Deny &^ p1.Deny
   // Record the transformation history to realize pruning later on
-  tp1.History = append(tp1.History, permissionHistory{id:p2.ID, deny:p2.Deny, allow:p2.Allow})
-  tp2.History = append(tp2.History, permissionHistory{id:p1.ID, deny:p1.Deny, allow:p1.Allow})
+  tp1.History = append(tp1.History, PermissionHistory{ID:p2.ID, Deny:p2.Deny, Allow:p2.Allow})
+  tp2.History = append(tp2.History, PermissionHistory{ID:p1.ID, Deny:p1.Deny, Allow:p1.Allow})
   return
 }
 
@@ -84,7 +84,7 @@ func PrunePermission(p Permission, prune map[string]bool) (tp Permission, err os
   // Find out if any of the pruned permissions influenced 'p'.
   recompute := false
   for _, h := range p.History {
-    if _, ok := prune[h.id]; ok {
+    if _, ok := prune[h.ID]; ok {
       recompute = true
       break
     }
@@ -92,18 +92,18 @@ func PrunePermission(p Permission, prune map[string]bool) (tp Permission, err os
   if !recompute {
     return
   }
-  tp.History = []permissionHistory{}
+  tp.History = []PermissionHistory{}
   tp.Allow = tp.OriginalAllow
   tp.Deny = tp.OriginalDeny
   for _, h := range p.History {
-    if _, ok := prune[h.id]; ok {
+    if _, ok := prune[h.ID]; ok {
       continue
     }
     var x Permission
     x.User = p.User
-    x.Allow = h.allow
-    x.Deny = h.deny
-    x.ID = h.id
+    x.Allow = h.Allow
+    x.Deny = h.Deny
+    x.ID = h.ID
     tp, _, err = TransformPermission(tp, x)
     if err != nil {
       return

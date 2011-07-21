@@ -8,22 +8,22 @@ import (
 )
 
 type Application interface {
-  Signal_ReceivedInvitation(permission *grapher.Permission)
+  Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode)
   // This function is called right after the local user issued his keep but (most of the tim)
   // before all blobs have been downloaded
-  Signal_AcceptedInvitation(keep *grapher.Keep)
+  Signal_AcceptedInvitation(perma grapher.PermaNode, perm grapher.PermissionNode, keep grapher.KeepNode)
   // This function is called when the keep issued by the local user has been processed.
   // If the perma blob belongs to someone else, then this means all blobs have been downloaded.
   // If the perma blob belongs to the local user, then this signal comes directly after Signal_AcceptedInvitation.
-  Signal_ProcessedKeep(keep *grapher.Keep)
-  Blob(blob interface{}, seqNumber int)
+  Signal_ProcessedKeep(perma grapher.PermaNode, keep grapher.KeepNode)
+  Blob(perma grapher.PermaNode, blob grapher.OTNode)
 }
 
 // The API layer as seen by the application.
 // This API assumes that only one application (uni) is sitting on top of the layer stack.
 type API interface {
   SetApplication(app Application)
-  Open(perma_blobref string, startWithSeqNumber int) os.Error
+  Open(perma_blobref string, startWithSeqNumber int64) os.Error
   Close(perma_blobref string)
 }
 
@@ -32,13 +32,13 @@ type uniAPI struct {
   grapher *grapher.Grapher
   app Application
   // The value is the last mutation sent 
-  open map[string]int
-  queues map[string]int
+  open map[string]int64
+  queues map[string]int64
   mutex sync.Mutex
 }
 
 func NewUniAPI(userid string, grapher *grapher.Grapher) API {
-  a := &uniAPI{userID: userid, grapher: grapher, open: make(map[string]int), queues: make(map[string]int)}
+  a := &uniAPI{userID: userid, grapher: grapher, open: make(map[string]int64), queues: make(map[string]int64)}
   grapher.SetAPI(a)
   return a
 }
@@ -47,7 +47,7 @@ func (self *uniAPI) SetApplication(app Application) {
   self.app = app
 }
 
-func (self *uniAPI) Open(perma_blobref string, startWithSeqNumber int) (err os.Error) {
+func (self *uniAPI) Open(perma_blobref string, startWithSeqNumber int64) (err os.Error) {
   self.mutex.Lock()
   defer self.mutex.Unlock()
   // Is already open?
@@ -68,72 +68,72 @@ func (self *uniAPI) Close(perma_blobref string) {
   return
 }
 
-func (self* uniAPI) Signal_ReceivedInvitation(permission *grapher.Permission) {
-  self.app.Signal_ReceivedInvitation(permission)
+func (self* uniAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
+  self.app.Signal_ReceivedInvitation(perma, permission)
 }
 
-func (self* uniAPI) Signal_AcceptedInvitation(keep *grapher.Keep) {
-  self.app.Signal_AcceptedInvitation(keep)
+func (self* uniAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
+  self.app.Signal_AcceptedInvitation(perma, permission, keep)
 }
 
-func (self* uniAPI) Blob_Keep(keep *grapher.Keep, seqNumber int) {
+func (self* uniAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
   log.Printf("Keep")
-  self.blob(keep.PermaBlobRef, keep, seqNumber)
+  self.blob(perma, keep)
 }
 
-func (self* uniAPI) Blob_Mutation(mutation *grapher.Mutation, seqNumber int) {
+func (self* uniAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
   log.Printf("Mut")
-  self.blob(mutation.PermaBlobRef, mutation, seqNumber)
+  self.blob(perma, mutation)
 }
 
-func (self* uniAPI) Blob_Permission(permission *grapher.Permission, seqNumber int) {
+func (self* uniAPI) Blob_Permission(perma grapher.PermaNode, permission grapher.PermissionNode) {
   log.Printf("Perm")
-  self.blob(permission.PermaBlobRef, permission, seqNumber)
+  self.blob(perma, permission)
 }
 
-func (self* uniAPI) blob(permanode_blobref string, blob interface{}, seqNumber int) {
-  log.Printf("API blob %v", seqNumber)
+func (self* uniAPI) blob(perma grapher.PermaNode, blob grapher.OTNode) {
+  log.Printf("API blob %v", blob.SequenceNumber())
   self.mutex.Lock()
   // Is this perma blob opened?
-  nextSeqNumber, ok := self.open[permanode_blobref]
+  nextSeqNumber, ok := self.open[perma.BlobRef()]
   if !ok {
     // Is this a new keep of the local user? If yes, send it. Otherwise ignore it
-    if keep, ok := blob.(*grapher.Keep); ok && keep.KeepSigner == self.userID {
+    if keep, ok := blob.(grapher.KeepNode); ok && keep.Signer() == self.userID {
       self.mutex.Unlock()
-      self.app.Signal_ProcessedKeep(keep)
+      self.app.Signal_ProcessedKeep(perma, keep)
       return
     }
     self.mutex.Unlock()
     return      
   }
-  if nextSeqNumber > seqNumber {
+  if nextSeqNumber > blob.SequenceNumber() {
     // Ignore this mutation. We have seen it already (should not happen anyway)
     self.mutex.Unlock()
     return
   }
-  if nextSeqNumber < seqNumber {
+  if nextSeqNumber < blob.SequenceNumber() {
     // Remember that we need to process these mutations later on, too, but not now
-    q, ok := self.queues[permanode_blobref]
-    if !ok || seqNumber < q {
-      self.queues[permanode_blobref] = seqNumber
+    q, ok := self.queues[perma.BlobRef()]
+    if !ok || blob.SequenceNumber() < q {
+      self.queues[perma.BlobRef()] = blob.SequenceNumber()
     }
     self.mutex.Unlock()
     return
   }
   // Store the next expected sequence number
-  self.open[permanode_blobref] = seqNumber + 1
+  self.open[perma.BlobRef()] = blob.SequenceNumber() + 1
   // Is there a need to continue with queued mutations?
-  cont := -1
-  j, ok := self.queues[permanode_blobref]
+  cont := int64(-1)
+  j, ok := self.queues[perma.BlobRef()]
   if ok {
     cont = j
-    self.queues[permanode_blobref] = 0, false
+    self.queues[perma.BlobRef()] = 0, false
   }
   self.mutex.Unlock()
   // Notify the application
-  self.app.Blob(blob, seqNumber)
+  self.app.Blob(perma, blob)
   // Ask to repeat further blobs in case we have already seen some
   if cont != -1 {
-    self.grapher.Repeat(permanode_blobref, cont)
+    self.grapher.Repeat(perma.BlobRef(), cont)
   }
 }

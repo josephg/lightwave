@@ -5,7 +5,7 @@ import (
 )
 
 type BlobStore interface {
-  StoreBlob(blob []byte, blobref string)
+  StoreBlob(blob []byte, blobref string) (finalBlobRef string, err os.Error)
   AddListener(listener BlobStoreListener)
   HashTree() HashTree
   GetBlob(blobref string) (blob []byte, err os.Error)

@@ -253,6 +253,12 @@ func (self Frontier) IDs() (list []string) {
   return
 }
 
+func (self Frontier) FromIDs(ids []string) {
+  for _, id := range ids {
+    self[id] = true
+  }
+}
+
 // ----------------------------------------------------------------------
 // HistoryGraph
 

@@ -9,35 +9,33 @@ import (
 
 type transformer struct {
   grapher *grapher.Grapher
-  // The interface{} can contain a ot.Mutation, Keep or Permission struct
-//  appliedBlobs map[string][]interface{}
 }
 
 func NewTransformer(grapher *grapher.Grapher) grapher.Transformer {
-  t := &transformer{grapher: grapher /*, appliedBlobs: make(map[string][]interface{})*/ }
+  t := &transformer{grapher: grapher}
   grapher.SetTransformer(t)
   return t
 }
 
-func decodeMutation(mutation *grapher.Mutation) (mut ot.Mutation, err os.Error) {
-  switch mutation.Operation.(type) {
+func decodeMutation(mutation grapher.MutationNode) (mut ot.Mutation, err os.Error) {
+  switch mutation.Operation().(type) {
   case ot.Operation:
-    mut.Operation = mutation.Operation.(ot.Operation)
+    mut.Operation = mutation.Operation().(ot.Operation)
   case []byte:
-    err = mut.Operation.UnmarshalJSON(mutation.Operation.([]byte))
+    err = mut.Operation.UnmarshalJSON(mutation.Operation().([]byte))
     if err != nil {
       return mut, err
     }
   default:
     panic("Unknown OT operation")
   }
-  mut.ID = mutation.MutationBlobRef
-  mut.Site = mutation.MutationSigner
+  mut.ID = mutation.BlobRef()
+  mut.Site = mutation.Signer()
   return
 }
 
 // Interface towards the Grapher
-func (self *transformer) TransformClientMutation(mutation *grapher.Mutation, rollback <-chan interface{}) (err os.Error) {
+func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, rollback <-chan grapher.OTNode) (err os.Error) {
   mut, e := decodeMutation(mutation)
   if e != nil {
     return e
@@ -45,7 +43,7 @@ func (self *transformer) TransformClientMutation(mutation *grapher.Mutation, rol
 
   muts := make([]ot.Mutation, 0)
   for m := range rollback {
-    m2, ok := m.(*grapher.Mutation)
+    m2, ok := m.(grapher.MutationNode)
     if !ok {
       continue
     }
@@ -63,12 +61,16 @@ func (self *transformer) TransformClientMutation(mutation *grapher.Mutation, rol
     return err
   }
   
-  mutation.Operation = pmut.Operation
+  bytes, err := pmut.Operation.MarshalJSON()
+  if err != nil {
+    panic("Cannot serlialize")
+  }
+  mutation.SetOperation(bytes)
   return nil
 }
 
 // Interface towards the Grapher
-func (self *transformer) TransformMutation(mutation *grapher.Mutation, rollback <-chan interface{}, concurrent []string) (err os.Error) {
+func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollback <-chan grapher.OTNode, concurrent []string) (err os.Error) {
   mut, e := decodeMutation(mutation)
   if e != nil {
     return e
@@ -76,7 +78,7 @@ func (self *transformer) TransformMutation(mutation *grapher.Mutation, rollback 
 
   muts := make([]ot.Mutation, 0)
   for m := range rollback {
-    m2, ok := m.(*grapher.Mutation)
+    m2, ok := m.(grapher.MutationNode)
     if !ok {
       continue
     }
@@ -112,6 +114,10 @@ func (self *transformer) TransformMutation(mutation *grapher.Mutation, rollback 
     }
   }
   
-  mutation.Operation = pmuts[0].Operation
+  bytes, err := pmuts[0].Operation.MarshalJSON()
+  if err != nil {
+    panic("Cannot serlialize")
+  }
+  mutation.SetOperation(bytes)
   return nil  
 }
