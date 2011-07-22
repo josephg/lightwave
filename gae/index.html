@@ -8,17 +8,17 @@
 <h1>Hello {{userid}}</h1>
 
 <div>
-  <textarea id="t1" style="width:100%">{"type":"permanode", "signer":"a@alice", "random":"perma1abc"}</textarea><br>
+  <textarea id="t1" style="width:100%">{"type":"permanode"}</textarea><br>
   <input type="submit" value="Send" onclick="send1()">
 </div>
 <br>
 <div>
-  <textarea id="t2" style="width:100%">{"type":"keep", "signer":"a@alice", "perma":"a6491e0c813d7131694bb0504132ed99e901121b2e03fbe3580f1cce271d31ac"}</textarea><br>
+  <textarea id="t2" style="width:100%">{"type":"keep", "perma":"23b47c699dd9e4e02a1811022edcc4bcc3ec617490ededa3383a0c9e5ff461f9"}</textarea><br>
   <input type="submit" value="Send" onclick="send2()">
 </div>
 <br>
 <div>
-  <textarea id="t3" style="width:100%">{"type":"mutation", "signer":"a@alice", "perma":"a6491e0c813d7131694bb0504132ed99e901121b2e03fbe3580f1cce271d31ac", "dep":["88dadb53a6a1941c50bc215547b0f5fd82bddb9e5d3d2873f8d2b1b599ada500"], "op":{"$t":["Hello World"]}}</textarea><br>
+  <textarea id="t3" style="width:100%">{"type":"mutation", "perma":"23b47c699dd9e4e02a1811022edcc4bcc3ec617490ededa3383a0c9e5ff461f9", "at":1, "op":{"$t":["Hello World"]}}</textarea><br>
   <input type="submit" value="Send" onclick="send3()">
 </div>
 
@@ -28,7 +28,7 @@
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Thu Jul 21 14:06:01 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Fri Jul 22 14:53:19 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
 function send1() {

@@ -71,18 +71,17 @@ func (self *SimpleGraphStore) HasOTNodes(perma_blobref string, blobrefs []string
   return
 }
 
-/*
-func (self *SimpleGraphStore) GetOTNodeBySeqNumber(perma_blobref string, seqNumber int) (data map[string]interface{}, err os.Error) {
+func (self *SimpleGraphStore) GetOTNodeBySeqNumber(perma_blobref string, seqNumber int64) (data map[string]interface{}, err os.Error) {
   g, ok := self.graphs[perma_blobref]
   if !ok {
     return nil, os.NewError("Unknown perma blob")
   }
-  if seqNumber < 0 || seqNumber >= len(g.nodes) {
+  if seqNumber < 0 || seqNumber >= int64(len(g.nodes)) {
     return nil, os.NewError("Index out of bounds")
   }
-  return g.nodes[seqNumber]
+  return g.nodes[seqNumber], nil
 }
-*/
+
 
 func (self *SimpleGraphStore) GetOTNodeByBlobRef(perma_blobref string, blobref string) (data map[string]interface{}, err os.Error) {
   g, ok := self.graphs[perma_blobref]

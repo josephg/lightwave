@@ -91,7 +91,7 @@ type GraphStore interface {
   StorePermaNode(perma_blobref string, data map[string]interface{}) os.Error
   GetPermaNode(blobref string) (data map[string]interface{}, err os.Error)
   HasOTNodes(perma_blobref string, blobrefs []string) (missing_blobrefs []string, err os.Error)
-//  GetOTNodeBySeqNumber(perma_blobref string, seqNumber int) (data map[string]interface{}, err os.Error)
+  GetOTNodeBySeqNumber(perma_blobref string, seqNumber int64) (data map[string]interface{}, err os.Error)
   GetOTNodeByBlobRef(perma_blobref string, blobref string) (data map[string]interface{}, err os.Error)
   GetOTNodesAscending(perma_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error)
   GetOTNodesDescending(perma_blobref string) (ch <-chan map[string]interface{}, err os.Error)
@@ -728,6 +728,7 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
   m.mutationSigner = self.userID
   m.operation = operation
+  log.Printf("Ascending from %v to %v", applyAtSeqNumber, perma.sequenceNumber())
   ch, e := self.getOTNodesAscending(perma.BlobRef(), applyAtSeqNumber, perma.sequenceNumber())
   if e != nil {
     return
@@ -736,15 +737,22 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   if e != nil {
     return
   }
-  frontier, e := self.Frontier(perma_blobref)
+/*  frontier, e := self.Frontier(perma_blobref)
   if e != nil {
     err = e
     return
-  }  
-  mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": frontier, "t":"2006-01-02T15:04:05+07:00"}
-  // TODO: Get time correctly
-  op := m.operation.(ot.Operation) // The following two lines work around a problem in GO/JSON
-  mutJson["op"] = &op
+  }  */
+  mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": perma.frontier.IDs(), "t":"2006-01-02T15:04:05+07:00"}
+  switch m.operation.(type) {
+  case ot.Operation:
+    op := m.operation.(ot.Operation) // The following two lines work around a problem in GO/JSON
+    mutJson["op"] = &op
+  case []byte:
+    msg := json.RawMessage(m.operation.([]byte))
+    mutJson["op"] = &msg
+  default:
+    panic("Unsupported operation kind")
+  }
   schema, err := json.Marshal(mutJson)
   if err != nil {
     panic(err.String())
@@ -756,3 +764,90 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   return mutBlobRef, err
 }
 
+// Invoked from the blob store
+func (self *Grapher) HandleClientBlob(blob []byte) (blobref string, err os.Error) {
+  // Try to decode it into a camli-store schema blob
+  var schema clientSuperSchema
+  err = json.Unmarshal(blob, &schema)
+  if err != nil {
+    log.Printf("Err: Malformed client schema blob: %v\n", err)
+    return "", err
+  }
+
+  blobref, err = self.storeClientNode(&schema)
+  if err != nil {
+    log.Printf("Err: Schema blob is not valid: %v\n", err)
+    return "", err
+  }
+  return
+}
+
+type clientSuperSchema struct {
+  // Allowed value are "permanode", "mutation", "permission", "keep"
+  Type    string "type"
+  
+  PermissionSeqNumber int64 "permission"
+  Action string "action"
+  
+  Random string "random"
+  PermaNode string "perma"
+  
+  User string "user"
+  Allow int "allow"
+  Deny int "deny"
+  
+  ApplyAt int64 "at"
+  Operation *json.RawMessage "op"
+}
+
+func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string, err os.Error) {
+  switch schema.Type {
+  case "keep":
+    var permissionBlobRef string
+    if schema.PermissionSeqNumber != 0 {
+      data, err := self.gstore.GetOTNodeBySeqNumber(schema.PermaNode, schema.PermissionSeqNumber)
+      if err != nil {
+	return "", err
+      }
+      if k, ok := data["k"]; !ok && k.(int64) != OTNode_Permission {
+	return "", os.NewError("Not a permission node")
+      }
+      perm := &permissionNode{}
+      perm.FromMap(schema.PermaNode, data)
+      permissionBlobRef = perm.BlobRef()
+    }
+    blobref, err = self.CreateKeepBlob(schema.PermaNode, permissionBlobRef)
+    if err != nil {
+      return "", err
+    }
+    return blobref, err
+  case "permanode":
+    blobref, err = self.CreatePermaBlob()
+    return
+  case "mutation":
+    // TODO: time t
+    if schema.Operation == nil {
+      return "", os.NewError("Mutation is lacking an operation")
+    }
+    blobref, err = self.CreateMutationBlob(schema.PermaNode, []byte(*schema.Operation), schema.ApplyAt)
+    return
+  case "permission":
+    var action int
+    switch schema.Action {
+    case "invite":
+      action = PermAction_Invite
+    case "expel":
+      action = PermAction_Expel
+    case "change":
+      action = PermAction_Change
+    default:
+      err = os.NewError("Unknown action type in permission blob")
+      return
+    }
+    blobref, err = self.CreatePermissionBlob(schema.PermaNode, schema.ApplyAt, schema.User, schema.Allow, schema.Deny, action)
+    return
+  default:
+    log.Printf("Err: Unknown schema type")
+  }
+  return "", os.NewError("Unknown schema type")
+}

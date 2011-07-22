@@ -38,22 +38,27 @@ func decodeMutation(mutation grapher.MutationNode) (mut ot.Mutation, err os.Erro
 func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, rollback <-chan grapher.OTNode) (err os.Error) {
   mut, e := decodeMutation(mutation)
   if e != nil {
+    log.Printf("Err: Decoding")
     return e
   }
 
   muts := make([]ot.Mutation, 0)
   for m := range rollback {
+    log.Printf("Loop")
     m2, ok := m.(grapher.MutationNode)
     if !ok {
+      log.Printf("Skip")
       continue
     }
     m3, e := decodeMutation(m2)
     if e != nil {
+      log.Printf("Err: Decoding 2")
       return e
     }
     muts = append(muts, m3)
   }
     
+  log.Printf("Transforming %v against %v", mut, muts)
   // Transform 'mut' to apply it locally
   _, pmut, err := ot.TransformSeq(muts, mut)
   if err != nil {

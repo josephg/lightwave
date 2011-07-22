@@ -2,6 +2,7 @@ package lightwave
 
 import (
   "os"
+  "log"
   "appengine"
   "appengine/datastore"
   "crypto/sha256"
@@ -70,6 +71,7 @@ func (self *store) GetBlob(blobref string) (blob []byte, err os.Error) {
 // Graph Store
 
 func (self *store) StoreNode(perma_blobref string, blobref string, data map[string]interface{}) (err os.Error) {
+  log.Printf("Storing node ...")
   parent := datastore.NewKey("perma", perma_blobref, 0, nil)
   // Since we cannot do anchestor queries :-(
   data["perma"] = perma_blobref
@@ -117,21 +119,37 @@ func (self *store) GetOTNodeByBlobRef(perma_blobref string, blobref string) (dat
   return m, nil
 }
 
+func (self *store) GetOTNodeBySeqNumber(perma_blobref string, seqNumber int64) (data map[string]interface{}, err os.Error) {
+  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("seq>=", seqNumber)
+  it := query.Run(self.c)
+  data = make(datastore.Map)
+  _, e := it.Next(data)
+  if e == datastore.Done {
+    return nil, os.NewError("No such node")
+  }
+  return
+}
+
 func (self *store) GetOTNodesAscending(perma_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error) {
-  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("seq >=", startWithSeqNumber).Filter("seq <", endSeqNumber).Order("+seq")
+  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("seq >=", startWithSeqNumber).Filter("seq <", endSeqNumber).Order("seq")
   
   channel := make(chan map[string]interface{})
   f := func() {
     for it := query.Run(self.c) ; ; {
+      log.Printf("Trying to call Next")
       m := make(datastore.Map)
       _, e := it.Next(m)
       if e == datastore.Done {
+	log.Printf("End next")
 	break
       }
       if e != nil {
+	log.Printf("Err: Query %v", e)
 	close(channel)
 	return
       }
+      log.Printf("Ascending is sending ...")
+      channel <- m
     }
     close(channel)
   }
@@ -155,6 +173,7 @@ func (self *store) GetOTNodesDescending(perma_blobref string) (ch <-chan map[str
 	close(channel)
 	return
       }
+      channel <- m
     }
     close(channel)
   }

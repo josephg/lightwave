@@ -122,7 +122,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   }
   r.Body.Close()
-  blobref, _ := s.StoreBlob(blob, "")
+  blobref, _ := g.HandleClientBlob(blob)
     
   fmt.Fprint(w, blobref)
 }
