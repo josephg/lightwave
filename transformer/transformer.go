@@ -44,10 +44,8 @@ func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, 
 
   muts := make([]ot.Mutation, 0)
   for m := range rollback {
-    log.Printf("Loop")
     m2, ok := m.(grapher.MutationNode)
     if !ok {
-      log.Printf("Skip")
       continue
     }
     m3, e := decodeMutation(m2)
@@ -58,7 +56,6 @@ func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, 
     muts = append(muts, m3)
   }
     
-  log.Printf("Transforming %v against %v", mut, muts)
   // Transform 'mut' to apply it locally
   _, pmut, err := ot.TransformSeq(muts, mut)
   if err != nil {

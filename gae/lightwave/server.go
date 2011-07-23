@@ -6,38 +6,35 @@ import (
   "os"
   "io/ioutil"
   "appengine"
-  "appengine/datastore"
-//  "appengine/channel"
+  "appengine/channel"
   "appengine/user"
+  "appengine/datastore"
+  "json"
   "http"
   "bytes"
   "template"
   "strconv"
+  "time"
+  "rand"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
 )
-
-type Blob struct {
-  Data []byte
-}
-
-type Graph struct {
-  PermaBlobRef string
-  PermaSigner string
-  SeqNumber int64
-}
-
-type GraphNode struct {
-  BlobRef string
-  Arr []string
-}
 
 var (
   frontPageTmpl    *template.Template
   frontPageTmplErr os.Error
 )
 
+type channelStruct struct {
+  Token string
+  UserID string
+  SessionID string
+  OpenPermas []string
+}
+
 func init() {
+  rand.Seed(time.Nanoseconds())
+  
   frontPageTmpl = template.New(nil)
   frontPageTmpl.SetDelims("{{", "}}")
   if err := frontPageTmpl.ParseFile("index.html"); err != nil {
@@ -47,19 +44,18 @@ func init() {
 
   http.HandleFunc("/", handleFrontPage)
   http.HandleFunc("/private/submit", handleSubmit)
+  http.HandleFunc("/private/open", handleOpen)
   
-  // HACK
-  http.HandleFunc("/write", handleWriteGraph)
-  http.HandleFunc("/write2", handleWriteNode)
-  http.HandleFunc("/blob", handleBlob)
-  // END HACK
-  
-  // http.HandleFunc("/channelreq", handleChannelReq)
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
 }
 
 func handleFrontPage(w http.ResponseWriter, r *http.Request) {
+  if r.URL.Path != "/" {
+    http.Error(w, "404 Not Found", http.StatusNotFound)
+    return
+  }
+  log.Printf("FRONTPAGE")
   c := appengine.NewContext(r)
   u := user.Current(c)
   if u == nil {
@@ -68,7 +64,6 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     return
   }
   url, _ := user.LogoutURL(c, "/")
-  //    fmt.Fprintf(w, `Welcome, %s! (<a href="%s">sign out</a>)`, u, url)
 
   if frontPageTmplErr != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
@@ -76,8 +71,26 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     return
   }
 
+  // TODO: This does not allow for multiple sessions
+  session := fmt.Sprintf("s%v", rand.Int31())
+  tok, err := channel.Create(c, u.Id + "/" + session)
+  if err != nil {
+    http.Error(w, "Couldn't create Channel", http.StatusInternalServerError)
+    c.Errorf("channel.Create: %v", err)
+    return
+  }
+
+  var ch channelStruct
+  ch.UserID = u.Id
+  ch.Token = tok
+  ch.SessionID = session
+  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + session, 0, nil), &ch)
+  if err != nil {
+    return
+  }
+
   b := new(bytes.Buffer)
-  data := map[string]interface{}{ "userid":  u.String(), "logout": url }
+  data := map[string]interface{}{ "userid":  u.String(), "logout": url, "token": tok, "session": session }
   if err := frontPageTmpl.Execute(b, data); err != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
     fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
@@ -88,147 +101,97 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
   b.WriteTo(w)
 }
 
-/*
-func handleChannelReq(w http.ResponseWriter, r *http.Request) {
-  c := appengine.NewContext(r)
-  tok, err := channel.Create(c, "player1")
-  if err != nil {
-    http.Error(w, "Couldn't create Channel", http.StatusInternalServerError)
-    c.Errorf("channel.Create: %v", err)
-    return
-  }
-  fmt.Fprintf(w, `{"token":"%v"}`, tok)
-}
-*/
-
 func handleConnect(w http.ResponseWriter, r *http.Request) {
-  log.Printf("CONNECT")
+  u := r.FormValue("from")
+  log.Printf("CONNECT '%v' and %v", u, r.Form)
 }
 
 func handleDisconnect(w http.ResponseWriter, r *http.Request) {
-  log.Printf("DISCONNECT")
+  c := appengine.NewContext(r)
+  u := r.FormValue("from")
+  log.Printf("DISCONNECT '%v' and %v", u, r.Form)
+  if err := datastore.Delete(c, datastore.NewKey("channel", u, 0, nil)); err != nil {
+    log.Printf("Err: %v", err)
+    return
+  }
+
 }
 
-func handleSubmit(w http.ResponseWriter, r *http.Request) {
-  c := appengine.NewContext(r)
-  s := newStore(c)
-  g := grapher.NewGrapher("a@b", s, s, nil)
-  s.SetGrapher(g)
-  tf.NewTransformer(g)
+type openCloseRequest struct {
+  Session string "session"
+  Perma string "perma"
+}
 
-  blob, err := ioutil.ReadAll(r.Body)
+func handleOpen(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+  
+  jreq, err := ioutil.ReadAll(r.Body)
   if err != nil {
     http.Error(w, "Error reading request body", http.StatusInternalServerError)
     return
   }
   r.Body.Close()
-  blobref, _ := g.HandleClientBlob(blob)
+
+  var req openCloseRequest
+  err = json.Unmarshal(jreq, &req)
+  if err != nil {
+    sendError(w, r, "Malformed JSON")
+    return
+  }
+  
+  var ch channelStruct
+  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch); err != nil {
+    sendError(w, r, "Unknown channel")
+    return
+  }
     
-  fmt.Fprint(w, blobref)
+  if len(ch.OpenPermas) >= 10 {
+    sendError(w, r, "Too many open channels")
+    return    
+  }
+  
+  ch.OpenPermas = append(ch.OpenPermas, req.Perma)
+ 
+  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
+  if err != nil {
+    sendError(w, r, "Internal server error")
+  }
+  
+  fmt.Fprint(w, `{"ok":true}`)
+
 }
 
-func handleBlob(w http.ResponseWriter, r *http.Request) {
+func handleSubmit(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+  
   s := newStore(c)
-  g := grapher.NewGrapher("a@b", s, s, nil)
+  g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
 
-  perma, err := g.CreatePermaBlob()
+  blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
-    http.Error(w, err.String(), http.StatusInternalServerError)
+    sendError(w, r, "Error reading request body")
     return
   }
+  r.Body.Close()
+  log.Printf("Received: %v", string(blob))
+  blobref, _ := g.HandleClientBlob(blob)
 
-  _, err = g.CreateKeepBlob(perma, "")
-  if err != nil {
-    http.Error(w, err.String(), http.StatusInternalServerError)
-    return
-  }
-  
-  fmt.Fprintf(w, "Yep, that worked")
+  fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, blobref)
 }
 
-func handleWriteGraph(w http.ResponseWriter, r *http.Request) {
-  c := appengine.NewContext(r)
-  
-  g := Graph{"1234", "a@b", 0}
-  key, err := datastore.Put(c, datastore.NewKey("graph", g.PermaBlobRef, 0, nil), &g)
-  if err != nil {
-    http.Error(w, err.String(), http.StatusInternalServerError)
-    return
-  }
-  
-  var g2 Graph
-  if err = datastore.Get(c, key, &g2); err != nil {
-    http.Error(w, err.String(), http.StatusInternalServerError)
-    return
-  }
-  
-  fmt.Fprintf(w, "Stored and retrieved the Graph named %q", g2.PermaBlobRef)
+func sendError(w http.ResponseWriter, r *http.Request, msg string) {
+  log.Printf("Err: %v", msg)
+  fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, msg)
 }
-
-func handleWriteNode(w http.ResponseWriter, r *http.Request) {
-  c := appengine.NewContext(r)
-
-  // Try 5 times to get the transaction through. Otherwise give up
-  var terr os.Error
-  var nodeKey *datastore.Key
-  
-  for i := 0; i < 5; i++ {
-    terr = datastore.RunInTransaction(c, func(c appengine.Context) os.Error {
-      graphKey := datastore.NewKey("graph", "1234", 0, nil)  
-      var g Graph
-      if err := datastore.Get(c, graphKey, &g); err != nil {
-	return err
-      }
-  
-      n := GraphNode{fmt.Sprintf("abcd%v", g.SeqNumber), []string{"a", "b"}}
-      nodeKey = datastore.NewKey("node", "", g.SeqNumber + 1, graphKey)
-      _, err := datastore.Put(c, nodeKey, &n)
-      if err != nil {
-	return err
-      }
-
-      g.SeqNumber++
-      _, err = datastore.Put(c, graphKey, &g)
-      if err != nil {
-	return err
-      }
-      return nil
-    })
-    if terr != datastore.ErrConcurrentTransaction {
-      break
-    }
-  }
-  // Transaction failed, most likely because of contention or a server problem. The client needs to retry
-  if terr != nil {
-    if terr == datastore.ErrConcurrentTransaction {
-      http.Error(w, terr.String(), http.StatusRequestTimeout)
-    } else { 
-      http.Error(w, terr.String(), http.StatusInternalServerError)
-    }
-    return
-  }
-  
-  var n2 GraphNode
-  if err := datastore.Get(c, nodeKey, &n2); err != nil {
-    http.Error(w, err.String(), http.StatusInternalServerError)
-    return
-  }
-  
-  m := make(datastore.Map)
-  if err := datastore.Get(c, nodeKey, m); err != nil {
-    http.Error(w, err.String(), http.StatusInternalServerError)
-    return
-  }
-  arr, ok := m["Arr"]
-  if !ok {
-    fmt.Fprintf(w, "Arr is missing")
-  }
-  if _, ok = arr.([]string); !ok {
-    fmt.Fprintf(w, "Wrong Arr type %T", arr)
-  }
-  fmt.Fprintf(w, "2. Stored and retrieved the GraphNode named %q", n2.BlobRef)
-}
-

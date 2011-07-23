@@ -728,7 +728,6 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
   m.mutationSigner = self.userID
   m.operation = operation
-  log.Printf("Ascending from %v to %v", applyAtSeqNumber, perma.sequenceNumber())
   ch, e := self.getOTNodesAscending(perma.BlobRef(), applyAtSeqNumber, perma.sequenceNumber())
   if e != nil {
     return
@@ -737,11 +736,6 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   if e != nil {
     return
   }
-/*  frontier, e := self.Frontier(perma_blobref)
-  if e != nil {
-    err = e
-    return
-  }  */
   mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": perma.frontier.IDs(), "t":"2006-01-02T15:04:05+07:00"}
   switch m.operation.(type) {
   case ot.Operation:
@@ -802,6 +796,13 @@ type clientSuperSchema struct {
 
 func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string, err os.Error) {
   switch schema.Type {
+  case "permanode":
+    blobref, err = self.CreatePermaBlob()
+    if err != nil {
+      return "", err
+    }
+    _, err = self.CreateKeepBlob(blobref, "")
+    return
   case "keep":
     var permissionBlobRef string
     if schema.PermissionSeqNumber != 0 {
@@ -821,9 +822,6 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
       return "", err
     }
     return blobref, err
-  case "permanode":
-    blobref, err = self.CreatePermaBlob()
-    return
   case "mutation":
     // TODO: time t
     if schema.Operation == nil {

@@ -9,17 +9,12 @@
 
 <div>
   <textarea id="t1" style="width:100%">{"type":"permanode"}</textarea><br>
-  <input type="submit" value="Send" onclick="send1()">
+  <input type="submit" value="Send" onclick="create()">
 </div>
 <br>
 <div>
-  <textarea id="t2" style="width:100%">{"type":"keep", "perma":"23b47c699dd9e4e02a1811022edcc4bcc3ec617490ededa3383a0c9e5ff461f9"}</textarea><br>
-  <input type="submit" value="Send" onclick="send2()">
-</div>
-<br>
-<div>
-  <textarea id="t3" style="width:100%">{"type":"mutation", "perma":"23b47c699dd9e4e02a1811022edcc4bcc3ec617490ededa3383a0c9e5ff461f9", "at":1, "op":{"$t":["Hello World"]}}</textarea><br>
-  <input type="submit" value="Send" onclick="send3()">
+  <textarea id="t2" style="width:100%">{"type":"mutation", "at":1, "op":{"$t":["Hello World"]}}</textarea><br>
+  <input type="submit" value="Send" onclick="mutate(JSON.parse(document.getElementById('t2').value))">
 </div>
 
 <h1>Result</h1>
@@ -28,46 +23,107 @@
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Fri Jul 22 14:53:19 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Sat Jul 23 14:53:07 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
-function send1() {
-  post("/private/submit", document.getElementById("t1").value)
-}
+  var tok = "{{token}}";
+  var sessionID = "{{session}}";
+  var userID = "{{userid}}";
+  
+  channel = new goog.appengine.Channel('{{token}}');
+  socket = channel.open();
+  socket.onopen = onOpened;
+  socket.onmessage = onMessage;
+  socket.onerror = onError;
+  socket.onclose = onClose;
 
-function send2() {
-  post("/private/submit", document.getElementById("t2").value)
-}
+  function onOpened() {
+    console.log("Opened")
+  }
 
-function send3() {
-  post("/private/submit", document.getElementById("t3").value)
-}
+  function onClose() {
+    console.log("Closed")
+  }
 
-function post(url, data) {
-  var xmlHttp = null;
-  try {
-    // Mozilla, Opera, Safari sowie Internet Explorer (ab v7)
-    xmlHttp = new XMLHttpRequest();
-  } catch(e) {
+  function onError() {
+    console.log("Error")
+  }
+
+  function onMessage(msg) {
+    console.log("Message: " + msg.data)
+    document.getElementById("out").innerText = msg.data
+  }
+
+  var perma = ""
+  
+  function create() {
+    f = function(msg) {
+      var response = JSON.parse(msg);
+      if ( response.error ) {
+        alert(reponse.error);
+        return;
+      }
+      perma = response.blobref;
+      // Receive further updates
+      open(perma);
+    };
+    post("/private/submit", document.getElementById("t1").value, f);
+  }
+
+  function open(perma) {
+    f = function(msg) {
+      console.log("Got: " + msg)
+      var response = JSON.parse(msg);
+      if ( !response.ok ) {
+        alert(reponse.error);
+        return;
+      };
+      console.log("Opened perma");
+    }
+    post("/private/open", JSON.stringify({perma:perma, session:sessionID}), f);    
+  }
+
+  function mutate(blob) {
+    f = function(msg) {
+      console.log("Got: " + msg)
+      var response = JSON.parse(msg);
+      if ( !response.ok ) {
+        alert(response.error);
+        return;
+      };
+      console.log("Mutation submitted");
+    }
+    blob.perma = perma;
+    post("/private/submit", JSON.stringify(blob), f);
+  }
+
+  function post(url, data, f) {
+    var xmlHttp = null;
     try {
+      // Mozilla, Opera, Safari sowie Internet Explorer (ab v7)
+      xmlHttp = new XMLHttpRequest();
+    } catch(e) {
+      try {
         // MS Internet Explorer (ab v6)
         xmlHttp  = new ActiveXObject("Microsoft.XMLHTTP");
-    } catch(e) {
+      } catch(e) {
         try {
-            // MS Internet Explorer (ab v5)
-            xmlHttp  = new ActiveXObject("Msxml2.XMLHTTP");
+          // MS Internet Explorer (ab v5)
+          xmlHttp  = new ActiveXObject("Msxml2.XMLHTTP");
         } catch(e) {
-            xmlHttp  = null;
+          xmlHttp  = null;
         }
+      }
     }
-  }
-  if (xmlHttp) {
-    xmlHttp.open('POST', url, true);
-    xmlHttp.onreadystatechange = function () {
+    if (xmlHttp) {
+      xmlHttp.open('POST', url, true);
+      xmlHttp.onreadystatechange = function () {
         if (xmlHttp.readyState == 4) {
-           document.getElementById("out").innerText = xmlHttp.responseText
-//            alert(xmlHttp.responseText);
-        }
+          document.getElementById("out").innerText = xmlHttp.responseText
+          if ( f ) {
+            f(xmlHttp.responseText)
+          }
+       }
     };
     xmlHttp.send(data);
   }

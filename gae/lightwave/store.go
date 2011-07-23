@@ -136,11 +136,9 @@ func (self *store) GetOTNodesAscending(perma_blobref string, startWithSeqNumber 
   channel := make(chan map[string]interface{})
   f := func() {
     for it := query.Run(self.c) ; ; {
-      log.Printf("Trying to call Next")
       m := make(datastore.Map)
       _, e := it.Next(m)
       if e == datastore.Done {
-	log.Printf("End next")
 	break
       }
       if e != nil {
@@ -148,7 +146,6 @@ func (self *store) GetOTNodesAscending(perma_blobref string, startWithSeqNumber 
 	close(channel)
 	return
       }
-      log.Printf("Ascending is sending ...")
       channel <- m
     }
     close(channel)
