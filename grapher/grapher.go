@@ -716,7 +716,7 @@ func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber
   return permBlobRef, err
 }
 
-func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interface{}, applyAtSeqNumber int64) (blobref string, err os.Error) {
+func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interface{}, applyAtSeqNumber int64) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   perma, e := self.permaNode(perma_blobref)
   if e != nil {
     err = e
@@ -728,6 +728,7 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
   m.mutationSigner = self.userID
   m.operation = operation
+  seq := perma.sequenceNumber()
   ch, e := self.getOTNodesAscending(perma.BlobRef(), applyAtSeqNumber, perma.sequenceNumber())
   if e != nil {
     return
@@ -755,23 +756,23 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   mutBlob = append(mutBlob, schema[1:]...)
   log.Printf("Storing mut %v\n", string(mutBlob))
   mutBlobRef, err := self.store.StoreBlob(mutBlob, "")
-  return mutBlobRef, err
+  return mutBlobRef, seq, err
 }
 
 // Invoked from the blob store
-func (self *Grapher) HandleClientBlob(blob []byte) (blobref string, err os.Error) {
+func (self *Grapher) HandleClientBlob(blob []byte) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   // Try to decode it into a camli-store schema blob
   var schema clientSuperSchema
   err = json.Unmarshal(blob, &schema)
   if err != nil {
     log.Printf("Err: Malformed client schema blob: %v\n", err)
-    return "", err
+    return "", -1, err
   }
 
-  blobref, err = self.storeClientNode(&schema)
+  blobref, appliedAtSeqNumber, err = self.storeClientNode(&schema)
   if err != nil {
     log.Printf("Err: Schema blob is not valid: %v\n", err)
-    return "", err
+    return "", -1, err
   }
   return
 }
@@ -794,24 +795,25 @@ type clientSuperSchema struct {
   Operation *json.RawMessage "op"
 }
 
-func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string, err os.Error) {
+func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   switch schema.Type {
   case "permanode":
     blobref, err = self.CreatePermaBlob()
     if err != nil {
-      return "", err
+      return "", -1, err
     }
     _, err = self.CreateKeepBlob(blobref, "")
+    appliedAtSeqNumber = -1
     return
   case "keep":
     var permissionBlobRef string
     if schema.PermissionSeqNumber != 0 {
       data, err := self.gstore.GetOTNodeBySeqNumber(schema.PermaNode, schema.PermissionSeqNumber)
       if err != nil {
-	return "", err
+	return "", -1, err
       }
       if k, ok := data["k"]; !ok && k.(int64) != OTNode_Permission {
-	return "", os.NewError("Not a permission node")
+	return "", -1, os.NewError("Not a permission node")
       }
       perm := &permissionNode{}
       perm.FromMap(schema.PermaNode, data)
@@ -819,15 +821,15 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
     }
     blobref, err = self.CreateKeepBlob(schema.PermaNode, permissionBlobRef)
     if err != nil {
-      return "", err
+      return "", -1, err
     }
-    return blobref, err
+    return blobref, -1, err
   case "mutation":
     // TODO: time t
     if schema.Operation == nil {
-      return "", os.NewError("Mutation is lacking an operation")
+      return "", -1, os.NewError("Mutation is lacking an operation")
     }
-    blobref, err = self.CreateMutationBlob(schema.PermaNode, []byte(*schema.Operation), schema.ApplyAt)
+    blobref, appliedAtSeqNumber, err = self.CreateMutationBlob(schema.PermaNode, []byte(*schema.Operation), schema.ApplyAt)
     return
   case "permission":
     var action int
@@ -847,5 +849,5 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
   default:
     log.Printf("Err: Unknown schema type")
   }
-  return "", os.NewError("Unknown schema type")
+  return "", -1, os.NewError("Unknown schema type")
 }

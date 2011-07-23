@@ -45,6 +45,7 @@ func init() {
   http.HandleFunc("/", handleFrontPage)
   http.HandleFunc("/private/submit", handleSubmit)
   http.HandleFunc("/private/open", handleOpen)
+  http.HandleFunc("/private/close", handleClose)
   
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
@@ -81,7 +82,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
   }
 
   var ch channelStruct
-  ch.UserID = u.Id
+  ch.UserID = u.String()
   ch.Token = tok
   ch.SessionID = session
   _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + session, 0, nil), &ch)
@@ -129,41 +130,87 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     sendError(w, r, "No user attached to the request")
     return
   }
-  
   jreq, err := ioutil.ReadAll(r.Body)
   if err != nil {
     http.Error(w, "Error reading request body", http.StatusInternalServerError)
     return
   }
   r.Body.Close()
-
+  // Parse request
   var req openCloseRequest
   err = json.Unmarshal(jreq, &req)
   if err != nil {
     sendError(w, r, "Malformed JSON")
     return
   }
-  
+  // Load the channel infos
   var ch channelStruct
   if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch); err != nil {
     sendError(w, r, "Unknown channel")
     return
   }
-    
+  // Check
   if len(ch.OpenPermas) >= 10 {
     sendError(w, r, "Too many open channels")
     return    
   }
-  
+  // Update channel infos
   ch.OpenPermas = append(ch.OpenPermas, req.Perma)
- 
   _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
   if err != nil {
     sendError(w, r, "Internal server error")
   }
-  
+  // Done
   fmt.Fprint(w, `{"ok":true}`)
+}
 
+func handleClose(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+  jreq, err := ioutil.ReadAll(r.Body)
+  if err != nil {
+    http.Error(w, "Error reading request body", http.StatusInternalServerError)
+    return
+  }
+  r.Body.Close()
+  // Parse request
+  var req openCloseRequest
+  err = json.Unmarshal(jreq, &req)
+  if err != nil {
+    sendError(w, r, "Malformed JSON")
+    return
+  }
+  // Load the channel infos
+  var ch channelStruct
+  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch); err != nil {
+    sendError(w, r, "Unknown channel")
+    return
+  }
+  ok := false
+  permas := []string{}
+  for _, p := range ch.OpenPermas {
+    if p == req.Perma {
+      ok = true
+      continue
+    }
+    permas = append(permas, p)
+  }
+  if !ok {
+    sendError(w, r, "Was not open")
+    return
+  }
+  // Update channel infos
+  ch.OpenPermas = permas
+  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
+  if err != nil {
+    sendError(w, r, "Internal server error")
+  }
+  // Done
+  fmt.Fprint(w, `{"ok":true}`)
 }
 
 func handleSubmit(w http.ResponseWriter, r *http.Request) {
@@ -186,9 +233,13 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   }
   r.Body.Close()
   log.Printf("Received: %v", string(blob))
-  blobref, _ := g.HandleClientBlob(blob)
+  blobref, seqNumber, _ := g.HandleClientBlob(blob)
 
-  fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, blobref)
+  if seqNumber != -1 {
+    fmt.Fprintf(w, `{"ok":true, "seq":"%v"}`, seqNumber)
+  } else {
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, blobref)
+  }
 }
 
 func sendError(w http.ResponseWriter, r *http.Request, msg string) {
