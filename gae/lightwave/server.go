@@ -82,7 +82,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
   }
 
   var ch channelStruct
-  ch.UserID = u.String()
+  ch.UserID = u.Id
   ch.Token = tok
   ch.SessionID = session
   _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + session, 0, nil), &ch)
@@ -225,7 +225,8 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
-
+  newChannelAPI(c, g)
+  
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
     sendError(w, r, "Error reading request body")
