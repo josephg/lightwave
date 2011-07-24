@@ -677,7 +677,7 @@ func (self *Grapher) CreateKeepBlob(perma_blobref, permission_blobref string) (b
   return keepBlobRef, err
 }
 
-func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber int64, userid string, allow int, deny int, action int) (blobref string, err os.Error) {
+func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber int64, userid string, allow int, deny int, action int) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   perma, e := self.permaNode(perma_blobref)
   if e != nil {
     err = e
@@ -689,7 +689,7 @@ func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber
   permNode.Allow = allow
   permNode.Deny = deny
   permNode.action = action
-  permNode, err = perma.transformLocalPermission(permNode, applyAtSeqNumber)
+  permNode, appliedAtSeqNumber, err = perma.transformLocalPermission(permNode, applyAtSeqNumber)
   if err != nil {
     return
   }
@@ -717,7 +717,7 @@ func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber
   permBlob = append([]byte(`{"type":"permission",`), permBlob[1:]...)
   log.Printf("Storing perm %v\n", string(permBlob))
   permBlobRef, err := self.store.StoreBlob(permBlob, "")
-  return permBlobRef, err
+  return permBlobRef, appliedAtSeqNumber, err
 }
 
 func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interface{}, applyAtSeqNumber int64) (blobref string, appliedAtSeqNumber int64, err os.Error) {
@@ -848,7 +848,7 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
       err = os.NewError("Unknown action type in permission blob")
       return
     }
-    blobref, err = self.CreatePermissionBlob(schema.PermaNode, schema.ApplyAt, schema.User, schema.Allow, schema.Deny, action)
+    blobref, appliedAtSeqNumber, err = self.CreatePermissionBlob(schema.PermaNode, schema.ApplyAt, schema.User, schema.Allow, schema.Deny, action)
     return
   default:
     log.Printf("Err: Unknown schema type")

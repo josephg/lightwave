@@ -25,9 +25,27 @@ func newChannelAPI(c appengine.Context, userid string, sessionid string, grapher
 }
 
 func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
+  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef()}
+  schema, err := json.Marshal(msgJson)
+  if err != nil {
+    panic(err.String())
+  }
+  err = channel.Send(self.c, self.userID + "/" + self.sessionID, string(schema))
+  if err != nil {
+    log.Printf("Failed sending to channel %v", self.userID + "/" + self.sessionID)
+  }
 }
 
 func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
+  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"accept", "signer":permission.Signer(), "permission":permission.BlobRef()}
+  schema, err := json.Marshal(msgJson)
+  if err != nil {
+    panic(err.String())
+  }
+  err = channel.Send(self.c, self.userID + "/" + self.sessionID, string(schema))
+  if err != nil {
+    log.Printf("Failed sending to channel %v", self.userID + "/" + self.sessionID)
+  }
 }
 
 func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {

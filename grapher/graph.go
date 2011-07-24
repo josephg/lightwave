@@ -260,7 +260,9 @@ func (self *keepNode) FromMap(permaBlobRef string, m map[string]interface{}) {
   if p, ok := m["p"]; ok {
     self.permissionBlobRef = p.(string)
   }
-  self.dependencies = m["dep"].([]string)
+  if d, ok := m["dep"]; ok {
+    self.dependencies = d.([]string)
+  }
   self.seqNumber = m["seq"].(int64)
 }
 
@@ -525,26 +527,28 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
   return
 }
 
-func (self *permaNode) transformLocalPermission(perm *permissionNode, applyAtSeqNumber int64) (tperm *permissionNode, err os.Error) {
+func (self *permaNode) transformLocalPermission(perm *permissionNode, applyAtSeqNumber int64) (tperm *permissionNode, appliedAtSeqNumber int64, err os.Error) {
   var reverse_permissions []*permissionNode
   i := self.sequenceNumber()
+  appliedAtSeqNumber = i
   if i < applyAtSeqNumber {
-    return nil, os.NewError("Invalid sequence number")
+    return nil, 0, os.NewError("Invalid sequence number")
   }
   ch, err := self.grapher.getOTNodesDescending(self.BlobRef())
   if err != nil {
-    return nil, err
+    return nil, 0, err
   }
   for history_node := range ch {
     if i == applyAtSeqNumber {
       break
     }
+    i--
     if x, ok := history_node.(*permissionNode); ok {
       reverse_permissions = append(reverse_permissions, x)
     }
   }
   if i != applyAtSeqNumber {
-    return nil, os.NewError("Invalid sequence number")
+    return nil, 0, os.NewError("Invalid sequence number")
   }
   
   // Reverse the mutation history, such that oldest are first in the list.
