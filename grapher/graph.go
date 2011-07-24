@@ -42,7 +42,11 @@ const (
 )
 
 type PermissionNode interface {
-  OTNode
+  OTNode  
+  UserName() string
+  AllowBits() int
+  DenyBits() int
+  Action() int
 }
 
 type permissionNode struct {
@@ -77,12 +81,28 @@ func (self *permissionNode) SequenceNumber() int64 {
   return self.seqNumber
 }
 
+func (self *permissionNode) UserName() string {
+  return self.User
+}
+
+func (self *permissionNode) AllowBits() int {
+  return self.Allow
+}
+
+func (self *permissionNode) DenyBits() int {
+  return self.Deny
+}
+
+func (self *permissionNode) Action() int {
+  return self.action
+}
+
 func (self *permissionNode) ToMap() map[string]interface{} {
   m := make(map[string]interface{})
   m["k"] = int64(OTNode_Permission)
   m["b"] = self.ID
   m["s"] = self.permissionSigner
-  m["ac"] = self.action
+  m["ac"] = int64(self.action)
   m["u"] = self.User
   m["a"] = int64(self.Allow)
   m["d"] = int64(self.Deny)
@@ -108,19 +128,23 @@ func (self *permissionNode) FromMap(permaBlobRef string, m map[string]interface{
   self.permaBlobRef = permaBlobRef
   self.ID = m["b"].(string)
   self.permissionSigner = m["s"].(string)
-  self.action = m["ac"].(int)
+  self.action = int(m["ac"].(int64))
   self.User = m["u"].(string)
   self.Allow = int(m["a"].(int64))
   self.Deny = int(m["d"].(int64))
   self.OriginalAllow = int(m["oa"].(int64))
   self.OriginalDeny = int(m["od"].(int64))
-  ha := m["ha"].([]int64)
-  hd := m["hd"].([]int64)
-  hid := m["hid"].([]string)
-  for i := 0; i < len(ha); i++ {
-    self.History = append(self.History, ot.PermissionHistory{ID: hid[i], Allow: int(ha[i]), Deny: int(hd[i])})
+  if _, ok := m["ha"]; ok {
+    ha := m["ha"].([]int64)
+    hd := m["hd"].([]int64)
+    hid := m["hid"].([]string)
+    for i := 0; i < len(ha); i++ {
+      self.History = append(self.History, ot.PermissionHistory{ID: hid[i], Allow: int(ha[i]), Deny: int(hd[i])})
+    }
   }
-  self.Deps = m["dep"].([]string)
+  if d, ok := m["dep"]; ok {
+    self.Deps = d.([]string)
+  }
   self.seqNumber = m["seq"].(int64)
 }
 

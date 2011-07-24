@@ -29,7 +29,7 @@
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sun Jul 24 17:52:51 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Sun Jul 24 19:28:37 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
   var tok = "{{token}}";
@@ -58,6 +58,11 @@
   function onMessage(msg) {
     console.log("Message: " + msg.data)
     document.getElementById("out").innerText = msg.data
+
+    var jmsg = JSON.parse(msg.data)
+    if (jmsg.type == "invitation") {
+      accept(jmsg.perma, jmsg.permission);
+    }
   }
 
   var perma = ""
@@ -103,6 +108,20 @@
     post("/private/submit", JSON.stringify(msg), f);    
   }
   
+  function accept(perma, permission) {
+    var f = function(msg) {
+      console.log("Got: " + msg)
+      var response = JSON.parse(msg);
+      if ( !response.ok ) {
+        alert(reponse.error);
+        return;
+      };
+      console.log("Accepted an invitation");
+    }
+    var msg = {type: "keep", perma: perma, permission: permission}
+    post("/private/submit", JSON.stringify(msg), f);    
+  }
+
   function mutate(blob) {
     var f = function(msg) {
       console.log("Got: " + msg)

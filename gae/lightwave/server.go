@@ -28,6 +28,7 @@ var (
 type channelStruct struct {
   Token string
   UserID string
+  UserName string
   SessionID string
   OpenPermas []string
 }
@@ -83,6 +84,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
 
   var ch channelStruct
   ch.UserID = u.Id
+  ch.UserName = u.String()
   ch.Token = tok
   ch.SessionID = session
   _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + session, 0, nil), &ch)

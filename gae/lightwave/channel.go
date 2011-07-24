@@ -30,10 +30,7 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  err = channel.Send(self.c, self.userID + "/" + self.sessionID, string(schema))
-  if err != nil {
-    log.Printf("Failed sending to channel %v", self.userID + "/" + self.sessionID)
-  }
+  self.forwardToUser(permission.UserName(), string(schema))
 }
 
 func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
@@ -42,10 +39,7 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  err = channel.Send(self.c, self.userID + "/" + self.sessionID, string(schema))
-  if err != nil {
-    log.Printf("Failed sending to channel %v", self.userID + "/" + self.sessionID)
-  }
+  self.forwardToUser(keep.Signer(), string(schema))
 }
 
 func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
@@ -57,7 +51,9 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
   if err != nil {
     panic(err.String())
   }
-  self.forward(perma.BlobRef(), string(schema), self.userID + "/" + self.sessionID)
+  message := string(schema)
+  self.forwardToUser(keep.Signer(), message)
+  self.forwardToFollowers(perma.BlobRef(), message)
 }
 
 func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
@@ -76,22 +72,34 @@ func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.
   if err != nil {
     panic(err.String())
   }
-  self.forward(perma.BlobRef(), string(schema), "")
+  self.forwardToFollowers(perma.BlobRef(), string(schema))
 }
 
 func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grapher.PermissionNode) {
-  log.Printf("Perm")
+  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": permission.SequenceNumber(), "type":"permission", "user": permission.UserName(), "allow": permission.AllowBits(), "deny": permission.DenyBits()}
+  switch permission.Action() {
+  case grapher.PermAction_Invite:
+    mutJson["action"] = "invite"
+  case grapher.PermAction_Expel:
+    mutJson["action"] = "expel"
+  case grapher.PermAction_Change:
+    mutJson["action"] = "change"
+  default:
+    panic("Unknown action")
+  }
+  schema, err := json.Marshal(mutJson)
+  if err != nil {
+    panic(err.String())
+  }
+  self.forwardToFollowers(perma.BlobRef(), string(schema))
 }
 
-func (self* channelAPI) forward(perma_blobref string, message string, dest_channel string) (err os.Error) {
-  channels, err := self.followers(perma_blobref)
+func (self* channelAPI) forwardToUser(username string, message string) (err os.Error) {
+  channels, err := self.channelsByUser(username)
   if err != nil {
     return err
   }
   for _, ch := range channels {
-    if ch.UserID + "/" + ch.SessionID == dest_channel {
-      dest_channel = ""
-    }
     log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
     err = channel.Send(self.c, ch.UserID + "/" + ch.SessionID, message)
     if err != nil {
@@ -99,20 +107,47 @@ func (self* channelAPI) forward(perma_blobref string, message string, dest_chann
     }
   }
   
-  if dest_channel != "" {
-    log.Printf("Sending to %v", dest_channel)
-    err = channel.Send(self.c, dest_channel, message)
+  return nil
+}
+
+func (self* channelAPI) forwardToFollowers(perma_blobref string, message string) (err os.Error) {
+  channels, err := self.channelsByFollowers(perma_blobref)
+  if err != nil {
+    return err
+  }
+  for _, ch := range channels {
+    log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
+    err = channel.Send(self.c, ch.UserID + "/" + ch.SessionID, message)
     if err != nil {
-      log.Printf("Failed sending to channel %v", dest_channel)
+      log.Printf("Failed sending to channel %v", ch.UserID + "/" + ch.SessionID)
     }
   }
   
   return nil
 }
 
-func (self* channelAPI) followers(perma_blobref string) (channels []channelStruct, err os.Error) {
+func (self* channelAPI) channelsByFollowers(perma_blobref string) (channels []channelStruct, err os.Error) {
   // TODO: This should be the IN operator?
   query := datastore.NewQuery("channel").Filter("OpenPermas =", perma_blobref)
+  for it := query.Run(self.c) ; ; {
+    var data channelStruct
+    _, e := it.Next(&data)
+    if e == datastore.Done {
+      return
+    }
+    if e != nil {
+      log.Printf("Err: in query: %v",e)
+      return nil, e
+    }
+    channels = append(channels, data)
+  }
+  return
+}
+
+func (self* channelAPI) channelsByUser(username string) (channels []channelStruct, err os.Error) {
+  log.Printf("Searching for usr %v", username)
+  // TODO: This should be the IN operator?
+  query := datastore.NewQuery("channel").Filter("UserName =", username)
   for it := query.Run(self.c) ; ; {
     var data channelStruct
     _, e := it.Next(&data)

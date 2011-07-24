@@ -343,11 +343,12 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
       return nil, "", false
     }
     // Is this an invitation? Then we cannot apply it, because most data is missing.
-    if inv, ok := newnode.(*permissionNode); ok && inv.action == PermAction_Invite && inv.User == self.userID && !self.hasBlobs(perma.BlobRef(), inv.Dependencies()) {
+//    if inv, ok := newnode.(*permissionNode); ok && inv.action == PermAction_Invite && inv.User == self.userID && !self.hasBlobs(perma.BlobRef(), inv.Dependencies()) {
+    if inv, ok := newnode.(*permissionNode); ok && inv.action == PermAction_Invite {
       processed = self.handleInvitation(perma, inv)
       // Do not apply the blob here. We must first download all the data
-      self.enqueue(perma.BlobRef(), blobref, inv.Dependencies())
-      return
+      //self.enqueue(perma.BlobRef(), blobref, inv.Dependencies())
+      //return
     } else if keep, ok := newnode.(*keepNode); ok {
       processed = self.checkKeep(perma, keep)
       if !processed {
@@ -387,6 +388,7 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
 }
 
 func (self *Grapher) handleInvitation(perma *permaNode, perm *permissionNode) bool {
+  log.Printf("Handle invitation")
 //  self.openInvitations[perma.BlobRef()] = perm.BlobRef()
   // Signal to the next layer that an invitation has been received
   if self.api != nil {
@@ -467,11 +469,11 @@ func (self *Grapher) checkKeep(perma *permaNode, keep *keepNode) bool {
   }
   
   // The local user accepted the invitation?
-  if keep.Signer() == self.userID {
+//  if keep.Signer() == self.userID {
     if self.api != nil {
       self.api.Signal_AcceptedInvitation(perma, perm, keep)
     }
-  }
+//  }
   return true
 }
 
@@ -785,7 +787,7 @@ type clientSuperSchema struct {
   // Allowed value are "permanode", "mutation", "permission", "keep"
   Type    string "type"
   
-  PermissionSeqNumber int64 "permission"
+  Permission string "permission"
   Action string "action"
   
   Random string "random"
@@ -811,9 +813,10 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
     return
   case "keep":
     var permissionBlobRef string
-    if schema.PermissionSeqNumber != 0 {
-      data, err := self.gstore.GetOTNodeBySeqNumber(schema.PermaNode, schema.PermissionSeqNumber)
+    if schema.Permission != "" {
+      data, err := self.gstore.GetOTNodeByBlobRef(schema.PermaNode, schema.Permission)
       if err != nil {
+	log.Printf("Unable to find permission %v, %v", schema.PermaNode, schema.Permission)
 	return "", -1, err
       }
       if k, ok := data["k"]; !ok && k.(int64) != OTNode_Permission {
