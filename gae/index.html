@@ -23,7 +23,7 @@
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sat Jul 23 14:53:07 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Sun Jul 24 12:38:24 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
   var tok = "{{token}}";
@@ -60,7 +60,7 @@
     f = function(msg) {
       var response = JSON.parse(msg);
       if ( response.error ) {
-        alert(reponse.error);
+        alert(response.error);
         return;
       }
       perma = response.blobref;

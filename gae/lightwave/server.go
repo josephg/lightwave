@@ -98,6 +98,10 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     return
   }
 
+  // Cookie
+  cookie := &http.Cookie{Path:"/", Name:"Session", Value: session, Expires: *time.SecondsToUTC(time.UTC().Seconds() + 60 * 60 * 24)}
+  http.SetCookie(w, cookie)
+
   w.Header().Set("Content-Length", strconv.Itoa(b.Len()))
   b.WriteTo(w)
 }
@@ -115,7 +119,6 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
     log.Printf("Err: %v", err)
     return
   }
-
 }
 
 type openCloseRequest struct {
@@ -221,11 +224,17 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   }
   
+  cookie := getSessionCookie(r)
+  if cookie == nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+  
   s := newStore(c)
   g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
-  newChannelAPI(c, g)
+  newChannelAPI(c, u.Id, cookie.Value, g)
   
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -246,4 +255,13 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 func sendError(w http.ResponseWriter, r *http.Request, msg string) {
   log.Printf("Err: %v", msg)
   fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, msg)
+}
+
+func getSessionCookie(r *http.Request) *http.Cookie {
+  for _, c := range r.Cookie {
+    if c.Name == "Session" {
+      return c
+    }
+  }
+  return nil
 }

@@ -496,7 +496,11 @@ func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
   log.Printf("Processing keep of %v\n", keep.Signer())
   // Signal the keep to the application
   if self.api != nil {
-    self.api.Blob_Keep(perma, perm, keep)
+    if perm != nil {
+      self.api.Blob_Keep(perma, perm, keep)
+    } else {
+      self.api.Blob_Keep(perma, nil, keep)
+    }
   }
   
   // This implies that the local user is accepting an invitation?
