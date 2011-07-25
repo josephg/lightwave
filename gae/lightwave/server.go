@@ -47,6 +47,7 @@ func init() {
   http.HandleFunc("/private/submit", handleSubmit)
   http.HandleFunc("/private/open", handleOpen)
   http.HandleFunc("/private/close", handleClose)
+  http.HandleFunc("/private/listpermas", handleListPermas)
   
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
@@ -225,18 +226,20 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     sendError(w, r, "No user attached to the request")
     return
   }
-  
+
+  /*
   cookie := getSessionCookie(r)
   if cookie == nil {
     sendError(w, r, "No session cookie")
     return
   }
+  */
   
   s := newStore(c)
   g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
-  newChannelAPI(c, u.Id, cookie.Value, g)
+  newChannelAPI(c, u.Id, "TODO session", g)
   
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -259,6 +262,7 @@ func sendError(w http.ResponseWriter, r *http.Request, msg string) {
   fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, msg)
 }
 
+/*
 func getSessionCookie(r *http.Request) *http.Cookie {
   for _, c := range r.Cookie {
     if c.Name == "Session" {
@@ -266,4 +270,27 @@ func getSessionCookie(r *http.Request) *http.Cookie {
     }
   }
   return nil
+}
+*/
+
+func handleListPermas(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+
+  s := newStore(c)
+  permas, err := s.ListPermas()
+  if err != nil {
+    sendError(w, r, err.String())
+  }
+  
+  j := map[string]interface{}{"ok":true, "permas":permas}
+  msg, err := json.Marshal(j)
+  if err != nil {
+    panic("Cannot serialize")
+  }
+  fmt.Fprint(w, string(msg))
 }

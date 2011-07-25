@@ -23,13 +23,19 @@
   <input type="submit" value="Send" onclick="invite(perma, document.getElementById('t3').value, 1)">
 </div>
 
+<br>
+<div>
+  <input type="submit" value="Benchmark" onclick="benchmark()">
+  <input type="submit" value="List permas" onclick="list()">
+</div>
+
 <h1>Result</h1>
 <div id="out"></div>
 
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sun Jul 24 19:28:37 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Mon Jul 25 19:24:09 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
   var tok = "{{token}}";
@@ -136,6 +142,18 @@
     post("/private/submit", JSON.stringify(blob), f);
   }
 
+  function list(perma, permission) {
+    var f = function(msg) {
+      console.log("Got: " + msg)
+      var response = JSON.parse(msg);
+      if ( !response.ok ) {
+        alert(reponse.error);
+        return;
+      };
+   }
+   get("/private/listpermas", f);    
+  }
+
   function post(url, data, f) {
     var xmlHttp = null;
     try {
@@ -167,5 +185,56 @@
     xmlHttp.send(data);
   }
 }
+
+  function get(url, f) {
+    var xmlHttp = null;
+    try {
+      // Mozilla, Opera, Safari sowie Internet Explorer (ab v7)
+      xmlHttp = new XMLHttpRequest();
+    } catch(e) {
+      try {
+        // MS Internet Explorer (ab v6)
+        xmlHttp  = new ActiveXObject("Microsoft.XMLHTTP");
+      } catch(e) {
+        try {
+          // MS Internet Explorer (ab v5)
+          xmlHttp  = new ActiveXObject("Msxml2.XMLHTTP");
+        } catch(e) {
+          xmlHttp  = null;
+        }
+      }
+    }
+    if (xmlHttp) {
+      xmlHttp.open('GET', url, true);
+      xmlHttp.onreadystatechange = function () {
+        if (xmlHttp.readyState == 4) {
+          document.getElementById("out").innerText = xmlHttp.responseText
+          if ( f ) {
+            f(xmlHttp.responseText)
+          }
+       }
+    };
+    xmlHttp.send();
+  }
+}
+
+  var benchCount = 0
+  var benchStart = 0
+  function benchmark() {
+    var date = new Date()
+    benchStart = date.getTime()
+    benchmarkIntern();
+  }
+  function benchmarkIntern() {
+    if ( benchCount == 100 ) {
+      var date = new Date()
+      console.log("DURATION: " + ((date.getTime() - benchStart)/1000).toString())
+      return
+    }
+    console.log("Benchmark ...")
+   var blob = {"type":"mutation", perma: perma, "at":2 + benchCount, "op":{"$t":[{"$s":11 + benchCount * 2}, "!?"]}}
+    benchCount++
+    post("/private/submit", JSON.stringify(blob), benchmarkIntern);
+  }
 </script>
 </body> </html>

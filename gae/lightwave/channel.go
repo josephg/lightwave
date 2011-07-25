@@ -127,7 +127,7 @@ func (self* channelAPI) forwardToFollowers(perma_blobref string, message string)
 }
 
 func (self* channelAPI) channelsByFollowers(perma_blobref string) (channels []channelStruct, err os.Error) {
-  // TODO: This should be the IN operator?
+  // TODO: Use query GetAll?
   query := datastore.NewQuery("channel").Filter("OpenPermas =", perma_blobref)
   for it := query.Run(self.c) ; ; {
     var data channelStruct
@@ -145,8 +145,8 @@ func (self* channelAPI) channelsByFollowers(perma_blobref string) (channels []ch
 }
 
 func (self* channelAPI) channelsByUser(username string) (channels []channelStruct, err os.Error) {
+  // TODO: Use query GetAll?
   log.Printf("Searching for usr %v", username)
-  // TODO: This should be the IN operator?
   query := datastore.NewQuery("channel").Filter("UserName =", username)
   for it := query.Run(self.c) ; ; {
     var data channelStruct

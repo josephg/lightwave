@@ -4,6 +4,7 @@ import (
   "os"
   "log"
   "appengine"
+  "appengine/user"
   "appengine/datastore"
   "crypto/sha256"
   "encoding/hex"
@@ -236,3 +237,19 @@ func (self *store) Dequeue(perma_blobref string, blobref string) (blobrefs []str
   return
 }
 
+func (self *store) ListPermas() (perma_blobrefs []string, err os.Error) {
+  // TODO: Use query GetAll?
+  query := datastore.NewQuery("node").Filter("k =", int64(grapher.OTNode_Keep)).Filter("s =", user.Current(self.c).String()).KeysOnly()
+  for it := query.Run(self.c) ; ; {
+    key, e := it.Next(nil)
+    if e == datastore.Done {
+      return
+    }
+    if e != nil {
+      log.Printf("Err: in query: %v",e)
+      return nil, e
+    }
+    perma_blobrefs = append(perma_blobrefs, key.Parent().StringID())
+  }
+  return
+}
