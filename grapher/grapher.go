@@ -620,30 +620,29 @@ func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (err
     return err
   }
   
-  f := func() {
-    i := int64(0)
-    for n := range ch {
-      switch n.(type) {
-      case *mutationNode:
-	mut := n.(*mutationNode)
-	self.api.Blob_Mutation(perma, mut)
-      case *keepNode:
-	keep := n.(*keepNode)
-	var perm *permissionNode
-	if keep.permissionBlobRef != "" {
-	  perm, _ = self.permission(perma.BlobRef(), keep.permissionBlobRef)
-	}
-	self.api.Blob_Keep(perma, perm, keep)
-      case *permissionNode:
-	perm := n.(*permissionNode)
-	self.api.Blob_Permission(perma, perm)
-      default:
-	panic("Unknown blob type")
+  for n := range ch {
+    switch n.(type) {
+    case *mutationNode:
+      mut := n.(*mutationNode)
+      self.api.Blob_Mutation(perma, mut)
+    case *keepNode:
+      keep := n.(*keepNode)
+      var perm PermissionNode = nil
+      if keep.permissionBlobRef != "" {
+	perm, err = self.permission(perma.BlobRef(), keep.permissionBlobRef)
+	if err != nil {
+	  log.Printf("Could not get permission")
+	  return err
+        }
       }
-      i++
+      self.api.Blob_Keep(perma, perm, keep)
+    case *permissionNode:
+      perm := n.(*permissionNode)
+      self.api.Blob_Permission(perma, perm)
+    default:
+      panic("Unknown blob type")
     }
   }
-  go f()
   return
 }
 

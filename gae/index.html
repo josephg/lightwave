@@ -32,10 +32,13 @@
 <h1>Result</h1>
 <div id="out"></div>
 
+<h1>Open</h1>
+<div id="permas"></div>
+
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Mon Jul 25 19:24:09 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Wed Jul 27 12:32:19 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
   var tok = "{{token}}";
@@ -150,6 +153,15 @@
         alert(reponse.error);
         return;
       };
+      var div = document.getElementById("permas")
+      for ( var i = 0; i < response.permas.length; i++ ) {
+        var a = document.createElement("a");
+        a.innerText = response.permas[i];
+        a.href = "#"
+        a.onclick = function(p) { return function() { open(p); } }(response.permas[i])
+        div.appendChild(a)
+        div.appendChild(document.createElement("br"))
+      }
    }
    get("/private/listpermas", f);    
   }
@@ -180,11 +192,11 @@
           if ( f ) {
             f(xmlHttp.responseText)
           }
-       }
-    };
-    xmlHttp.send(data);
+        }
+      };
+      xmlHttp.send(data);
+    }
   }
-}
 
   function get(url, f) {
     var xmlHttp = null;
@@ -212,11 +224,11 @@
           if ( f ) {
             f(xmlHttp.responseText)
           }
-       }
-    };
-    xmlHttp.send();
+        }
+      };
+      xmlHttp.send();
+    }
   }
-}
 
   var benchCount = 0
   var benchStart = 0

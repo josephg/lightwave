@@ -30,7 +30,14 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  self.forwardToUser(permission.UserName(), string(schema))
+  if self.sessionID != "" {
+    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  } else {  
+    err = self.forwardToUser(permission.UserName(), string(schema))
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
 }
 
 func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
@@ -39,7 +46,14 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  self.forwardToUser(keep.Signer(), string(schema))
+  if self.sessionID != "" {
+    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  } else {
+    err = self.forwardToUser(keep.Signer(), string(schema))
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
 }
 
 func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
@@ -52,8 +66,15 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
     panic(err.String())
   }
   message := string(schema)
-  self.forwardToUser(keep.Signer(), message)
-  self.forwardToFollowers(perma.BlobRef(), message)
+  if self.sessionID != "" {
+    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  } else {
+    self.forwardToUser(keep.Signer(), message)
+    err = self.forwardToFollowers(perma.BlobRef(), message)
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
 }
 
 func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
@@ -72,7 +93,14 @@ func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.
   if err != nil {
     panic(err.String())
   }
-  self.forwardToFollowers(perma.BlobRef(), string(schema))
+  if self.sessionID != "" {
+    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  } else {
+    err = self.forwardToFollowers(perma.BlobRef(), string(schema))
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
 }
 
 func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grapher.PermissionNode) {
@@ -91,7 +119,23 @@ func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grap
   if err != nil {
     panic(err.String())
   }
-  self.forwardToFollowers(perma.BlobRef(), string(schema))
+  if self.sessionID != "" {
+    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  } else {
+    err = self.forwardToFollowers(perma.BlobRef(), string(schema))
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
+}
+
+func (self* channelAPI) forwardToSession(userid string, sessionid string, message string) (err os.Error) {
+  log.Printf("Sending to session %v: %v", userid+ "/" + sessionid, message)
+  err = channel.Send(self.c, userid + "/" + sessionid, message)
+  if err != nil {
+    log.Printf("Failed sending to channel %v", userid + "/" + sessionid)
+  }
+  return nil
 }
 
 func (self* channelAPI) forwardToUser(username string, message string) (err os.Error) {

@@ -132,8 +132,10 @@ func (self *store) GetOTNodeBySeqNumber(perma_blobref string, seqNumber int64) (
 }
 
 func (self *store) GetOTNodesAscending(perma_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error) {
-  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("seq >=", startWithSeqNumber).Filter("seq <", endSeqNumber).Order("seq")
-  
+  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("seq >=", startWithSeqNumber).Order("seq")
+  if endSeqNumber >= 0 {
+    query = query.Filter("seq <", endSeqNumber)
+  }
   channel := make(chan map[string]interface{})
   f := func() {
     for it := query.Run(self.c) ; ; {

@@ -160,11 +160,26 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     sendError(w, r, "Too many open channels")
     return    
   }
-  // Update channel infos
-  ch.OpenPermas = append(ch.OpenPermas, req.Perma)
-  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
-  if err != nil {
-    sendError(w, r, "Internal server error")
+  is_open := false
+  for _, p := range ch.OpenPermas {
+    if p == req.Perma {
+      is_open = true
+      break
+    }
+  }
+  if !is_open {
+    // Update channel infos
+    ch.OpenPermas = append(ch.OpenPermas, req.Perma)
+    _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
+    if err != nil {
+      sendError(w, r, "Internal server error")
+    }
+    // Repeat all blobs from this document.  
+    s := newStore(c)
+    g := grapher.NewGrapher(u.String(), s, s, nil)
+    s.SetGrapher(g)
+    newChannelAPI(c, u.Id, req.Session, g)
+    g.Repeat(req.Perma, 0)
   }
   // Done
   fmt.Fprint(w, `{"ok":true}`)
@@ -239,7 +254,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
-  newChannelAPI(c, u.Id, "TODO session", g)
+  newChannelAPI(c, u.Id, "", g)
   
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
