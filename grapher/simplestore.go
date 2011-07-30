@@ -95,6 +95,32 @@ func (self *SimpleGraphStore) GetOTNodeByBlobRef(perma_blobref string, blobref s
   return g.nodes[seq], nil
 }
 
+func (self *SimpleGraphStore) GetMutationsAscending(perma_blobref string, entity_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error) {
+  g, ok := self.graphs[perma_blobref]
+  if !ok {
+    return nil, os.NewError("Unknown perma blob")
+  }
+  
+  if startWithSeqNumber < 0 || startWithSeqNumber > int64(len(g.nodes)) {
+    return nil, os.NewError("Index out of bounds")
+  }
+  if endSeqNumber < 0 || endSeqNumber > int64(len(g.nodes)) {
+    return nil, os.NewError("Index out of bounds")
+  }
+
+  c := make(chan map[string]interface{})
+  f := func() {
+    for _, data := range g.nodes[startWithSeqNumber: endSeqNumber] {
+      if data["k"].(int64) == OTNode_Mutation && data["e"].(string) == entity_blobref {
+	c <- data
+      }
+    }
+    close(c)
+  }
+  go f()
+  return c, nil
+}
+
 func (self *SimpleGraphStore) GetOTNodesAscending(perma_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error) {
   g, ok := self.graphs[perma_blobref]
   if !ok {

@@ -43,6 +43,10 @@ func (self *dummyAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.Mu
   log.Printf("APP %v: Mutation", self.userID)
 }
 
+func (self *dummyAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.EntityNode) {
+  log.Printf("APP %v: Entity", self.userID)
+}
+
 type dummyNameService struct {
 }
 
@@ -106,24 +110,26 @@ func TestFederation(t *testing.T) {
   
   time.Sleep(1000000000 * 2)
 
-  blob1 := []byte(`{"type":"permanode", "signer":"a@alice", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob1 := []byte(`{"type":"permanode", "signer":"a@alice", "random":"perma1abc"}`)
   blobref1 := NewBlobRef(blob1)
-  blob1b := []byte(`{"type":"keep", "signer":"a@alice", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob1b := []byte(`{"type":"keep", "signer":"a@alice", "perma":"` + blobref1 + `"}`)
   blobref1b := NewBlobRef(blob1b)  
-  blob2 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref1b + `"], "op":{"$t":["Hello World"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob1c := []byte(`{"type":"entity", "signer":"a@b", "perma":"` + blobref1 + `", "content":"", "dep":["` + blobref1b + `"]}`)
+  blobref1c := NewBlobRef(blob1c)
+  blob2 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Hello World"]}, "entity":"` + blobref1c + `"}`)
   blobref2 := NewBlobRef(blob2)
-  blob3 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":[], "op":{"$t":["Olla!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob3 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Olla!!"]}, "entity":"` + blobref1c + `"}`)
   blobref3 := NewBlobRef(blob3)
-  blob4 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob4 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "entity":"` + blobref1c + `"}`)
   blobref4 := NewBlobRef(blob4)
   // Grant user foo@bar read access
-  blob5 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"b@bob", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob5 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"b@bob", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0}`)
   blobref5 := NewBlobRef(blob5)
-  blob7 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob7 := []byte(`{"type":"mutation", "signer":"a@alice", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "!!"]}, "entity":"` + blobref1c + `"}`)
   blobref7 := NewBlobRef(blob7)
-  blob8 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"c@charly", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob8 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"c@charly", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0}`)
   blobref8 := NewBlobRef(blob8)
-  blob9 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"d@daisy", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob9 := []byte(`{"type":"permission", "signer":"a@alice", "action":"invite", "perma":"` + blobref1 + `", "dep":["` + blobref4 + `"], "user":"d@daisy", "allow":` + fmt.Sprintf("%v", grapher.Perm_Read) + `, "deny":0}`)
   blobref9 := NewBlobRef(blob9)
 
   log.Printf("Hashes:\n1: %v\n1b: %v\n2: %v\n3: %v\n4: %v\n5: %v\n7: %v\n8: %v\n", blobref1, blobref1b, blobref2, blobref3, blobref4, blobref5, blobref7, blobref8)
@@ -131,6 +137,7 @@ func TestFederation(t *testing.T) {
   // Insert them in the wrong order
   store1.StoreBlob(blob1, blobref1)
   store1.StoreBlob(blob1b, blobref1b)
+  store1.StoreBlob(blob1c, blobref1c)
   store1.StoreBlob(blob2, blobref2)  
   store1.StoreBlob(blob3, blobref3)  
   store1.StoreBlob(blob4, blobref4)  

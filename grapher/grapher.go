@@ -33,6 +33,9 @@ type superSchema struct {
   Deny int "deny"
   
   Operation *json.RawMessage "op"
+  Entity string "entity"
+
+  Content *json.RawMessage "content"
 }
 
 // -----------------------------------------------------
@@ -60,8 +63,8 @@ type Federation interface {
 
 // The transformer as seen by the Grapher
 type Transformer interface {
-  TransformMutation(mutation MutationNode, rollback <-chan OTNode, concurrent []string) os.Error
-  TransformClientMutation(mutation_input MutationNode, rollback <-chan OTNode) os.Error
+  TransformMutation(mutation MutationNode, rollback <-chan MutationNode, concurrent []string) os.Error
+  TransformClientMutation(mutation_input MutationNode, rollback <-chan MutationNode) os.Error
 }
 
 // The API layer as seen by the Grapher
@@ -78,6 +81,7 @@ type API interface {
   // This function is called when a permission mutation has been applied.
   // The permission passed in the parameter is already transformed
   Blob_Permission(perma PermaNode, permission PermissionNode)
+  Blob_Entity(perma PermaNode, entity EntityNode)
 }
 
 // The blob store as seen by the Grapher
@@ -95,6 +99,7 @@ type GraphStore interface {
   GetOTNodeByBlobRef(perma_blobref string, blobref string) (data map[string]interface{}, err os.Error)
   GetOTNodesAscending(perma_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error)
   GetOTNodesDescending(perma_blobref string) (ch <-chan map[string]interface{}, err os.Error)
+  GetMutationsAscending(perma_blobref string, entity_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error)
   Enqueue(perma_blobref string, blobref string, dependencies []string) os.Error
   Dequeue(perma_blobref string, blobref string) (blobrefs []string, err os.Error)
 }
@@ -223,16 +228,24 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     n.blobref = blobref
     // TODO n.time = t
     n.signer = schema.Signer
-    // n.parent = schema.PermaNode
     // The owner of the permanode has all the rights on it
     n.permissions = map[string]int{n.signer: ^0}
+    return n, nil
+  case "entity":
+    if schema.Content == nil {
+      return nil, os.NewError("Entity must have some content")
+    }
+    n := &entityNode{entityBlobRef: blobref, entitySigner: schema.Signer, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies, content: []byte(*schema.Content)}
     return n, nil
   case "mutation":
     // TODO: time t
     if schema.Operation == nil {
       return nil, os.NewError("Mutation is lacking an operation")
     }
-    n := &mutationNode{mutationSigner: schema.Signer, permaBlobRef: schema.PermaNode, mutationBlobRef: blobref, dependencies: schema.Dependencies, operation: []byte(*schema.Operation)}
+    if schema.Entity == "" {
+      return nil, os.NewError("Mutation is lacking an entity")
+    }
+    n := &mutationNode{mutationSigner: schema.Signer, permaBlobRef: schema.PermaNode, mutationBlobRef: blobref, dependencies: schema.Dependencies, operation: []byte(*schema.Operation), entityBlobRef: schema.Entity}
     return n, nil
   case "permission":
     if schema.User == "" {
@@ -373,6 +386,8 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
       processed = self.handleKeep(perma, newnode.(*keepNode))
     } else if _, ok := newnode.(*mutationNode); ok {
       processed = self.handleMutation(perma, newnode.(*mutationNode))
+    } else if _, ok := newnode.(*entityNode); ok {
+      processed = self.handleEntity(perma, newnode.(*entityNode))
     }
     
     if processed {
@@ -400,6 +415,13 @@ func (self *Grapher) handleInvitation(perma *permaNode, perm *permissionNode) bo
 func (self *Grapher) handleMutation(perma *permaNode, mut *mutationNode) bool {
   if self.api != nil {
     self.api.Blob_Mutation(perma, mut)
+  }
+  return true
+}
+
+func (self *Grapher) handleEntity(perma *permaNode, entity *entityNode) bool {
+  if self.api != nil {
+    self.api.Blob_Entity(perma, entity)
   }
   return true
 }
@@ -553,6 +575,24 @@ func (self *Grapher) hasBlobs(perma_blobref string, blobrefs []string) bool {
   return len(m) == 0
 }
 
+func (self *Grapher) getMutationsAscending(perma_blobref string, entity_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan MutationNode, err os.Error) {
+  ch2, err := self.gstore.GetMutationsAscending(perma_blobref, entity_blobref, startWithSeqNumber, endSeqNumber)
+  if err != nil {
+    return nil, err
+  }
+  
+  c := make(chan MutationNode)
+  f := func() {
+    for data := range ch2 {
+      c <- self.mutationNodeFromMap(perma_blobref, data)
+    }
+    close(c)
+  }
+  
+  go f()
+  return c, nil
+}
+
 func (self *Grapher) getOTNodesAscending(perma_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan OTNode, err os.Error) {
   ch2, err := self.gstore.GetOTNodesAscending(perma_blobref, startWithSeqNumber, endSeqNumber)
   if err != nil {
@@ -603,8 +643,24 @@ func (self *Grapher) otNodeFromMap(perma_blobref string, data map[string]interfa
     k := &keepNode{}
     k.FromMap(perma_blobref, data)
     return k
+  case OTNode_Entity:
+    e := &entityNode{}
+    e.FromMap(perma_blobref, data)
+    return e
   default:
     panic("Malformed data")
+  }
+  return nil
+}
+
+func (self *Grapher) mutationNodeFromMap(perma_blobref string, data map[string]interface{}) MutationNode {
+  switch data["k"].(int64) {
+  case OTNode_Mutation:
+    m := &mutationNode{}
+    m.FromMap(perma_blobref, data)
+    return m
+  default:
+    panic("Not a mutation node")
   }
   return nil
 }
@@ -639,6 +695,9 @@ func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (err
     case *permissionNode:
       perm := n.(*permissionNode)
       self.api.Blob_Permission(perma, perm)
+    case *entityNode:
+      e := n.(*entityNode)
+      self.api.Blob_Entity(perma, e)
     default:
       panic("Unknown blob type")
     }
@@ -676,6 +735,24 @@ func (self *Grapher) CreateKeepBlob(perma_blobref, permission_blobref string) (b
   log.Printf("Storing keep %v\n", string(keepBlob))
   keepBlobRef, err := self.store.StoreBlob(keepBlob, "")
   return keepBlobRef, err
+}
+
+func (self *Grapher) CreateEntityBlob(perma_blobref string, content []byte) (blobref string, appliedAtSeqNumber int64, err os.Error) {
+  perma, e := self.permaNode(perma_blobref)
+  if e != nil {
+    err = e
+    return
+  }  
+  c := json.RawMessage(content)
+  entityJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "content": &c, "dep": perma.frontier.IDs()}
+  entityBlob, err := json.Marshal(entityJson)
+  if err != nil {
+    panic(err.String())
+  }
+  entityBlob = append([]byte(`{"type":"entity",`), entityBlob[1:]...)
+  log.Printf("Storing entity %v\n", string(entityBlob))
+  entityBlobRef, err := self.store.StoreBlob(entityBlob, "")
+  return entityBlobRef, perma.sequenceNumber(), err
 }
 
 func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber int64, userid string, allow int, deny int, action int) (blobref string, appliedAtSeqNumber int64, err os.Error) {
@@ -721,7 +798,7 @@ func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber
   return permBlobRef, appliedAtSeqNumber, err
 }
 
-func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interface{}, applyAtSeqNumber int64) (blobref string, appliedAtSeqNumber int64, err os.Error) {
+func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref string, operation interface{}, applyAtSeqNumber int64) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   perma, e := self.permaNode(perma_blobref)
   if e != nil {
     err = e
@@ -732,9 +809,10 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   m.permaBlobRef = perma_blobref
   m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
   m.mutationSigner = self.userID
+  m.entityBlobRef = entity_blobref
   m.operation = operation
   seq := perma.sequenceNumber()
-  ch, e := self.getOTNodesAscending(perma.BlobRef(), applyAtSeqNumber, perma.sequenceNumber())
+  ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, applyAtSeqNumber, perma.sequenceNumber())
   if e != nil {
     return
   }  
@@ -742,7 +820,7 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, operation interfac
   if e != nil {
     return
   }
-  mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": perma.frontier.IDs(), "t":"2006-01-02T15:04:05+07:00"}
+  mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": perma.frontier.IDs(), "entity":entity_blobref}
   switch m.operation.(type) {
   case ot.Operation:
     op := m.operation.(ot.Operation) // The following two lines work around a problem in GO/JSON
@@ -798,6 +876,9 @@ type clientSuperSchema struct {
   
   ApplyAt int64 "at"
   Operation *json.RawMessage "op"
+  Entity string "entity"
+  
+  Content *json.RawMessage "content"
 }
 
 func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string, appliedAtSeqNumber int64, err os.Error) {
@@ -831,11 +912,16 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
     }
     return blobref, -1, err
   case "mutation":
-    // TODO: time t
     if schema.Operation == nil {
       return "", -1, os.NewError("Mutation is lacking an operation")
     }
-    blobref, appliedAtSeqNumber, err = self.CreateMutationBlob(schema.PermaNode, []byte(*schema.Operation), schema.ApplyAt)
+    if schema.Entity == "" {
+      return "", -1, os.NewError("Mutation is lacking an entity")
+    }
+    blobref, appliedAtSeqNumber, err = self.CreateMutationBlob(schema.PermaNode, schema.Entity, []byte(*schema.Operation), schema.ApplyAt)
+    return
+  case "entity":
+    blobref, appliedAtSeqNumber, err = self.CreateEntityBlob(schema.PermaNode, []byte(*schema.Content))
     return
   case "permission":
     var action int

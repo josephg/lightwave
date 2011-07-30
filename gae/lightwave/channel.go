@@ -16,10 +16,11 @@ type channelAPI struct {
   sessionID string
   userID string
   grapher *grapher.Grapher
+  sessionOnly bool
 }
 
-func newChannelAPI(c appengine.Context, userid string, sessionid string, grapher *grapher.Grapher) *channelAPI {
-  a := &channelAPI{grapher: grapher, sessionID: sessionid, userID: userid, c: c}
+func newChannelAPI(c appengine.Context, userid string, sessionid string, sessionOnly bool, grapher *grapher.Grapher) *channelAPI {
+  a := &channelAPI{grapher: grapher, sessionID: sessionid, userID: userid, c: c, sessionOnly: sessionOnly}
   grapher.SetAPI(a)
   return a
 }
@@ -30,7 +31,7 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  if self.sessionID != "" {
+  if self.sessionOnly {
     err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {  
     err = self.forwardToUser(permission.UserName(), string(schema))
@@ -46,7 +47,7 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  if self.sessionID != "" {
+  if self.sessionOnly {
     err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToUser(keep.Signer(), string(schema))
@@ -66,11 +67,29 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
     panic(err.String())
   }
   message := string(schema)
-  if self.sessionID != "" {
+  if self.sessionOnly {
     err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     self.forwardToUser(keep.Signer(), message)
     err = self.forwardToFollowers(perma.BlobRef(), message)
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
+}
+
+func (self *channelAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.EntityNode) {
+  entityJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": entity.SequenceNumber(), "type":"entity", "signer":entity.Signer()}
+  msg := json.RawMessage(entity.Content())
+  entityJson["content"] = &msg
+  schema, err := json.Marshal(entityJson)
+  if err != nil {
+    panic(err.String())
+  }
+  if self.sessionOnly {
+    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  } else {
+    err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }
   if err != nil {
     log.Printf("Err Forward: %v", err)
@@ -93,7 +112,7 @@ func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.
   if err != nil {
     panic(err.String())
   }
-  if self.sessionID != "" {
+  if self.sessionOnly {
     err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
@@ -119,7 +138,7 @@ func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grap
   if err != nil {
     panic(err.String())
   }
-  if self.sessionID != "" {
+  if self.sessionOnly {
     err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
@@ -160,6 +179,10 @@ func (self* channelAPI) forwardToFollowers(perma_blobref string, message string)
     return err
   }
   for _, ch := range channels {
+    // Do not send to the session that caused this
+    if ch.UserID + "/" + ch.SessionID == self.userID + "/" + self.sessionID {
+      continue
+    }
     log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
     err = channel.Send(self.c, ch.UserID + "/" + ch.SessionID, message)
     if err != nil {

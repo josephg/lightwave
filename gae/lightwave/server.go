@@ -178,7 +178,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     s := newStore(c)
     g := grapher.NewGrapher(u.String(), s, s, nil)
     s.SetGrapher(g)
-    newChannelAPI(c, u.Id, req.Session, g)
+    newChannelAPI(c, u.Id, req.Session, true, g)
     g.Repeat(req.Perma, 0)
   }
   // Done
@@ -242,19 +242,18 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  /*
   cookie := getSessionCookie(r)
   if cookie == nil {
     sendError(w, r, "No session cookie")
     return
   }
-  */
+  sessionid := cookie.Value
   
   s := newStore(c)
   g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
-  newChannelAPI(c, u.Id, "", g)
+  newChannelAPI(c, u.Id, sessionid, false, g)
   
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -263,10 +262,16 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   }
   r.Body.Close()
   log.Printf("Received: %v", string(blob))
-  blobref, seqNumber, _ := g.HandleClientBlob(blob)
+  blobref, seqNumber, e := g.HandleClientBlob(blob)
+  if e != nil {
+    fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, e.String())
+    return
+  }
 
-  if seqNumber != -1 {
-    fmt.Fprintf(w, `{"ok":true, "seq":"%v"}`, seqNumber)
+  if seqNumber != -1 && blobref != "" {
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v}`, blobref, seqNumber)
+  } else if seqNumber != -1 {
+    fmt.Fprintf(w, `{"ok":true, "seq":%v}`, seqNumber)
   } else {
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, blobref)
   }
@@ -277,7 +282,6 @@ func sendError(w http.ResponseWriter, r *http.Request, msg string) {
   fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, msg)
 }
 
-/*
 func getSessionCookie(r *http.Request) *http.Cookie {
   for _, c := range r.Cookie {
     if c.Name == "Session" {
@@ -286,7 +290,6 @@ func getSessionCookie(r *http.Request) *http.Cookie {
   }
   return nil
 }
-*/
 
 func handleListPermas(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)

@@ -35,7 +35,7 @@ func decodeMutation(mutation grapher.MutationNode) (mut ot.Mutation, err os.Erro
 }
 
 // Interface towards the Grapher
-func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, rollback <-chan grapher.OTNode) (err os.Error) {
+func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, rollback <-chan grapher.MutationNode) (err os.Error) {
   mut, e := decodeMutation(mutation)
   if e != nil {
     log.Printf("Err: Decoding")
@@ -44,11 +44,7 @@ func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, 
 
   muts := make([]ot.Mutation, 0)
   for m := range rollback {
-    m2, ok := m.(grapher.MutationNode)
-    if !ok {
-      continue
-    }
-    m3, e := decodeMutation(m2)
+    m3, e := decodeMutation(m)
     if e != nil {
       log.Printf("Err: Decoding 2")
       return e
@@ -72,7 +68,7 @@ func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, 
 }
 
 // Interface towards the Grapher
-func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollback <-chan grapher.OTNode, concurrent []string) (err os.Error) {
+func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollback <-chan grapher.MutationNode, concurrent []string) (err os.Error) {
   mut, e := decodeMutation(mutation)
   if e != nil {
     return e
@@ -80,11 +76,7 @@ func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollba
 
   muts := make([]ot.Mutation, 0)
   for m := range rollback {
-    m2, ok := m.(grapher.MutationNode)
-    if !ok {
-      continue
-    }
-    m3, e := decodeMutation(m2)
+    m3, e := decodeMutation(m)
     if e != nil {
       return e
     }

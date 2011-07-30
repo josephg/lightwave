@@ -13,6 +13,7 @@ import (
 const (
   OTNode_Keep = 1 + iota
   OTNode_Permission
+  OTNode_Entity
   OTNode_Mutation
   OTNode_Perma
 )
@@ -40,6 +41,70 @@ const (
   PermAction_Expel
   PermAction_Change
 )
+
+type EntityNode interface {
+  OTNode
+  Content() []byte
+}
+
+type entityNode struct {
+  permaBlobRef string
+  entityBlobRef string
+  entitySigner string
+  content []byte
+  dependencies []string
+  seqNumber int64
+}
+
+func (self *entityNode) BlobRef() string {
+  return self.entityBlobRef
+}
+
+func (self *entityNode) Signer() string {
+  return self.entitySigner
+}
+
+func (self *entityNode) PermaBlobRef() string {
+  return self.permaBlobRef
+}
+
+func (self *entityNode) Dependencies() []string {
+  return self.dependencies
+}
+
+func (self *entityNode) SetSequenceNumber(seq int64) {
+  self.seqNumber = seq
+}
+
+func (self *entityNode) SequenceNumber() int64 {
+  return self.seqNumber
+}
+
+func (self *entityNode) Content() []byte {
+  return self.content
+}
+
+func (self *entityNode) ToMap() map[string]interface{} {
+  m := make(map[string]interface{})
+  m["k"] = int64(OTNode_Entity)
+  m["b"] = self.entityBlobRef
+  m["s"] = self.entitySigner
+  m["dep"] = self.dependencies
+  m["seq"] = self.seqNumber
+  m["c"] = self.content
+  return m
+}
+
+func (self *entityNode) FromMap(permaBlobRef string, m map[string]interface{}) {
+  self.permaBlobRef = permaBlobRef
+  self.entityBlobRef = m["b"].(string)
+  self.entitySigner = m["s"].(string)
+  if d, ok := m["dep"]; ok {
+    self.dependencies = d.([]string)
+  }
+  self.content = m["c"].([]byte)
+  self.seqNumber = m["seq"].(int64)
+}
 
 type PermissionNode interface {
   OTNode  
@@ -152,6 +217,7 @@ type MutationNode interface {
   OTNode
   Operation() interface{}
   SetOperation(op interface{})
+  EntityBlobRef() string
 }
 
 type mutationNode struct {
@@ -160,6 +226,7 @@ type mutationNode struct {
   mutationSigner string
   // This is either []byte or an already decoded operation, for example ot.Operation.
   operation interface{}
+  entityBlobRef string
   dependencies []string
   seqNumber int64
 }
@@ -196,6 +263,10 @@ func (self *mutationNode) SequenceNumber() int64 {
   return self.seqNumber
 }
 
+func (self *mutationNode) EntityBlobRef() string {
+  return self.entityBlobRef
+}
+
 func (self *mutationNode) ToMap() map[string]interface{} {
   m := make(map[string]interface{})
   m["k"] = int64(OTNode_Mutation)
@@ -213,6 +284,7 @@ func (self *mutationNode) ToMap() map[string]interface{} {
   default:
     panic("Cannot serialize")
   }
+  m["e"] = self.entityBlobRef
   m["dep"] = self.dependencies
   m["seq"] = self.seqNumber
   return m
@@ -223,7 +295,10 @@ func (self *mutationNode) FromMap(permaBlobRef string, m map[string]interface{})
   self.mutationBlobRef = m["b"].(string)
   self.mutationSigner = m["s"].(string)
   self.operation = m["op"].([]byte)
-  self.dependencies = m["dep"].([]string)
+  if d, ok := m["dep"]; ok {
+    self.dependencies = d.([]string)
+  }
+  self.entityBlobRef = m["e"].(string)
   self.seqNumber = m["seq"].(int64)
 }
 
@@ -430,6 +505,11 @@ func (self *permaNode) apply(newnode OTNode, transformer Transformer) (deps []st
   if perm, ok := newnode.(*permissionNode); ok {
     err = self.applyPermission(perm)
   } else if mut, ok := newnode.(*mutationNode); ok {
+    deps, err = self.grapher.gstore.HasOTNodes(self.BlobRef(), []string{mut.EntityBlobRef()})
+    if len(deps) != 0 {
+      log.Printf("Referenced entity is missing. It should have been in the dependencies")
+      return nil, os.NewError("Mutation references an invalid entity")
+    }
     err = self.applyMutation(mut, transformer)
   }
 
@@ -540,7 +620,7 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
   for c, _ := range prune {
     concurrent = append(concurrent, c)
   }
-  ch, err := self.grapher.getOTNodesAscending(self.blobref, self.sequenceNumber() - rollback, self.sequenceNumber())
+  ch, err := self.grapher.getMutationsAscending(self.blobref, newnode.EntityBlobRef(), self.sequenceNumber() - rollback, self.sequenceNumber())
   if err != nil {
     return err
   }

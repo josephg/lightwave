@@ -13,14 +13,19 @@
 </div>
 <br>
 <div>
-  <textarea id="t2" style="width:100%">{"type":"mutation", "at":1, "op":{"$t":["Hello World"]}}</textarea><br>
-  <input type="submit" value="Send" onclick="mutate(JSON.parse(document.getElementById('t2').value))">
+  <textarea id="entity" style="width:100%">Irgendein Text</textarea><br>
+  <input type="submit" value="Send" onclick="entity(perma, document.getElementById('entity').value)">
+</div>
+<br>
+<div>
+  <textarea id="t2" style="width:100%">{"$t":["Hello World"]}</textarea><br>
+  <input type="submit" value="Send" onclick="mutate(perma, entityBlobRef, JSON.parse(document.getElementById('t2').value))">
 </div>
 <br>
 <div>
   <div>Invite some user</div>
   <textarea id="t3" style="width:50%">b@example.com</textarea><br>
-  <input type="submit" value="Send" onclick="invite(perma, document.getElementById('t3').value, 1)">
+  <input type="submit" value="Send" onclick="invite(perma, document.getElementById('t3').value)">
 </div>
 
 <br>
@@ -38,7 +43,7 @@
 <div>Logout <a href="{{logout}}">here</a>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Wed Jul 27 12:32:19 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Fri Jul 29 02:46:53 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
   var tok = "{{token}}";
@@ -53,28 +58,97 @@
   socket.onclose = onClose;
 
   function onOpened() {
-    console.log("Opened")
-  }
+    console.log("Opened channel")
+  };
 
   function onClose() {
-    console.log("Closed")
-  }
+    console.log("Closed channel")
+  };
 
   function onError() {
-    console.log("Error")
-  }
+    console.log("Channel error")
+  };
 
   function onMessage(msg) {
-    console.log("Message: " + msg.data)
-    document.getElementById("out").innerText = msg.data
+    console.log("Message: " + msg.data);
+    document.getElementById("out").innerText = msg.data;
 
-    var jmsg = JSON.parse(msg.data)
-    if (jmsg.type == "invitation") {
-      accept(jmsg.perma, jmsg.permission);
+    var jmsg = JSON.parse(msg.data);
+    PermaInfo.addOTNode(jmsg);
+ };
+
+  var perma = "";
+  var entityBlobRef = "";
+
+  var openPermas = { };
+
+  function PermaInfo(perma) {
+    this.perma = perma;
+    this.seq = 0;
+    this.queue = { };
+    openPermas[perma] = this;
+  };
+
+  PermaInfo.get = function(perma) {
+    var x = openPermas[perma];
+    if ( x ) {
+      return x;
     }
-  }
+    x = new PermaInfo(perma);
+    openPermas[perma] = x;
+    return x;
+  };
 
-  var perma = ""
+  PermaInfo.addOTNode = function(jmsg) {
+    if (jmsg.type == "mutation") {
+      PermaInfo.get(jmsg.perma).addMutation(jmsg);
+    } else if (jmsg.type == "entity") {
+      PermaInfo.get(jmsg.perma).addEntity(jmsg);
+    } else if (jmsg.type == "keep") {
+      PermaInfo.get(jmsg.perma).addKeep(jmsg);
+    } else if (jmsg.type == "permission") {
+      PermaInfo.get(jmsg.perma).addPermission(jmsg);
+    }
+  };
+  
+  PermaInfo.prototype.addMutation = function(mut) {
+    this.addOTNode_(mut);
+  };
+
+  PermaInfo.prototype.addEntity = function(entity) {
+    this.addOTNode_(entity);
+  };
+
+  PermaInfo.prototype.addKeep = function(keep) {
+    this.addOTNode_(keep);
+  };
+
+  PermaInfo.prototype.addPermission = function(perm) {
+    this.addOTNode_(perm);
+  };
+
+  PermaInfo.prototype.addOTNode_ = function(node) {
+   if (node.seq < this.seq) {
+      console.log("Received ot node twice")
+      return;
+    }
+    if (node.seq > this.seq) {
+      console.log("Queueing up ot node")
+      this.queue[node.seq] = node;
+      return;
+    }
+    this.seq++;
+    console.log("Apply seq " + (this.seq - 1).toString() + " of " + node.perma);
+    var next = this.queue[this.seq];
+    if (next) {
+      delete this.queue[this.seq];
+      PermaInfo.addOTNode(next);
+    }
+  };
+
+  PermaInfo.prototype.sequenceNumber = function() {
+    return this.seq;
+  };
   
   function create() {
     var f = function(msg) {
@@ -87,8 +161,22 @@
       // Receive further updates
       open(perma);
     };
-    post("/private/submit", document.getElementById("t1").value, f);
-  }
+    post("/private/submit", "{\"type\":\"permanode\"}", f);
+  };
+
+  function entity(perma, content) {
+    var f = function(msg) {
+      console.log("Got: " + msg)
+      var response = JSON.parse(msg);
+      if ( response.error ) {
+        alert(response.error);
+        return;
+      }
+      entityBlobRef = response.blobref;
+   };
+    var msg = {perma: perma, content: content, type: "entity"};
+    post("/private/submit", JSON.stringify(msg), f);
+  };
 
   function open(perma) {
     var f = function(msg) {
@@ -99,11 +187,12 @@
         return;
       };
       console.log("Opened perma");
+      var pi = PermaInfo.get(perma)
     }
     post("/private/open", JSON.stringify({perma:perma, session:sessionID}), f);    
   }
 
-  function invite(perma, user, applyAt) {
+  function invite(perma, user) {
     var f = function(msg) {
       console.log("Got: " + msg)
       var response = JSON.parse(msg);
@@ -113,8 +202,9 @@
       };
       console.log("Invited a user");
     }
-    var msg = {type: "permission", perma: perma, allow: 1+2, deny:0, action:"invite", user: user, at: applyAt}
-    post("/private/submit", JSON.stringify(msg), f);    
+    var pi = PermaInfo.get(perma);
+    var msg = {type: "permission", perma: perma, allow: 1+2, deny:0, action:"invite", user: user, at: perma.sequenceNumber()};
+   post("/private/submit", JSON.stringify(msg), f);    
   }
   
   function accept(perma, permission) {
@@ -131,7 +221,7 @@
     post("/private/submit", JSON.stringify(msg), f);    
   }
 
-  function mutate(blob) {
+  function mutate(perma, entity, op) {
     var f = function(msg) {
       console.log("Got: " + msg)
       var response = JSON.parse(msg);
@@ -141,8 +231,9 @@
       };
       console.log("Mutation submitted");
     }
-    blob.perma = perma;
-    post("/private/submit", JSON.stringify(blob), f);
+    var pi = PermaInfo.get(perma);
+    var msg = {perma: perma, entity: entity, at: pi.sequenceNumber(), type: "mutation", op: op}
+   post("/private/submit", JSON.stringify(msg), f);
   }
 
   function list(perma, permission) {
