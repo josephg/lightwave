@@ -29,7 +29,7 @@ func NewSimpleGraphStore() *SimpleGraphStore {
   return &SimpleGraphStore{waitingBlobs: make(map[string]bool), waitingLists: make(map[string]*lst.List), pendingBlobs: make(map[string]int), graphs: make(map[string]*graph)}
 }
 
-func (self *SimpleGraphStore) StoreNode(perma_blobref string, blobref string, data map[string]interface{}) os.Error {
+func (self *SimpleGraphStore) StoreNode(perma_blobref string, blobref string, data map[string]interface{}, perma_data map[string]interface{}) os.Error {
   g, ok := self.graphs[perma_blobref]
   if !ok {
     return os.NewError("Unknown perma blob")

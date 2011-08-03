@@ -16,6 +16,7 @@ import (
   "strconv"
   "time"
   "rand"
+  "strings"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
 )
@@ -38,7 +39,7 @@ func init() {
   
   frontPageTmpl = template.New(nil)
   frontPageTmpl.SetDelims("{{", "}}")
-  if err := frontPageTmpl.ParseFile("index.html"); err != nil {
+  if err := frontPageTmpl.ParseFile("notebook.html"); err != nil {
     frontPageTmplErr = fmt.Errorf("tmpl.ParseFile failed: %v", err)
     return
   }
@@ -48,6 +49,7 @@ func init() {
   http.HandleFunc("/private/open", handleOpen)
   http.HandleFunc("/private/close", handleClose)
   http.HandleFunc("/private/listpermas", handleListPermas)
+  http.HandleFunc("/private/listinbox", handleListInbox)
   
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
@@ -58,16 +60,41 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     http.Error(w, "404 Not Found", http.StatusNotFound)
     return
   }
-  log.Printf("FRONTPAGE")
   c := appengine.NewContext(r)
   u := user.Current(c)
+  // User logged in?
   if u == nil {
     url, _ := user.LoginURL(c, "/")
     fmt.Fprintf(w, `<a href="%s">Sign in or register</a>`, url)
     return
   }
-  url, _ := user.LogoutURL(c, "/")
 
+  s := newStore(c)
+
+  // New User?
+  usr, err := s.HasUser(u.Id)
+  if err != nil {
+    http.Error(w, "Couldn't search for user", http.StatusInternalServerError)
+    c.Errorf("HasUser: %v", err)
+    return
+  }
+  
+  // New user?
+  if usr == nil {
+    usr, err = s.CreateUser()
+    if err != nil {
+      http.Error(w, "Couldn't create user", http.StatusInternalServerError)
+      c.Errorf("CreateUser: %v", err)
+      return
+    }
+    _, err := createBook(r);
+    if err != nil {
+      http.Error(w, "Couldn't create book", http.StatusInternalServerError)
+      c.Errorf("CreateBook: %v", err)
+      return
+    }
+  }
+  
   if frontPageTmplErr != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
     fmt.Fprintf(w, "Page template is bad: %v", frontPageTmplErr)
@@ -83,6 +110,8 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     return
   }
 
+  logout_url, _ := user.LogoutURL(c, "/")
+
   var ch channelStruct
   ch.UserID = u.Id
   ch.UserName = u.String()
@@ -94,7 +123,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
   }
 
   b := new(bytes.Buffer)
-  data := map[string]interface{}{ "userid":  u.String(), "logout": url, "token": tok, "session": session }
+  data := map[string]interface{}{ "userid":  u.String(), "logout": logout_url, "token": tok, "session": session }
   if err := frontPageTmpl.Execute(b, data); err != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
     fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
@@ -127,6 +156,7 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 type openCloseRequest struct {
   Session string "session"
   Perma string "perma"
+  From int64 "from"
 }
 
 func handleOpen(w http.ResponseWriter, r *http.Request) {
@@ -178,8 +208,10 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     s := newStore(c)
     g := grapher.NewGrapher(u.String(), s, s, nil)
     s.SetGrapher(g)
-    newChannelAPI(c, u.Id, req.Session, true, g)
-    g.Repeat(req.Perma, 0)
+    ch := newChannelAPI(c, s, req.Session, true, g)
+    g.Repeat(req.Perma, req.From)
+    fmt.Fprintf(w, `{"ok":true, "blobs":[%v]}`, strings.Join(ch.messageBuffer, ","))
+    return
   }
   // Done
   fmt.Fprint(w, `{"ok":true}`)
@@ -253,7 +285,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   g := grapher.NewGrapher(u.String(), s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
-  newChannelAPI(c, u.Id, sessionid, false, g)
+  newChannelAPI(c, s, sessionid, false, g)
   
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -261,7 +293,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   }
   r.Body.Close()
-  log.Printf("Received: %v", string(blob))
+//  log.Printf("Received: %v", string(blob))
   blobref, seqNumber, e := g.HandleClientBlob(blob)
   if e != nil {
     fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, e.String())
@@ -300,9 +332,10 @@ func handleListPermas(w http.ResponseWriter, r *http.Request) {
   }
 
   s := newStore(c)
-  permas, err := s.ListPermas()
+  permas, err := s.ListPermas(r.FormValue("mimetype"))
   if err != nil {
     sendError(w, r, err.String())
+    return
   }
   
   j := map[string]interface{}{"ok":true, "permas":permas}
@@ -311,4 +344,39 @@ func handleListPermas(w http.ResponseWriter, r *http.Request) {
     panic("Cannot serialize")
   }
   fmt.Fprint(w, string(msg))
+}
+
+func handleListInbox(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+
+  s := newStore(c)
+  inbox, err := s.ListInbox()
+  if err != nil {
+    sendError(w, r, err.String())
+    return
+  }
+  
+  j := map[string]interface{}{"ok":true, "permas":inbox}
+  msg, err := json.Marshal(j)
+  if err != nil {
+    panic("Cannot serialize")
+  }
+  fmt.Fprint(w, string(msg))
+}
+
+func createBook(r *http.Request) (perma_blobref string, err os.Error) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  s := newStore(c)
+  g := grapher.NewGrapher(u.String(), s, s, nil)
+  s.SetGrapher(g)
+
+  blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
+  perma_blobref, _, err = g.HandleClientBlob(blob)
+  return
 }

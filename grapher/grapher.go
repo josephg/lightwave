@@ -8,6 +8,7 @@ import (
 //  "time"
   "rand"
   "fmt"
+  "strings"
 )
 
 // --------------------------------------------------
@@ -27,6 +28,7 @@ type superSchema struct {
   
   Random string "random"
   PermaNode string "perma"
+  MimeType string "mimetype"
   
   User string "user"
   Allow int "allow"
@@ -91,7 +93,7 @@ type BlobStore interface {
 }
 
 type GraphStore interface {
-  StoreNode(perma_blobref string, blobref string, data map[string]interface{}) os.Error
+  StoreNode(perma_blobref string, blobref string, data map[string]interface{}, perma_data map[string]interface{}) os.Error
   StorePermaNode(perma_blobref string, data map[string]interface{}) os.Error
   GetPermaNode(blobref string) (data map[string]interface{}, err os.Error)
   HasOTNodes(perma_blobref string, blobrefs []string) (missing_blobrefs []string, err os.Error)
@@ -226,6 +228,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
   case "permanode":
     n := newPermaNode(self)
     n.blobref = blobref
+    n.mimeType = schema.MimeType
     // TODO n.time = t
     n.signer = schema.Signer
     // The owner of the permanode has all the rights on it
@@ -235,7 +238,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     if schema.Content == nil {
       return nil, os.NewError("Entity must have some content")
     }
-    n := &entityNode{entityBlobRef: blobref, entitySigner: schema.Signer, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies, content: []byte(*schema.Content)}
+    n := &entityNode{entityBlobRef: blobref, entitySigner: schema.Signer, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies, mimeType: schema.MimeType, content: []byte(*schema.Content)}
     return n, nil
   case "mutation":
     // TODO: time t
@@ -276,15 +279,15 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
 }
 
 // Invoked from the blob store
-func (self *Grapher) HandleBlob(blob []byte, blobref string) {
+func (self *Grapher) HandleBlob(blob []byte, blobref string) (err os.Error) {
   var signer string
   var perma *permaNode
   // First, determine the mimetype
   mimetype := MimeType(blob)
   if mimetype == "application/x-lightwave-schema" { // Is it a schema blob?
     var processed bool
-    if perma, signer, processed = self.handleSchemaBlob(blob, blobref); !processed {
-      return
+    if perma, signer, processed, err = self.handleSchemaBlob(blob, blobref); !processed || err != nil {
+      return err
     }
   } else {
     // TODO: Handle ordinary binary blobs
@@ -304,7 +307,7 @@ func (self *Grapher) HandleBlob(blob []byte, blobref string) {
   // Did other blobs wait on this one?
   deps, err := self.dequeue(perma.BlobRef(), blobref)
   if err != nil {
-    return
+    return err
   }
   for _, dep := range deps {
     b, err := self.store.GetBlob(dep)
@@ -314,21 +317,22 @@ func (self *Grapher) HandleBlob(blob []byte, blobref string) {
     }
     self.HandleBlob(b, dep)
   }
+  return nil;
 }
 
-func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *permaNode, signer string, processed bool) {
+func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *permaNode, signer string, processed bool, err os.Error) {
   // Try to decode it into a camli-store schema blob
   var schema superSchema
-  err := json.Unmarshal(blob, &schema)
+  err = json.Unmarshal(blob, &schema)
   if err != nil {
     log.Printf("Err: Malformed schema blob: %v\n", err)
-    return nil, "", false
+    return nil, "", false, err
   }
 
   newnode, err := self.decodeNode(&schema, blobref)
   if err != nil {
     log.Printf("Err: Schema blob is not valid: %v\n", err)
-    return nil, "", false
+    return nil, "", false, err
   }
   ptr := newnode.(AbstractNode)
   signer = ptr.Signer()
@@ -337,11 +341,11 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
     perma, err = self.permaNode(ptr.PermaBlobRef())
     if err != nil {
       log.Printf("Err: The specified node is not a perma node")
-      return nil, "", false
+      return nil, "", false, err
     }
     if perma == nil {
       self.enqueue(ptr.PermaBlobRef(), blobref, []string{ptr.PermaBlobRef()})
-      return nil, "", false
+      return nil, "", false, nil
     }
   }
   switch newnode.(type) {
@@ -352,8 +356,8 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
     return
   case OTNode:
     if perma == nil {
-      log.Printf("Err: Permission or mutation without a permanode")
-      return nil, "", false
+      log.Printf("Err: OT node without a permanode")
+      return nil, "", false, os.NewError("OT node without a permanode");
     }
     // Is this an invitation? Then we cannot apply it, because most data is missing.
 //    if inv, ok := newnode.(*permissionNode); ok && inv.action == PermAction_Invite && inv.User == self.userID && !self.hasBlobs(perma.BlobRef(), inv.Dependencies()) {
@@ -371,12 +375,12 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
     deps, err := perma.apply(newnode.(OTNode), self.transformer)
     if err != nil {
       log.Printf("Err: applying blob failed: %v\nblobref=%v\n", err, blobref)
-      return nil, "", false
+      return nil, "", false, err
     }
     // The blob could not be applied because of unresolved dependencies?
     if len(deps) > 0 {
       self.enqueue(perma.BlobRef(), blobref, deps)
-      return nil, "", false
+      return nil, "", false, nil
     }
     
     processed = true
@@ -391,15 +395,16 @@ func (self *Grapher) handleSchemaBlob(blob []byte, blobref string) (perma *perma
     }
     
     if processed {
-      self.gstore.StoreNode(perma.BlobRef(), newnode.(OTNode).BlobRef(), newnode.(OTNode).ToMap())
-      self.gstore.StorePermaNode(perma.BlobRef(), perma.ToMap())
+      perma_data := perma.ToMap()
+      self.gstore.StoreNode(perma.BlobRef(), newnode.(OTNode).BlobRef(), newnode.(OTNode).ToMap(), perma_data)
+      self.gstore.StorePermaNode(perma.BlobRef(), perma_data)
       log.Printf("Grapher processed blob %v at %v\n", ptr.BlobRef(), self.userID)
     }
     return
   }
 
   log.Printf("Err: Unknown blob type\n")
-  return nil, "", false
+  return nil, "", false, os.NewError("Unknown blob type")
 }
 
 func (self *Grapher) handleInvitation(perma *permaNode, perm *permissionNode) bool {
@@ -467,17 +472,22 @@ func (self *Grapher) checkKeep(perma *permaNode, keep *keepNode) bool {
   perm, err := self.permission(perma.BlobRef(), keep.permissionBlobRef)
   // Not an invitation?
   if err != nil {
-    log.Printf("Err: Keep references a permision that is something else or malformed")
+    log.Printf("Err: Keep references a permission that is something else or malformed")
     return false
   }
   // Permission has not yet been received or processed? -> enqueue
   if perm == nil {
     log.Printf("Permission is not yet applied for the keep")
     self.enqueue(perma.BlobRef(), keep.BlobRef(), []string{keep.permissionBlobRef})
-    // The local user accepted the invitation?
+    // The user accepted the invitation?
     if keep.Signer() == self.userID {
-      if self.fed != nil {
-	go self.fed.DownloadPermaNode(keep.permissionBlobRef)
+      // Both users are on the different domains? -> Download the nodes
+      if domain(keep.Signer()) != domain(self.userID) {
+	if self.fed != nil {
+	  go self.fed.DownloadPermaNode(keep.permissionBlobRef)
+	} else {
+	  log.Printf("Err: Cannot accept invitation from remote user when federation is turned off")
+	}
       }
     }
     return false
@@ -490,12 +500,10 @@ func (self *Grapher) checkKeep(perma *permaNode, keep *keepNode) bool {
     return false
   }
   
-  // The local user accepted the invitation?
-//  if keep.Signer() == self.userID {
-    if self.api != nil {
-      self.api.Signal_AcceptedInvitation(perma, perm, keep)
-    }
-//  }
+  // The user accepted the invitation?
+  if self.api != nil {
+    self.api.Signal_AcceptedInvitation(perma, perm, keep)
+  }
   return true
 }
 
@@ -705,8 +713,8 @@ func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (err
   return
 }
 
-func (self *Grapher) CreatePermaBlob() (blobref string, err os.Error) {
-  permaJson := map[string]interface{}{ "signer": self.userID, "random":fmt.Sprintf("%v", rand.Int63()), "t":"2006-01-02T15:04:05+07:00"}
+func (self *Grapher) CreatePermaBlob(mimeType string) (blobref string, err os.Error) {
+  permaJson := map[string]interface{}{ "signer": self.userID, "random":fmt.Sprintf("%v", rand.Int63()), "mimeType":mimeType}
   // TODO: Get time correctly
   permaBlob, err := json.Marshal(permaJson)
   if err != nil {
@@ -721,7 +729,7 @@ func (self *Grapher) CreatePermaBlob() (blobref string, err os.Error) {
 // The parameter 'permission_blobref' may be empty if the keep is from the same user that created the permaNode
 func (self *Grapher) CreateKeepBlob(perma_blobref, permission_blobref string) (blobref string, err os.Error) {
   // Create a keep on the permaNode.
-  keepJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "t":"2006-01-02T15:04:05+07:00"}
+  keepJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref}
   if permission_blobref != "" {
     keepJson["dep"] = []string{permission_blobref}
     keepJson["permission"] = permission_blobref
@@ -737,14 +745,14 @@ func (self *Grapher) CreateKeepBlob(perma_blobref, permission_blobref string) (b
   return keepBlobRef, err
 }
 
-func (self *Grapher) CreateEntityBlob(perma_blobref string, content []byte) (blobref string, appliedAtSeqNumber int64, err os.Error) {
+func (self *Grapher) CreateEntityBlob(perma_blobref string, mimeType string, content []byte) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   perma, e := self.permaNode(perma_blobref)
   if e != nil {
     err = e
     return
   }  
   c := json.RawMessage(content)
-  entityJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "content": &c, "dep": perma.frontier.IDs()}
+  entityJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "content": &c, "dep": perma.frontier.IDs(), "mimetype": mimeType}
   entityBlob, err := json.Marshal(entityJson)
   if err != nil {
     panic(err.String())
@@ -814,10 +822,12 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref str
   seq := perma.sequenceNumber()
   ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, applyAtSeqNumber, perma.sequenceNumber())
   if e != nil {
+    err = e
     return
   }  
   e = self.transformer.TransformClientMutation(m, ch)
   if e != nil {
+    err = e
     return
   }
   mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": perma.frontier.IDs(), "entity":entity_blobref}
@@ -869,6 +879,7 @@ type clientSuperSchema struct {
   
   Random string "random"
   PermaNode string "perma"
+  MimeType string "mimetype"
   
   User string "user"
   Allow int "allow"
@@ -884,7 +895,7 @@ type clientSuperSchema struct {
 func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string, appliedAtSeqNumber int64, err os.Error) {
   switch schema.Type {
   case "permanode":
-    blobref, err = self.CreatePermaBlob()
+    blobref, err = self.CreatePermaBlob(schema.MimeType)
     if err != nil {
       return "", -1, err
     }
@@ -921,7 +932,7 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
     blobref, appliedAtSeqNumber, err = self.CreateMutationBlob(schema.PermaNode, schema.Entity, []byte(*schema.Operation), schema.ApplyAt)
     return
   case "entity":
-    blobref, appliedAtSeqNumber, err = self.CreateEntityBlob(schema.PermaNode, []byte(*schema.Content))
+    blobref, appliedAtSeqNumber, err = self.CreateEntityBlob(schema.PermaNode, schema.MimeType, []byte(*schema.Content))
     return
   case "permission":
     var action int
@@ -942,4 +953,8 @@ func (self *Grapher) storeClientNode(schema *clientSuperSchema) (blobref string,
     log.Printf("Err: Unknown schema type")
   }
   return "", -1, os.NewError("Unknown schema type")
+}
+
+func domain(userid string) string {
+  return userid[strings.Index(userid, "@") + 1:];
 }

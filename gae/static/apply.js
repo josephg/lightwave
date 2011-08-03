@@ -104,16 +104,16 @@ lightwave.ot.TombStream.prototype.Bury = function(n) {
             this.seq.splice(this.pos, 0, left);
             this.pos++;
         } else if (this.pos > 0) {
-            delete this.seq[this.pos];
+            this.seq.splice(this.pos, 1);
             this.pos--;
             this.seq[this.pos] = this.seq[this.pos] - m;
-            this.inside = -this.seq[this.pos]
+            this.inside = -this.seq[this.pos];
         }
         if (right > 0) {
             this.seq.splice(this.pos + 1, 0, right)
         } else if (this.pos + 1 < this.seq.length) {
             this.seq[this.pos] = this.seq[this.pos] + this.seq[this.pos + 1];
-            delete this.seq[this.pos + 1]
+            this.seq.splice(this.pos + 1, 1);
         }
     }
     return [burried, err];

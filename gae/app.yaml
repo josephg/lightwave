@@ -11,6 +11,18 @@ handlers:
   static_files: static/\1.html
   upload: static/(.*).html
 
+- url: /(.+).png
+  static_files: static/\1.png
+  upload: static/(.*).png
+
+- url: /(.+).js
+  static_files: static/\1.js
+  upload: static/(.*).js
+
+- url: /(.+).css
+  static_files: static/\1.css
+  upload: static/(.*).css
+
 - url: /private/.*
   script: _go_app
   login: required

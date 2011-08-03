@@ -45,6 +45,7 @@ const (
 type EntityNode interface {
   OTNode
   Content() []byte
+  MimeType() string
 }
 
 type entityNode struct {
@@ -54,6 +55,7 @@ type entityNode struct {
   content []byte
   dependencies []string
   seqNumber int64
+  mimeType string
 }
 
 func (self *entityNode) BlobRef() string {
@@ -84,6 +86,10 @@ func (self *entityNode) Content() []byte {
   return self.content
 }
 
+func (self *entityNode) MimeType() string {
+  return self.mimeType
+}
+
 func (self *entityNode) ToMap() map[string]interface{} {
   m := make(map[string]interface{})
   m["k"] = int64(OTNode_Entity)
@@ -92,6 +98,7 @@ func (self *entityNode) ToMap() map[string]interface{} {
   m["dep"] = self.dependencies
   m["seq"] = self.seqNumber
   m["c"] = self.content
+  m["mt"] = self.mimeType;
   return m
 }
 
@@ -104,6 +111,7 @@ func (self *entityNode) FromMap(permaBlobRef string, m map[string]interface{}) {
   }
   self.content = m["c"].([]byte)
   self.seqNumber = m["seq"].(int64)
+  self.mimeType = m["mt"].(string)
 }
 
 type PermissionNode interface {
@@ -370,6 +378,7 @@ func (self *keepNode) FromMap(permaBlobRef string, m map[string]interface{}) {
 
 type PermaNode interface {
   AbstractNode
+  MimeType() string
 }
 
 type permaNode struct {
@@ -382,6 +391,7 @@ type permaNode struct {
   // The current frontier
   frontier ot.Frontier
   seqNumber int64
+  mimeType string
 }
 
 func newPermaNode(grapher *Grapher) *permaNode {
@@ -403,6 +413,7 @@ func (self *permaNode) ToMap() map[string]interface{} {
   }
   m["p1"] = p1
   m["p2"] = p2
+  m["mt"] = self.mimeType
   return m
 }
 
@@ -418,6 +429,7 @@ func (self *permaNode) FromMap(permaBlobRef string, m map[string]interface{}) {
   for i := 0; i < len(p1); i++ {
     self.permissions[p1[i]] = int(p2[i])
   }
+  self.mimeType = m["mt"].(string)
 }
 
 // abstractNode interface
@@ -433,6 +445,10 @@ func (self *permaNode) BlobRef() string {
 // abstractNode interface
 func (self *permaNode) Signer() string {
   return self.signer
+}
+
+func (self *permaNode) MimeType() string {
+  return self.mimeType
 }
 
 func (self *permaNode) sequenceNumber() int64 {

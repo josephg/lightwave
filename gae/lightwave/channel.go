@@ -3,6 +3,7 @@ package lightwave
 import (
   "appengine"
   "appengine/channel"
+  "appengine/user"
   "appengine/datastore"
   grapher "lightwavegrapher"
   ot "lightwaveot"
@@ -13,14 +14,16 @@ import (
 
 type channelAPI struct {
   c appengine.Context
+  store *store
   sessionID string
   userID string
-  grapher *grapher.Grapher
-  sessionOnly bool
+  bufferOnly bool
+  messageBuffer[] string
 }
 
-func newChannelAPI(c appengine.Context, userid string, sessionid string, sessionOnly bool, grapher *grapher.Grapher) *channelAPI {
-  a := &channelAPI{grapher: grapher, sessionID: sessionid, userID: userid, c: c, sessionOnly: sessionOnly}
+func newChannelAPI(c appengine.Context, store *store, sessionid string, bufferOnly bool, grapher *grapher.Grapher) *channelAPI {
+  u := user.Current(c)
+  a := &channelAPI{sessionID: sessionid, store: store, userID: u.Id, c: c, bufferOnly: bufferOnly}
   grapher.SetAPI(a)
   return a
 }
@@ -31,8 +34,9 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  if self.sessionOnly {
-    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {  
     err = self.forwardToUser(permission.UserName(), string(schema))
   }
@@ -47,9 +51,13 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     panic(err.String())
   }
-  if self.sessionOnly {
-    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
+    if perma.MimeType() == "application/x-lightwave-page" {
+      self.store.AddToInbox(perma.BlobRef());
+    }
     err = self.forwardToUser(keep.Signer(), string(schema))
   }
   if err != nil {
@@ -58,7 +66,7 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
 }
 
 func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
-  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": keep.SequenceNumber(), "type":"keep", "signer":keep.Signer()}
+  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": keep.SequenceNumber(), "type":"keep", "signer":keep.Signer(), "mimetype": perma.MimeType()}
   if permission != nil {
     mutJson["permission"] = permission.SequenceNumber()
   }
@@ -67,9 +75,13 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
     panic(err.String())
   }
   message := string(schema)
-  if self.sessionOnly {
-    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
+    if perma.MimeType() == "application/x-lightwave-page" {
+      self.store.AddToInbox(perma.BlobRef());
+    }
     self.forwardToUser(keep.Signer(), message)
     err = self.forwardToFollowers(perma.BlobRef(), message)
   }
@@ -79,15 +91,16 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
 }
 
 func (self *channelAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.EntityNode) {
-  entityJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": entity.SequenceNumber(), "type":"entity", "signer":entity.Signer()}
+  entityJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": entity.SequenceNumber(), "type":"entity", "signer":entity.Signer(), "mimetype": entity.MimeType(), "blobref": entity.BlobRef()}
   msg := json.RawMessage(entity.Content())
   entityJson["content"] = &msg
   schema, err := json.Marshal(entityJson)
   if err != nil {
     panic(err.String())
   }
-  if self.sessionOnly {
-    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }
@@ -97,7 +110,7 @@ func (self *channelAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.Enti
 }
 
 func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
-  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": mutation.SequenceNumber(), "type":"mutation", "signer":mutation.Signer()}
+  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": mutation.SequenceNumber(), "type":"mutation", "signer":mutation.Signer(), "entity": mutation.EntityBlobRef()}
   switch mutation.Operation().(type) {
   case ot.Operation:
     op := mutation.Operation().(ot.Operation) // The following two lines work around a problem in GO/JSON
@@ -112,8 +125,9 @@ func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.
   if err != nil {
     panic(err.String())
   }
-  if self.sessionOnly {
-    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }
@@ -138,8 +152,9 @@ func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grap
   if err != nil {
     panic(err.String())
   }
-  if self.sessionOnly {
-    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }
@@ -149,7 +164,7 @@ func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grap
 }
 
 func (self* channelAPI) forwardToSession(userid string, sessionid string, message string) (err os.Error) {
-  log.Printf("Sending to session %v: %v", userid+ "/" + sessionid, message)
+//  log.Printf("Sending to session %v: %v", userid+ "/" + sessionid, message)
   err = channel.Send(self.c, userid + "/" + sessionid, message)
   if err != nil {
     log.Printf("Failed sending to channel %v", userid + "/" + sessionid)
@@ -163,7 +178,7 @@ func (self* channelAPI) forwardToUser(username string, message string) (err os.E
     return err
   }
   for _, ch := range channels {
-    log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
+//    log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
     err = channel.Send(self.c, ch.UserID + "/" + ch.SessionID, message)
     if err != nil {
       log.Printf("Failed sending to channel %v", ch.UserID + "/" + ch.SessionID)

@@ -52,8 +52,8 @@ func (self *store) StoreBlob(blob []byte, blobref string) (finalBlobRef string, 
   }
 
   // Process it
-  self.grapher.HandleBlob(blob, blobref)
-  return blobref, nil
+  err = self.grapher.HandleBlob(blob, blobref)
+  return blobref, err
 }
 
 func (self *store) SetGrapher(grapher *grapher.Grapher) {
@@ -71,8 +71,12 @@ func (self *store) GetBlob(blobref string) (blob []byte, err os.Error) {
 // ------------------------------------------------------------------
 // Graph Store
 
-func (self *store) StoreNode(perma_blobref string, blobref string, data map[string]interface{}) (err os.Error) {
+func (self *store) StoreNode(perma_blobref string, blobref string, data map[string]interface{}, perma_data map[string]interface{}) (err os.Error) {
   log.Printf("Storing node ...")
+  // Copy the mime type for better searching
+  if data["k"].(int64) == int64(grapher.OTNode_Keep) {
+    data["mt"] = perma_data["mt"]
+  }
   parent := datastore.NewKey("perma", perma_blobref, 0, nil)
   // Since we cannot do anchestor queries :-(
   data["perma"] = perma_blobref
@@ -266,9 +270,12 @@ func (self *store) Dequeue(perma_blobref string, blobref string) (blobrefs []str
   return
 }
 
-func (self *store) ListPermas() (perma_blobrefs []string, err os.Error) {
+func (self *store) ListPermas(mimeType string) (perma_blobrefs []string, err os.Error) {
   // TODO: Use query GetAll?
   query := datastore.NewQuery("node").Filter("k =", int64(grapher.OTNode_Keep)).Filter("s =", user.Current(self.c).String()).KeysOnly()
+  if mimeType != "" {
+    query = query.Filter("mt =", mimeType)
+  }
   for it := query.Run(self.c) ; ; {
     key, e := it.Next(nil)
     if e == datastore.Done {
@@ -279,6 +286,65 @@ func (self *store) ListPermas() (perma_blobrefs []string, err os.Error) {
       return nil, e
     }
     perma_blobrefs = append(perma_blobrefs, key.Parent().StringID())
+  }
+  return
+}
+
+type userStruct struct {
+  UserName string
+}
+
+func (self *store) HasUser(userid string) (usr *userStruct, err os.Error) {
+  key := datastore.NewKey("user", userid, 0, nil)
+  usr = &userStruct{}
+  if err = datastore.Get(self.c, key, usr); err != nil {
+    usr = nil;
+    if err == datastore.ErrNoSuchEntity || err == datastore.ErrInvalidEntityType {
+      err = nil
+    }
+    return
+  }
+  return
+}
+
+func (self *store) CreateUser() (usr *userStruct, err os.Error) {
+  u := user.Current(self.c)
+  usr = &userStruct{UserName: u.String()}
+  _, err = datastore.Put(self.c, datastore.NewKey("user", u.Id, 0, nil), usr)
+  return
+}
+
+type inboxStruct struct {
+  Digest string
+}
+
+func (self *store) AddToInbox(perma_blobref string) (err os.Error) {
+  usr := user.Current(self.c)
+  b := inboxStruct{Digest: "Untitled page"}
+  
+  // Store it
+  parent := datastore.NewKey("user", usr.Id, 0, nil)
+  _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), &b)
+  return err
+}
+
+func (self *store) ListInbox() (inbox map[string]*inboxStruct, err os.Error) {
+  inbox = make(map[string]*inboxStruct)
+  // TODO: Use query GetAll?
+  u := user.Current(self.c)
+  parent := datastore.NewKey("user", u.Id, 0, nil)
+  query := datastore.NewQuery("inbox").Ancestor(parent)
+  for it := query.Run(self.c) ; ; {
+    val := &inboxStruct{}
+    key, e := it.Next(val)
+    if e == datastore.Done {
+      return
+    }
+    if e != nil {
+      log.Printf("Err: in query: %v",e)
+      return nil, e
+    }
+    inbox[key.StringID()] = val
   }
   return
 }
