@@ -99,7 +99,7 @@ store.submit = function(blob, onsuccess, onerror, beforesend) {
     } else if (blob.type == "mutation") {
         blob.at = pi.seq;
     }
-    store.httpPost("/private/submit", JSON.stringify(blob), f);
+    store.httpPost("/private/submit?session=" + store.sessionID, JSON.stringify(blob), f);
 };
 
 store.close = function(perma) {
