@@ -114,7 +114,24 @@ store.close = function(perma) {
     };
     store.httpPost("/private/close", JSON.stringify({perma:perma, session:store.sessionID}), f);    
 };
-  
+
+store.inviteByMail = function(follower, mail) {
+    store.httpPost("/private/invitebymail", JSON.stringify({"user": follower.id, "content": mail}));    
+};
+
+store.invite = function(follower, onsuccess) {
+    var f = function(response) {
+        console.log("Invited a user");
+        if (onsuccess) {
+            onsuccess(response.knownuser);
+        }
+    }
+    var page = follower.page;
+    var pi = store.get(page.pageBlobRef);
+    var msg = {type: "permission", perma: pi.blobref, allow: 1+2, deny:0, action:"invite", user: follower.id};
+    store.submit(msg, f, null, null);   
+};
+
 store.loadBook = function() {
     var f = function(msg) {
         console.log("Got: " + msg)
@@ -168,6 +185,7 @@ store.openPage = function(page) {
         var pagePermaInfo = store.get(page.pageBlobRef);
         pagePermaInfo.onEntity = store.onPageEntity;
         pagePermaInfo.onKeep = store.onPageKeep;
+        pagePermaInfo.onPermission = store.onPagePermission;
         pagePermaInfo.onMutation = store.onPageMutation;
         // Replay the received blobs
         for( var i = 0; i < response.blobs.length; i++ ) {
@@ -267,8 +285,30 @@ store.onPageKeep = function(permaInfo, keep) {
     if (permaInfo.blobref != page.pageBlobRef) {
         return
     }
-    var f = new Follower(page, keep.signer, null);
+    if (page.getFollower(keep.signer)) {
+        return
+    }
+    var f = page.getInvitation(keep.signer);
+    if (!f) {
+        f = new Follower(page, keep.signer, null);
+    }
     page.addFollower(f);
+};
+
+store.onPagePermission = function(permaInfo, perm) {
+    // This book is currently not open? -> do nothing
+    if ( !book || !book.currentChapter || !book.currentChapter.currentPage) {
+        return
+    }
+    var page = book.currentChapter.currentPage
+    if (permaInfo.blobref != page.pageBlobRef) {
+        return
+    }
+    if (page.getInvitation(perm.user)) {
+        return
+    }
+    var f = new Follower(page, perm.user, null);
+    page.addInvitation(f);
 };
 
 store.onPageMutation = function(permaInfo, mutation) {
@@ -406,6 +446,9 @@ PermaInfo.prototype.addKeep = function(keep) {
 
 PermaInfo.prototype.addPermission = function(perm) {
     this.addOTNode_(perm);
+    if (this.onPermission) {
+        this.onPermission(this, perm);
+    }
     this.dequeue_();
 };
 

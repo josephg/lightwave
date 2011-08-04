@@ -13,7 +13,7 @@ type BlobStore interface {
 }
 
 type BlobStoreListener interface {
-  HandleBlob(blob []byte, blobref string)
+  HandleBlob(blob []byte, blobref string) os.Error
 }
 
 type Blob struct {

@@ -38,6 +38,9 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
     self.messageBuffer = append(self.messageBuffer, string(schema));
 //    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {  
+    if perma.MimeType() == "application/x-lightwave-page" {
+      self.store.AddToInbox(perma.BlobRef());
+    }
     err = self.forwardToUser(permission.UserName(), string(schema))
   }
   if err != nil {
@@ -55,9 +58,6 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
     self.messageBuffer = append(self.messageBuffer, string(schema));
 //    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
-    if perma.MimeType() == "application/x-lightwave-page" {
-      self.store.AddToInbox(perma.BlobRef());
-    }
     err = self.forwardToUser(keep.Signer(), string(schema))
   }
   if err != nil {

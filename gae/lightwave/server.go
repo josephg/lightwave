@@ -9,6 +9,7 @@ import (
   "appengine/channel"
   "appengine/user"
   "appengine/datastore"
+  "appengine/mail"
   "json"
   "http"
   "bytes"
@@ -50,6 +51,7 @@ func init() {
   http.HandleFunc("/private/close", handleClose)
   http.HandleFunc("/private/listpermas", handleListPermas)
   http.HandleFunc("/private/listinbox", handleListInbox)
+  http.HandleFunc("/private/invitebymail", handleInviteByMail)
   
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
@@ -306,18 +308,26 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   newChannelAPI(c, s, sessionid, false, g)
   
 //  log.Printf("Received: %v", string(blob))
-  blobref, seqNumber, e := g.HandleClientBlob(blob)
+  node, e := g.HandleClientBlob(blob)
   if e != nil {
     fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, e.String())
     return
   }
 
-  if seqNumber != -1 && blobref != "" {
-    fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v}`, blobref, seqNumber)
-  } else if seqNumber != -1 {
-    fmt.Fprintf(w, `{"ok":true, "seq":%v}`, seqNumber)
+  if perm, ok := node.(grapher.PermissionNode); ok {
+    hasuser, err := s.HasUserName(perm.UserName())
+    if err != nil {
+      log.Printf("Err in HasUserName: %v", err)
+    }
+    knownuser := "true"
+    if !hasuser {
+      knownuser = "false"
+    }
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v, "knownuser":%v}`, perm.BlobRef(), perm.SequenceNumber(), knownuser )
+  } else if otnode, ok := node.(grapher.OTNode); ok {
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v}`, otnode.BlobRef(), otnode.SequenceNumber())
   } else {
-    fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, blobref)
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, node.BlobRef())
   }
 }
 
@@ -391,6 +401,49 @@ func createBook(r *http.Request) (perma_blobref string, err os.Error) {
   s.SetGrapher(g)
 
   blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
-  perma_blobref, _, err = g.HandleClientBlob(blob)
-  return
+  var node grapher.AbstractNode
+  node, err = g.HandleClientBlob(blob)
+  if err == nil {
+    perma_blobref = node.BlobRef();
+  }
+  return 
+}
+
+type inviteByMail struct {
+  Content string "content"
+  UserName string "user"
+}
+
+func handleInviteByMail(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+
+  blob, err := ioutil.ReadAll(r.Body)
+  if err != nil {
+    sendError(w, r, "Error reading request body")
+    return
+  }
+  r.Body.Close()
+
+  var req inviteByMail
+  err = json.Unmarshal(blob, &req)
+  if err != nil {
+    sendError(w, r, "Malformed request body: " + err.String())
+    return
+  }
+  
+  msg := &mail.Message{ 
+    Sender:  u.String(),
+    To:      []string{req.UserName},
+    Subject: "Invitation to LightWave",
+    Body:    req.Content,
+  }
+  if err := mail.Send(c, msg); err != nil {
+    sendError(w, r, "Could not send mail");
+    c.Errorf("Couldn't send email: %v", err)
+  }
 }

@@ -307,6 +307,24 @@ body {
   padding:0px;
   border:0px;
 }
+.invitations {
+  padding:3px;
+  padding-left:6px;
+  font-size:12pt;
+  color:black;
+  cursor:pointer;
+}
+.invitations:last-child {
+  visibility:hidden;
+}
+.invitations:before {
+  content: " ";
+  display:block;
+  border-top:1px solid #888888;
+  padding-top:16px;
+  margin-left:20px;
+  margin-right:20px;
+}
 </style>
 </head>
 
@@ -327,7 +345,11 @@ body {
       </div> 
       <div class="friend friendaway"> 
         <img class="friend-image" src="unknown.png"><div><span class="friend-name">Dana Bar</span><br><span class="friend-id">dana@somewhere.org</span></div> 
-      </div> 
+      </div>
+      <div class="invitations" id="invitations">Invitations sent</div>
+      <div class="friend friendaway"> 
+        <img class="friend-image" src="unknown.png"><div><span class="friend-name">Captain Kirk</span><br><span class="friend-id">kirk@starfleet.org</span></div> 
+      </div>
     </div>
     <div class="content title" contentEditable="true">Page title</div>
     <div class="content date">Sunday, June 30, 2011<br>23:55</div>
@@ -341,6 +363,25 @@ body {
    <button style="float:left; margin-right:6px;" onclick="share()">Share</button><input style="font-size:16px; outline:none; display:block;" type="text" class="ui-searchbox" id="share-dialog-input">
   </div>
   <div class="ui-section" style="overflow-y:auto; overflow-x:hidden; height:400px">
+  </div>
+</div>
+
+<div class="ui-dialog" id="invite-dialog" style="z-index:200; position:absolute; visibility:hidden; padding-bottom:10px; left:25%; top:100px; width:500px; font-size:11pt">
+  <div class="ui-titlebar"><div onclick="closeInvite()" class="ui-titlebar-close-button">&#x2573;</div>Send an invitation</div>
+  <div class="ui-section-blue" style="padding-top:16px; padding-bottom:16px; padding-left:8px; padding-right:8px;">
+   The user is currently not registered at lightwave.<br><br>Lightwave can send an invitation message for you. Edit the invitation message below and then send it.<br><br>
+    <textarea id="ui-invite-text" style="width:100%; min-height:300px; font-size:11pt; font-family:courier">
+Hi,
+
+someone wants to share a notebook page with you on lightwave.
+    
+Click here to view it
+http://light-wave.appspot.com
+
+If you want to edit or comment the page, you must register at lightwave.
+Registration and use is FREE.
+    </textarea><br>
+    <button style="font-size:11pt" id="ui-send-invite"">Send invitation</button>
   </div>
 </div>
 
@@ -433,9 +474,34 @@ function share() {
   if (!book || !book.currentChapter || !book.currentChapter.currentPage) {
     return;
   }
-  var follower = new Follower(book.currentChapter.currentPage, input.value, null);
+  var username = input.value;
+ // Send invitation email
+  var inviteByMail = function() {
+    closeInvite();
+    store.inviteByMail(follower, document.getElementById("ui-invite-text").value)
+ };
+  var f = function(knownuser) {
+    closeShare();
+    if (!knownuser) {
+      openInvite(username);
+      document.getElementById("ui-send-invite").onclick = inviteByMail;
+      return;
+    }
+  };
+  // Add as a follower
+  var follower = new Follower(book.currentChapter.currentPage, username, null);
   book.currentChapter.currentPage.addFollower(follower);
-  closeShare();
+  store.invite(follower, f);
+}
+
+function openInvite(username) {
+  var dlg = document.getElementById("invite-dialog");
+  dlg.style.visibility = "visible";
+}
+
+function closeInvite() {
+  var dlg = document.getElementById("invite-dialog");
+  dlg.style.visibility = "hidden";
 }
 
 </script>

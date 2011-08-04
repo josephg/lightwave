@@ -1,6 +1,7 @@
 function Book(id, text) {
     this.id = id;
     this.text = text;
+    // An array of Chapter objects
     this.chapters = [];
     this.currentChapter = null;
 
@@ -13,6 +14,7 @@ function Chapter(book, id, text, colorScheme, after) {
     this.id = id;
     this.text = text;
     this.after = after;
+    // An array of Page objects
     this.pages = [];
     this.colorScheme = colorScheme;
     this.tab = null;
@@ -25,8 +27,12 @@ function Page(chapter, id, text, after) {
     this.text = text;
     this.after = after;
     this.vtab = null;
+    // An array of PageContent objects
     this.contents = [];
+    // An array of Follower objects
     this.followers = [];
+    // An array of Follower objects
+    this.invitations = [];
 }
 
 function PageContent(page, id, text, layout) {
@@ -307,22 +313,69 @@ Page.prototype.showContent = function(content) {
 
 Page.prototype.addFollower = function(follower) {
     this.followers.push(follower);
+    // Remove from invitations
+    for( var i = 0; i < this.invitations.length; i++ ) {
+        if (this.invitations[i].id == follower.id) {
+            this.invitations.splice(i, 1);
+            if (this.isVisible()) {
+                var div = document.getElementById("friend-" + follower.id);
+                if (div ) {
+                    var sharediv = document.getElementById("share");
+                    sharediv.removeChild(div);
+                }
+            }
+            break;
+        }
+    }
     if (!this.isVisible()) {
         return;
     }
-    this.showFollower(follower);
+    this.showFollower(follower, false);
+};
+
+Page.prototype.getFollower = function(userid) {
+    for( var i = 0; i < this.followers.length; i++ ) {
+        if (this.followers[i].id == userid) {
+            return this.followers[i];
+        }
+    }
+    return null;
+};
+
+Page.prototype.addInvitation = function(follower) {
+    this.invitations.push(follower);
+    if (!this.isVisible()) {
+        return;
+    }
+    this.showFollower(follower, true);
+};
+
+Page.prototype.getInvitation = function(userid) {
+    for( var i = 0; i < this.invitations.length; i++ ) {
+        if (this.invitations[i].id == userid) {
+            return this.invitations[i];
+        }
+    }
+    return null;
 };
 
 Page.prototype.showFollowers = function() {
     for( var i = 0; i < this.followers.length; i++ ) {
-        this.showFollower(this.followers[i]);
+        this.showFollower(this.followers[i], false);
+    }
+    for( var i = 0; i < this.invitations.length; i++ ) {
+        this.showFollower(this.invitations[i], true);
     }
 };
 
-Page.prototype.showFollower = function(follower) {
-    var sharediv = document.getElementById("share");
+Page.prototype.showFollower = function(follower, inviteOnly) {
     var div = document.createElement("div");
-    div.className = "friend friendonline";
+    div.id = "follower-" + follower.id;
+    // HACK
+    if (!inviteOnly)
+        div.className = "friend friendonline";
+    else
+        div.className = "friend friendaway";
     var img = document.createElement("img");
     img.className = "friend-image";
     img.src = "unknown.png";
@@ -338,7 +391,14 @@ Page.prototype.showFollower = function(follower) {
     span.innerText = follower.id;
     div2.appendChild(span);    
     div.appendChild(div2);
-    sharediv.appendChild(div);
+    var sharediv = document.getElementById("share");
+    var invitesdiv = document.getElementById("invitations");
+    if (inviteOnly) {
+        sharediv.appendChild(div);
+    } else {
+        var sharediv = document.getElementById("share");
+        sharediv.insertBefore(div, invitesdiv);
+    }
 };
 
 Page.prototype.isVisible = function(content) {

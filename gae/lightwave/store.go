@@ -307,6 +307,20 @@ func (self *store) HasUser(userid string) (usr *userStruct, err os.Error) {
   return
 }
 
+func (self *store) HasUserName(username string) (has bool, err os.Error) {
+  query := datastore.NewQuery("user").Filter("UserName =", username).KeysOnly()
+  it := query.Run(self.c)
+  _, err = it.Next(nil)
+  if err == datastore.Done {
+    return false, nil
+  }
+  if err != nil {
+    log.Printf("Err: in query: %v", err)
+    return false, err
+  }
+  return true, nil
+}
+
 func (self *store) CreateUser() (usr *userStruct, err os.Error) {
   u := user.Current(self.c)
   usr = &userStruct{UserName: u.String()}

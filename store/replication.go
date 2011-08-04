@@ -99,7 +99,7 @@ func (self *Replication) dialMaster(raddr string) (err os.Error) {
 }
 
 // Called from the store when a new blob has been stored
-func (self *Replication) HandleBlob(blob []byte, blobref string) {
+func (self *Replication) HandleBlob(blob []byte, blobref string) os.Error {
   for connection, flags := range self.connections {
     if flags & connStreaming == connStreaming {
       // Do not send the blob on the same connection on which it has been received
@@ -108,6 +108,7 @@ func (self *Replication) HandleBlob(blob []byte, blobref string) {
       }
     }
   }
+  return nil;
 }
 
 func (self *Replication) HandleMessage(msg Message) {
