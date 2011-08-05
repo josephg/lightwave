@@ -216,7 +216,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     return
   }
   // Done
-  fmt.Fprint(w, `{"ok":true}`)
+  fmt.Fprint(w, `{"ok":true, "blobs":[]}`)
 }
 
 func handleClose(w http.ResponseWriter, r *http.Request) {
@@ -315,12 +315,12 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   }
 
   if perm, ok := node.(grapher.PermissionNode); ok {
-    hasuser, err := s.HasUserName(perm.UserName())
+    usr, err := s.HasUserName(perm.UserName())
     if err != nil {
       log.Printf("Err in HasUserName: %v", err)
     }
     knownuser := "true"
-    if !hasuser {
+    if usr == "" {
       knownuser = "false"
     }
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v, "knownuser":%v}`, perm.BlobRef(), perm.SequenceNumber(), knownuser )
@@ -385,7 +385,7 @@ func handleListInbox(w http.ResponseWriter, r *http.Request) {
     return
   }
   
-  j := map[string]interface{}{"ok":true, "permas":inbox}
+  j := map[string]interface{}{"ok":true, "items":inbox}
   msg, err := json.Marshal(j)
   if err != nil {
     panic("Cannot serialize")

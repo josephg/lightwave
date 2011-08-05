@@ -307,18 +307,18 @@ func (self *store) HasUser(userid string) (usr *userStruct, err os.Error) {
   return
 }
 
-func (self *store) HasUserName(username string) (has bool, err os.Error) {
+func (self *store) HasUserName(username string) (userid string, err os.Error) {
   query := datastore.NewQuery("user").Filter("UserName =", username).KeysOnly()
   it := query.Run(self.c)
-  _, err = it.Next(nil)
+  key, err := it.Next(nil)
   if err == datastore.Done {
-    return false, nil
+    return "", nil
   }
   if err != nil {
     log.Printf("Err: in query: %v", err)
-    return false, err
+    return "", err
   }
-  return true, nil
+  return key.StringID(), nil
 }
 
 func (self *store) CreateUser() (usr *userStruct, err os.Error) {
@@ -330,26 +330,29 @@ func (self *store) CreateUser() (usr *userStruct, err os.Error) {
 
 type inboxStruct struct {
   Digest string
+  Signer string
 }
 
-func (self *store) AddToInbox(perma_blobref string) (err os.Error) {
-  usr := user.Current(self.c)
-  b := inboxStruct{Digest: "Untitled page"}
+func (self *store) AddToInbox(perma_blobref string, signer string, digest string, username string) (err os.Error) {
+  userid, err := self.HasUserName(username);
+  if err != nil || userid == "" {
+    return err
+  }
   
   // Store it
-  parent := datastore.NewKey("user", usr.Id, 0, nil)
+  b := inboxStruct{Digest: digest, Signer: signer}
+  parent := datastore.NewKey("user", userid, 0, nil)
   _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), &b)
   return err
 }
 
-func (self *store) ListInbox() (inbox map[string]*inboxStruct, err os.Error) {
-  inbox = make(map[string]*inboxStruct)
+func (self *store) ListInbox() (inbox []map[string]interface{}, err os.Error) {
   // TODO: Use query GetAll?
   u := user.Current(self.c)
   parent := datastore.NewKey("user", u.Id, 0, nil)
   query := datastore.NewQuery("inbox").Ancestor(parent)
   for it := query.Run(self.c) ; ; {
-    val := &inboxStruct{}
+    val := make(datastore.Map)
     key, e := it.Next(val)
     if e == datastore.Done {
       return
@@ -358,7 +361,11 @@ func (self *store) ListInbox() (inbox map[string]*inboxStruct, err os.Error) {
       log.Printf("Err: in query: %v",e)
       return nil, e
     }
-    inbox[key.StringID()] = val
+    entry := make(map[string]interface{})
+    entry["perma"] = key.StringID()
+    entry["digest"] = val["Digest"]
+    entry["authors"] = []string{val["Signer"].(string)}
+    inbox = append(inbox, entry)
   }
   return
 }

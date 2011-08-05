@@ -5,7 +5,8 @@ function Book(id, text) {
     this.chapters = [];
     this.currentChapter = null;
 
-    this.addChapter( new Chapter(this, "inbox", "Inbox", 0, null), true);
+    this.inbox = new Chapter(this, "inbox", "Inbox", 0, null);
+    this.addChapter(this.inbox, true);
     this.setActiveChapter(this.chapters[0]);
 }
 
@@ -102,7 +103,9 @@ Book.prototype.addChapter = function(c, make_active) {
     }
     tab.appendChild(document.createTextNode(c.text));
     var book = this;
-    tab.addEventListener("click", function() { book.setActiveChapter(c); }) 
+    tab.addEventListener("click", function() { 
+        book.setActiveChapter(c);
+    });
     var tabs = document.getElementById("tabs");
     tabs.insertBefore(tab, tabs.children[pos]);
     if (make_active) {
@@ -113,7 +116,13 @@ Book.prototype.addChapter = function(c, make_active) {
 };
 
 Book.prototype.setActiveChapter = function(chapter) {
-    // Deactivate a tab (if one is active)
+    if (chapter.id == "inbox" && !chapter.currentPage) {
+        document.getElementById("inbox").style.display = "block";
+        document.getElementById("page").style.display = "none";
+    } else {
+        document.getElementById("inbox").style.display = "none";
+        document.getElementById("page").style.display = "block";
+    }
     var c = this.currentChapter;
     // Shift all tabs on the right (including the '+' tab) ....
     var tabs = document.getElementById("tabs");
@@ -126,6 +135,7 @@ Book.prototype.setActiveChapter = function(chapter) {
         return;
     }
     var stack = document.getElementById("stack");
+    // Deactivate a tab (if one is active)
     if (c) {
         $(c.tab).removeClass("activetab");
         $(c.tab).addClass("inactivetab");
@@ -146,6 +156,30 @@ Book.prototype.setActiveChapter = function(chapter) {
     $(chapter.tab).addClass("activetab");
     chapter.tab.style.zIndex = 100;
     $(stack).addClass("stack" + chapter.colorScheme.toString());
+    // Show a list of inbox items?
+    if (chapter.id == "inbox" && !chapter.currentPage) {
+        var inboxdiv = document.getElementById("inbox");
+        var items = document.getElementsByClassName("inboxitem");
+        for( ; items.length > 0; ) {
+            inboxdiv.removeChild(items[0]);
+        }
+        var inbox = document.getElementById("inbox");
+        var prev;
+        for (var i = 0; i < chapter.pages.length; i++) {
+            var div = chapter.renderInboxItem(chapter.pages[i]);
+            inbox.insertBefore(div, prev);
+            prev = div;
+        }
+        return;
+    }
+    // Show a certain page in the inbox?
+    if (chapter.id == "inbox") {
+        document.getElementById("newvtab").style.visibility = "hidden";
+        var p = chapter.currentPage;
+        chapter.currentPage = null;
+        chapter.setActivePage(p);
+        return;
+    }
     // Create pages
     var vtabs = document.getElementById("vtabs");
     for( var i = 0; i < chapter.pages.length; i++) {
@@ -165,11 +199,7 @@ Book.prototype.setActiveChapter = function(chapter) {
         chapter.currentPage = null;
         chapter.setActivePage(p);
     }
-    if (chapter.id == "inbox") {
-        document.getElementById("newvtab").style.visibility = "hidden";
-    } else {
-        document.getElementById("newvtab").style.visibility = "visible";
-    }
+    document.getElementById("newvtab").style.visibility = "visible";
 };
 
 Chapter.prototype.addPage = function(p, make_active) {
@@ -208,6 +238,12 @@ Chapter.prototype.addPage = function(p, make_active) {
     if (this.book.currentChapter != this ) {
         return;
     }
+    if ( this.id == "inbox") {
+        var div = this.renderInboxItem(p);
+        var inboxdiv = document.getElementById("inbox");
+        inboxdiv.insertBefore(div, inboxdiv.children[1]);
+        return;
+    }
     // Insert vtab
     var vtab = document.createElement("div");
     p.vtab = vtab;
@@ -229,7 +265,6 @@ Chapter.prototype.addPage = function(p, make_active) {
 };
 
 Chapter.prototype.setActivePage = function(page) {
-    console.log("ACTIVE PAGE " + page.pageBlobRef);
     // Deactivate a tab (if one is active)
     var p = this.currentPage;
     // Shift all tabs on the right (including the '+' tab) ....
@@ -241,12 +276,15 @@ Chapter.prototype.setActivePage = function(page) {
     if (p == page) {
         return;
     }
-    if (p) {
-        $(p.vtab).removeClass("activevtab");
-        $(p.vtab).addClass("inactivevtab" + this.colorScheme.toString());
+    // In inbox page view there are no vtabs.
+    if (this.id != "inbox") {
+        if (p) {
+            $(p.vtab).removeClass("activevtab");
+            $(p.vtab).addClass("inactivevtab" + this.colorScheme.toString());
+        }
+        $(page.vtab).removeClass("inactivevtab" + this.colorScheme.toString());
+        $(page.vtab).addClass("activevtab");
     }
-    $(page.vtab).removeClass("inactivevtab" + this.colorScheme.toString());
-    $(page.vtab).addClass("activevtab");
     var pagediv = document.getElementById("page");
     var content = document.getElementsByClassName("content");
     for( ; content.length > 0; ) {
@@ -268,6 +306,31 @@ Chapter.prototype.setActivePage = function(page) {
         }
     }
     this.currentPage = page;
+};
+
+Chapter.prototype.renderInboxItem = function(page) {
+    var div = document.createElement("div");
+    div.className = "inboxitem";
+    var input = document.createElement("input");
+    input.className = "inboxcheckbox";
+    input.type = "checkbox";
+    div.appendChild(input);
+    var span = document.createElement("span");
+    span.className = "inboxauthor";
+    span.innerText = page.digestAuthors.join(",");
+    div.appendChild(span);
+    var span = document.createElement("span");
+    span.className = "inboxtime";
+    span.innerText = "18:13";
+    div.appendChild(span);
+    div.appendChild(document.createTextNode(page.text));
+    var c = this;
+    div.addEventListener("click", function() {
+        document.getElementById("inbox").style.display = "none";
+        document.getElementById("page").style.display = "block"; 
+        c.setActivePage(page);
+    });
+    return div;
 };
 
 Page.prototype.addContent = function(content) {

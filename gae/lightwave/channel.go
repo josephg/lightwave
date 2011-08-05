@@ -29,7 +29,8 @@ func newChannelAPI(c appengine.Context, store *store, sessionid string, bufferOn
 }
 
 func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
-  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef()}
+  var digest = "Untitled page";
+  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef(), "digest": digest, "authors": []string{permission.Signer()}}
   schema, err := json.Marshal(msgJson)
   if err != nil {
     panic(err.String())
@@ -39,7 +40,7 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
 //    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {  
     if perma.MimeType() == "application/x-lightwave-page" {
-      self.store.AddToInbox(perma.BlobRef());
+      self.store.AddToInbox(perma.BlobRef(), permission.Signer(), digest, permission.UserName());
     }
     err = self.forwardToUser(permission.UserName(), string(schema))
   }
@@ -79,9 +80,9 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
     self.messageBuffer = append(self.messageBuffer, string(schema));
 //    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
-    if perma.MimeType() == "application/x-lightwave-page" {
-      self.store.AddToInbox(perma.BlobRef());
-    }
+//    if perma.MimeType() == "application/x-lightwave-page" {
+//      self.store.AddToInbox(perma.BlobRef());
+//    }
     self.forwardToUser(keep.Signer(), message)
     err = self.forwardToFollowers(perma.BlobRef(), message)
   }

@@ -52,6 +52,11 @@ store.addOTNode = function(jmsg) {
         store.get(jmsg.perma).addKeep(jmsg);
     } else if (jmsg.type == "permission") {
         store.get(jmsg.perma).addPermission(jmsg);
+    } else if (jmsg.type == "invitation") {
+        var page = new Page(book.inbox, "page-" + jmsg.perma, jmsg.digest, null);
+        page.digestAuthors = jmsg.authors;
+        page.pageBlobRef = jmsg.perma;
+        book.inbox.addPage(page);
     }
 };
 
@@ -329,7 +334,23 @@ store.onPageMutation = function(permaInfo, mutation) {
 };
 
 store.loadInbox = function() {
-    // TODO
+    var f = function(msg) {
+        var response = JSON.parse(msg);
+        if (!response.ok) {
+            alert(response.error);
+            return;
+        }
+        var after;
+        for( var i = 0; i < response.items.length; i++ ) {
+            var item = response.items[i];
+            var page = new Page(book.inbox, "page-" + item.perma, item.digest, after);
+            page.pageBlobRef = item.perma;
+            page.digestAuthors = item.authors;
+            book.inbox.addPage(page, false);
+            after = page.id;
+        }
+    };
+    store.httpGet("/private/listinbox", f);
 };
 
 store.httpPost = function(url, data, f) {

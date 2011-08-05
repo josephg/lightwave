@@ -97,7 +97,54 @@ body {
 .stack3 {
    background-color: #ffda70;
 }
-
+.inbox {
+  font-size:10.5pt;
+  position:relative;
+  margin:12px;
+  background-color:white;
+  border:1px solid #777777;
+  min-height:700px;
+  background-color:#eaeae6;
+  border-radius:6px;
+}
+.inboxcontrols {
+  padding-top:8px;
+  padding-bottom:6px;
+  padding-left:20px;
+  border-bottom:1px solid #dedede;
+  margin-left:4px;
+}
+.inboxcheckbox {
+  float:left;
+  margin-left:6px;
+  margin-right:6px;
+}
+.inboxitem {
+  padding-top:2px;
+  padding-bottom:2px;
+  background-color:#f7f7f7;
+  border-bottom:1px solid #dedede;
+  color:#615852;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow:hidden;
+  margin-left:4px;
+  border-left:1px solid #dedede;
+  cursor:pointer;
+}
+.inboxauthor {
+  float:left;
+  width:200px;
+  display:inline-block;
+  color:black;
+}
+.inboxtime {
+  text-align:right;
+  float:right;
+  min-width:40px;
+  margin-left:16px;
+  margin-right:6px;
+}
 .page {
   position:relative;
   margin:12px;
@@ -334,7 +381,7 @@ body {
   <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
 </div>
 <div class="stack" id="stack">
-  <div class="page" id="page">
+  <div class="page" id="page" style="display:none">
     <div class="vtabs" id="vtabs">
       <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
     </div>
@@ -354,6 +401,12 @@ body {
     <div class="content title" contentEditable="true">Page title</div>
     <div class="content date">Sunday, June 30, 2011<br>23:55</div>
     <div class="content textbox" contentEditable="true">This is some freaking text</div>
+  </div>
+  <div id="inbox" class="inbox">
+    <div class="inboxcontrols"><div class="ui-toolbar"><button><input type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div></div>
+    <div class="inboxitem"><input class="inboxcheckbox" type="checkbox"><span class="inboxauthor">Torben, Anna, Claudia</span><span class="inboxdigest">This is some digest computed by the server</span><span class="inboxtime">18:31</span></div>
+    <div class="inboxitem"><input class="inboxcheckbox" type="checkbox"><span class="inboxauthor">Torben, Anna, Claudia</span><span class="inboxtime">18:31</span>This is some digest computed by the server and I must write more stuff to fill in the large space we have to display some totally useless digest on it anywhere</div>
+    <div class="inboxitem"><input class="inboxcheckbox" type="checkbox"><span class="inboxauthor">Torben, Anna, Claudia</span><span class="inboxdigest">This is some digest computed by the server which is writing too much to fit into my screen</span><span class="inboxtime">18:31</span></div>
   </div>
 </div>
 
@@ -503,7 +556,6 @@ function closeInvite() {
   var dlg = document.getElementById("invite-dialog");
   dlg.style.visibility = "hidden";
 }
-
 </script>
 
 </body> </html>
