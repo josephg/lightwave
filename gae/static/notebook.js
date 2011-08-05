@@ -116,12 +116,12 @@ Book.prototype.addChapter = function(c, make_active) {
 };
 
 Book.prototype.setActiveChapter = function(chapter) {
-    if (chapter.id == "inbox" && !chapter.currentPage) {
-        document.getElementById("inbox").style.display = "block";
-        document.getElementById("page").style.display = "none";
-    } else {
+    if (chapter.id != "inbox") {
         document.getElementById("inbox").style.display = "none";
-        document.getElementById("page").style.display = "block";
+        document.getElementById("pagecontainer").style.display = "block";
+        document.getElementById("newvtab").style.visibility = "visible";
+    } else {
+        document.getElementById("newvtab").style.visibility = "hidden";
     }
     var c = this.currentChapter;
     // Shift all tabs on the right (including the '+' tab) ....
@@ -140,6 +140,7 @@ Book.prototype.setActiveChapter = function(chapter) {
         $(c.tab).removeClass("activetab");
         $(c.tab).addClass("inactivetab");
         $(stack).removeClass("stack" + c.colorScheme.toString());
+        // Remove all vtabs
         var vtabs = document.getElementById("vtabs");
         for( ; vtabs.children.length > 1;) {
             vtabs.removeChild( vtabs.children[1] );
@@ -150,37 +151,20 @@ Book.prototype.setActiveChapter = function(chapter) {
     }
     this.currentChapter = chapter;
     if (!chapter) {
-        return
+        return;
     }
     $(chapter.tab).removeClass("inactivetab");
     $(chapter.tab).addClass("activetab");
     chapter.tab.style.zIndex = 100;
     $(stack).addClass("stack" + chapter.colorScheme.toString());
-    // Show a list of inbox items?
-    if (chapter.id == "inbox" && !chapter.currentPage) {
-        var inboxdiv = document.getElementById("inbox");
-        var items = document.getElementsByClassName("inboxitem");
-        for( ; items.length > 0; ) {
-            inboxdiv.removeChild(items[0]);
-        }
-        var inbox = document.getElementById("inbox");
-        var prev;
-        for (var i = 0; i < chapter.pages.length; i++) {
-            var div = chapter.renderInboxItem(chapter.pages[i]);
-            inbox.insertBefore(div, prev);
-            prev = div;
-        }
-        return;
-    }
     // Show a certain page in the inbox?
     if (chapter.id == "inbox") {
-        document.getElementById("newvtab").style.visibility = "hidden";
         var p = chapter.currentPage;
         chapter.currentPage = null;
         chapter.setActivePage(p);
         return;
     }
-    // Create pages
+    // Create vtabs for pages
     var vtabs = document.getElementById("vtabs");
     for( var i = 0; i < chapter.pages.length; i++) {
         var p = chapter.pages[i];
@@ -199,7 +183,6 @@ Book.prototype.setActiveChapter = function(chapter) {
         chapter.currentPage = null;
         chapter.setActivePage(p);
     }
-    document.getElementById("newvtab").style.visibility = "visible";
 };
 
 Chapter.prototype.addPage = function(p, make_active) {
@@ -273,9 +256,6 @@ Chapter.prototype.setActivePage = function(page) {
         var t = vtabs.children[i];
         t.style.top = (-i + 1).toString() + "px";
     }
-    if (p == page) {
-        return;
-    }
     // In inbox page view there are no vtabs.
     if (this.id != "inbox") {
         if (p) {
@@ -284,25 +264,50 @@ Chapter.prototype.setActivePage = function(page) {
         }
         $(page.vtab).removeClass("inactivevtab" + this.colorScheme.toString());
         $(page.vtab).addClass("activevtab");
+        document.getElementById("back-to-inbox").style.display = "none";
+    } else {
+        document.getElementById("back-to-inbox").style.display = "block";
     }
+   // Cleanup
     var pagediv = document.getElementById("page");
     var content = document.getElementsByClassName("content");
     for( ; content.length > 0; ) {
         pagediv.removeChild(content[0]);
     }
+   // Cleanup
     var sharediv = document.getElementById("share");
     var friends = document.getElementsByClassName("friend");
     for( ; friends.length > 0; ) {
         sharediv.removeChild(friends[0]);
     }
-    page.showContents();
-    page.showFollowers();
-    if (store) {
-        if (this.currentPage && this.currentPage.pageBlobRef) {
-            store.close(this.currentPage.pageBlobRef);
-        }
-        if (page.pageBlobRef.substring(0,4) != "tmp-") {
+    // Close the current page
+    if (store && this.currentPage && this.currentPage.pageBlobRef) {
+        store.close(this.currentPage.pageBlobRef);
+    }
+    // Open the new page
+    if (page) {
+        page.showContents();
+        page.showFollowers();
+        if (store && page.pageBlobRef.substring(0,4) != "tmp-") {
             store.openPage(page);
+        }
+        document.getElementById("inbox").style.display = "none";
+        document.getElementById("pagecontainer").style.display = "block";
+        // Show the inbox
+    } else if (this.id == "inbox") {
+        document.getElementById("inbox").style.display = "block";
+        document.getElementById("pagecontainer").style.display = "none";
+        var inboxdiv = document.getElementById("inbox");
+        var items = document.getElementsByClassName("inboxitem");
+        for( ; items.length > 0; ) {
+            inboxdiv.removeChild(items[0]);
+        }
+        var inbox = document.getElementById("inbox");
+        var prev;
+        for (var i = 0; i < this.pages.length; i++) {
+            var div = this.renderInboxItem(this.pages[i]);
+            inbox.insertBefore(div, prev);
+            prev = div;
         }
     }
     this.currentPage = page;
@@ -327,7 +332,7 @@ Chapter.prototype.renderInboxItem = function(page) {
     var c = this;
     div.addEventListener("click", function() {
         document.getElementById("inbox").style.display = "none";
-        document.getElementById("page").style.display = "block"; 
+        document.getElementById("pagecontainer").style.display = "block"; 
         c.setActivePage(page);
     });
     return div;

@@ -97,11 +97,16 @@ body {
 .stack3 {
    background-color: #ffda70;
 }
+.pagecontrols {
+  padding-top:8px;
+  padding-bottom:6px;
+  padding-left:20px;
+  border-bottom:1px solid #dedede;
+}
 .inbox {
   font-size:10.5pt;
   position:relative;
   margin:12px;
-  background-color:white;
   border:1px solid #777777;
   min-height:700px;
   background-color:#eaeae6;
@@ -146,12 +151,20 @@ body {
   margin-right:6px;
 }
 .page {
-  position:relative;
-  margin:12px;
   background-color:white;
-  border:1px solid #777777;
   min-height:700px;
+  margin:0px;
+  padding:0px;
+}
+.pagecontainer {
+  padding:0px;
+  margin:12px;
   margin-right:160px;
+  position:relative;
+  border:1px solid #777777;
+  border-top-left-radius:6px;
+  border-top-right-radius:6px;
+  background-color: #eaeae6;
 }
 .vtabs {
   position:relative;
@@ -381,8 +394,10 @@ body {
   <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
 </div>
 <div class="stack" id="stack">
-  <div class="page" id="page" style="display:none">
-    <div class="vtabs" id="vtabs">
+  <div class="pagecontainer" id="pagecontainer" style="display:none">
+    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div></div>    
+  <div class="page" id="page">
+   <div class="vtabs" id="vtabs">
       <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
     </div>
     <div class="share" id="share">
@@ -402,12 +417,10 @@ body {
     <div class="content date">Sunday, June 30, 2011<br>23:55</div>
     <div class="content textbox" contentEditable="true">This is some freaking text</div>
   </div>
+  </div>
   <div id="inbox" class="inbox">
     <div class="inboxcontrols"><div class="ui-toolbar"><button><input type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div></div>
-    <div class="inboxitem"><input class="inboxcheckbox" type="checkbox"><span class="inboxauthor">Torben, Anna, Claudia</span><span class="inboxdigest">This is some digest computed by the server</span><span class="inboxtime">18:31</span></div>
-    <div class="inboxitem"><input class="inboxcheckbox" type="checkbox"><span class="inboxauthor">Torben, Anna, Claudia</span><span class="inboxtime">18:31</span>This is some digest computed by the server and I must write more stuff to fill in the large space we have to display some totally useless digest on it anywhere</div>
-    <div class="inboxitem"><input class="inboxcheckbox" type="checkbox"><span class="inboxauthor">Torben, Anna, Claudia</span><span class="inboxdigest">This is some digest computed by the server which is writing too much to fit into my screen</span><span class="inboxtime">18:31</span></div>
-  </div>
+ </div>
 </div>
 
 <div class="ui-dialog" id="share-dialog" style="z-index:200; position:absolute; visibility:hidden; padding-bottom:10px; left:0px; top:0px;">
@@ -556,6 +569,11 @@ function closeInvite() {
   var dlg = document.getElementById("invite-dialog");
   dlg.style.visibility = "hidden";
 }
+
+function showInbox() {
+  book.inbox.setActivePage(null);
+}
+
 </script>
 
 </body> </html>
