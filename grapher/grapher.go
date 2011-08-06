@@ -835,7 +835,8 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref str
   // Update the operation such that it can be applied after all currently applied operations
   m := &mutationNode{}
   m.permaBlobRef = perma_blobref
-  m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
+//  m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
+  m.mutationBlobRef = "Z"  // This ensures that the client mutation looses against all server mutations. The client-side must handle it the same.
   m.mutationSigner = self.userID
   m.entityBlobRef = entity_blobref
   m.operation = operation

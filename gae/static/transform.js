@@ -187,7 +187,7 @@ lightwave.ot.Transform = function(m1, m2) {
 };
 */
 
-lightwave.ot.transformOp = function(op1, op2) {
+lightwave.ot.TransformOperation = function(op1, op2) {
     var top1 = lightwave.ot.cloneOp(op1);
     var top2 = lightwave.ot.cloneOp(op2);
     var err;

@@ -94,7 +94,7 @@ store.submit = function(blob, onsuccess, onerror, beforesend) {
         if (onsuccess) onsuccess(response);
         if (pi)  pi.dequeueOut();
     };
-    if (pi) pi.inflight = true;
+    if (pi) pi.inflight = blob;
     if (beforesend) {
         beforesend(blob);
     }
@@ -438,7 +438,7 @@ function PermaInfo(blobref) {
     this.seq = 0;
     this.queue = { };
     this.outqueue = [];
-    this.inflight = false;
+    this.inflight = null;
 };
 
 PermaInfo.prototype.enqueueOut = function(msg) {
@@ -459,7 +459,7 @@ PermaInfo.prototype.enqueueOut = function(msg) {
 };
 
 PermaInfo.prototype.dequeueOut = function() {
-    this.inflight = false;
+    this.inflight = null;
     if (this.outqueue.length == 0) {
         return;
     }
@@ -468,8 +468,42 @@ PermaInfo.prototype.dequeueOut = function() {
     store.submit(msg.blob, msg.onsuccess, msg.onerror, msg.beforesend);
 };
 
+PermaInfo.prototype.transformIncoming = function(blob) {
+    // TODO: transform permissions
+    if (blob.type != "mutation" || !blob.op) {
+        return;
+    }
+    // Find all queued mutations of the same entity
+    var lst = [];
+    if (this.inflight && this.inflight.type == "mutation" && this.inflight.entity == blob.entity) {
+        lst.push(this.inflight);
+    }
+    for( var i = 0; i < this.outqueue.length; i++) {
+        var msg = this.outqueue[i];
+        if (msg.blob.type == "mutation" && msg.blob.entity == blob.entity) {
+            lst.push(msg.blob);
+        }
+    }
+    // Transform
+    for( var i = 0; i < lst.length; i++) {
+        var client = lst[i];
+        var tmp = lightwave.ot.TransformOperation(blob.op, client.op);
+        if (tmp[2]) {
+            console.log("ERR transforming: " + tmp[2]);
+            // In this case we should turn this into the empty transformation
+            blob.op = null;
+            return blob;
+        }
+        blob.op = tmp[0];
+        client.op = tmp[1];
+    }
+};
+
 PermaInfo.prototype.addMutation = function(mut) {
-    this.addOTNode_(mut);
+    var ok = this.addOTNode_(mut);
+    if (ok) {
+        this.transformIncoming(mut);
+    }
     if (this.onMutation) {
         this.onMutation(this, mut);
     }
@@ -503,15 +537,16 @@ PermaInfo.prototype.addPermission = function(perm) {
 PermaInfo.prototype.addOTNode_ = function(node) {
     if (node.seq < this.seq) {
         console.log("Received ot node twice")
-        return;
+        return false;
     }
     if (node.seq > this.seq) {
         console.log("Queueing up ot node")
         this.queue[node.seq] = node;
-        return;
+        return false;
     }
     this.seq++;
     console.log("Apply seq " + (this.seq - 1).toString() + " of " + node.perma);
+    return true
 };
 
 PermaInfo.prototype.dequeue_ = function() {
