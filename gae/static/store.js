@@ -64,7 +64,7 @@ store.submit = function(blob, onsuccess, onerror, beforesend) {
     var pi;
     if (blob.perma) {
         pi = store.get(blob.perma);
-        if (pi.inflight) {
+        if (pi.inflight || store.paused) {
             pi.enqueueOut({blob:blob, onsuccess:onsuccess, onerror: onerror, beforesend: beforesend});
             return;
         }
@@ -415,6 +415,21 @@ store.httpGet = function(url, f) {
     }
 };
 
+store.pauseQueues = function() {
+    store.paused = true;
+};
+
+store.resumeQueues = function() {
+    store.paused = false;
+    for( var key in store.openPermas) {
+        var pi = store.openPermas[key];
+        if (pi.inflight) {
+            continue;
+        }
+        pi.dequeueOut();
+    }
+};
+
 // ------------------------------------------------
 // PermaInfo
 
@@ -428,6 +443,18 @@ function PermaInfo(blobref) {
 
 PermaInfo.prototype.enqueueOut = function(msg) {
     console.log("ENQUEUE " + JSON.stringify(msg.blob));
+    if ( msg.blob.type == "mutation" && this.outqueue.length > 0) {
+        var last = this.outqueue[this.outqueue.length - 1];
+        if (last.blob.type == "mutation" && last.blob.entity == msg.blob.entity) {
+            var tmp = lightwave.ot.ComposeOperation(last.blob.op, msg.blob.op);
+            if (!tmp[1]) { // If compress succeeds. It should always, just being defensive here
+                last.blob.op = tmp[0];
+                return;
+            } else {
+                console.log("ERR composing: " + tmp[1]);
+            }
+        }
+    }
     this.outqueue.push(msg);
 };
 

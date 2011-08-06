@@ -315,7 +315,7 @@ Chapter.prototype.setActivePage = function(page) {
 
 Chapter.prototype.renderInboxItem = function(page) {
     var div = document.createElement("div");
-    div.className = "inboxitem";
+    div.className = "inboxitem inboxitemnew";
     var input = document.createElement("input");
     input.className = "inboxcheckbox";
     input.type = "checkbox";
