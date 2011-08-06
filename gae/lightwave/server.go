@@ -30,7 +30,7 @@ var (
 type channelStruct struct {
   Token string
   UserID string
-  UserName string
+  UserEmail string
   SessionID string
   OpenPermas []string
 }
@@ -116,7 +116,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
 
   var ch channelStruct
   ch.UserID = u.Id
-  ch.UserName = u.String()
+  ch.UserEmail = u.Email
   ch.Token = tok
   ch.SessionID = session
   _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + session, 0, nil), &ch)
@@ -125,7 +125,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
   }
 
   b := new(bytes.Buffer)
-  data := map[string]interface{}{ "userid":  u.String(), "logout": logout_url, "token": tok, "session": session }
+  data := map[string]interface{}{ "userid":  u.Email, "logout": logout_url, "token": tok, "session": session }
   if err := frontPageTmpl.Execute(b, data); err != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
     fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
@@ -208,7 +208,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     }
     // Repeat all blobs from this document.  
     s := newStore(c)
-    g := grapher.NewGrapher(u.String(), s, s, nil)
+    g := grapher.NewGrapher(u.Email, s, s, nil)
     s.SetGrapher(g)
     ch := newChannelAPI(c, s, req.Session, true, g)
     g.Repeat(req.Perma, req.From)
@@ -302,7 +302,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   r.Body.Close()
 
   s := newStore(c)
-  g := grapher.NewGrapher(u.String(), s, s, nil)
+  g := grapher.NewGrapher(u.Email, s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
   newChannelAPI(c, s, sessionid, false, g)
@@ -397,7 +397,7 @@ func createBook(r *http.Request) (perma_blobref string, err os.Error) {
   c := appengine.NewContext(r)
   u := user.Current(c)
   s := newStore(c)
-  g := grapher.NewGrapher(u.String(), s, s, nil)
+  g := grapher.NewGrapher(u.Email, s, s, nil)
   s.SetGrapher(g)
 
   blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
@@ -437,7 +437,7 @@ func handleInviteByMail(w http.ResponseWriter, r *http.Request) {
   }
   
   msg := &mail.Message{ 
-    Sender:  u.String(),
+    Sender:  u.Email,
     To:      []string{req.UserName},
     Subject: "Invitation to LightWave",
     Body:    req.Content,

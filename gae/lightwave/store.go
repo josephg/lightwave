@@ -272,7 +272,7 @@ func (self *store) Dequeue(perma_blobref string, blobref string) (blobrefs []str
 
 func (self *store) ListPermas(mimeType string) (perma_blobrefs []string, err os.Error) {
   // TODO: Use query GetAll?
-  query := datastore.NewQuery("node").Filter("k =", int64(grapher.OTNode_Keep)).Filter("s =", user.Current(self.c).String()).KeysOnly()
+  query := datastore.NewQuery("node").Filter("k =", int64(grapher.OTNode_Keep)).Filter("s =", user.Current(self.c).Email).KeysOnly()
   if mimeType != "" {
     query = query.Filter("mt =", mimeType)
   }
@@ -323,7 +323,7 @@ func (self *store) HasUserName(username string) (userid string, err os.Error) {
 
 func (self *store) CreateUser() (usr *userStruct, err os.Error) {
   u := user.Current(self.c)
-  usr = &userStruct{UserName: u.String()}
+  usr = &userStruct{UserName: u.Email}
   _, err = datastore.Put(self.c, datastore.NewKey("user", u.Id, 0, nil), usr)
   return
 }
