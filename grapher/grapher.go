@@ -153,7 +153,7 @@ func (self *Grapher) Followers(blobref string) (users []string, err os.Error) {
   if err != nil {
     return nil, err
   }
-  return p.followers(), nil
+  return p.Followers(), nil
 }
 
 func (self *Grapher) permaNode(blobref string) (perma *permaNode, err os.Error) {
@@ -164,7 +164,7 @@ func (self *Grapher) permaNode(blobref string) (perma *permaNode, err os.Error) 
   if m["k"].(int64) != OTNode_Perma {
     return nil, os.NewError("Blob is not a perma blob")
   } 
-  p := newPermaNode(self)
+  p := NewPermaNode(self)
   p.FromMap(blobref, m)
   return p, nil  
 }
@@ -210,7 +210,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     n := &keepNode{keepBlobRef: blobref, keepSigner: schema.Signer, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies, permissionBlobRef: schema.Permission}
     return n, nil
   case "permanode":
-    n := newPermaNode(self)
+    n := NewPermaNode(self)
     n.blobref = blobref
     n.mimeType = schema.MimeType
     n.signer = schema.Signer

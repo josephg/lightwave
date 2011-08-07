@@ -10,6 +10,7 @@ import (
   "appengine/user"
   "appengine/datastore"
   "appengine/mail"
+  "appengine/memcache"
   "json"
   "http"
   "bytes"
@@ -37,7 +38,7 @@ type channelStruct struct {
 
 func init() {
   rand.Seed(time.Nanoseconds())
-  
+
   frontPageTmpl = template.New(nil)
   frontPageTmpl.SetDelims("{{", "}}")
   if err := frontPageTmpl.ParseFile("notebook.html"); err != nil {
@@ -52,7 +53,10 @@ func init() {
   http.HandleFunc("/private/listpermas", handleListPermas)
   http.HandleFunc("/private/listinbox", handleListInbox)
   http.HandleFunc("/private/invitebymail", handleInviteByMail)
-  
+  http.HandleFunc("/private/inboxitem", handleInboxItem)
+
+  http.HandleFunc("/internal/notify", handleDelayedNotify)
+
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
 }
@@ -370,6 +374,11 @@ func handleListPermas(w http.ResponseWriter, r *http.Request) {
   fmt.Fprint(w, string(msg))
 }
 
+func userShortName(email string) string {
+  i := strings.Index(email, "@")
+  return strings.ToUpper(email[0:1]) + email[1:i]
+}
+
 func handleListInbox(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
   u := user.Current(c)
@@ -383,6 +392,11 @@ func handleListInbox(w http.ResponseWriter, r *http.Request) {
   if err != nil {
     sendError(w, r, err.String())
     return
+  }
+
+  // Read the updates for all items in the inbox
+  for _, entry := range inbox {
+    fillInboxItem(s, entry)
   }
   
   j := map[string]interface{}{"ok":true, "items":inbox}
@@ -446,4 +460,116 @@ func handleInviteByMail(w http.ResponseWriter, r *http.Request) {
     sendError(w, r, "Could not send mail");
     c.Errorf("Couldn't send email: %v", err)
   }
+}
+
+func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  perma_blobref := r.FormValue("perma")
+  log.Printf("Task started")
+  memcache.Delete(c, "notify-" + perma_blobref)
+  // Find out about the users of this permanode
+  s := newStore(c)
+  data, err := s.GetPermaNode(perma_blobref)
+  if err != nil {
+    http.Error(w, "Err: Failed reading permanode", http.StatusInternalServerError)
+    return
+  }
+  perma := grapher.NewPermaNode(nil)
+  perma.FromMap(perma_blobref, data)
+  message := `{"type":"notification", "perma":"` + perma_blobref + `"}`
+  // For all users find all channels on which they are listening
+  for _, user := range perma.Users() {
+    var channels []channelStruct
+    query := datastore.NewQuery("channel").Filter("UserEmail =", user)
+    for it := query.Run(c) ; ; {
+      var data channelStruct
+      _, e := it.Next(&data)
+      if e == datastore.Done {
+	break
+      }
+      if e != nil {
+	log.Printf("Err: in query: %v",e)
+	break
+      }
+      channels = append(channels, data)
+    }
+    for _, ch := range channels {
+      log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
+      err := channel.Send(c, ch.UserID + "/" + ch.SessionID, message)
+      if err != nil {
+	log.Printf("Failed sending to channel %v", ch.UserID + "/" + ch.SessionID)
+      }
+    }
+  }
+}
+
+// A helper function to produce information about inbox items
+func fillInboxItem(s *store, entry map[string]interface{}) (err os.Error) {
+  followers := []string{}
+  authors := []string{}
+  latestauthors := []string{}
+  lastSeq := entry["seq"].(int64)
+  data, err := s.GetPermaNode(entry["perma"].(string))
+  if err != nil {
+    log.Printf("ERR: Failed reading permanode")
+    return err
+  }
+  perma := grapher.NewPermaNode(nil)
+  perma.FromMap(entry["perma"].(string), data);
+  updates := perma.Updates()
+  for _, user := range perma.Users() {
+    if seq, ok := updates[user]; ok {
+      if seq > lastSeq {
+	latestauthors = append(latestauthors, userShortName(user))
+      } else if seq >= 0 {
+	authors = append(authors, userShortName(user))
+      } else {
+	followers = append(followers, userShortName(user))
+      }
+    } else {
+      followers = append(followers, userShortName(user))
+    }
+  }
+  entry["followers"] = followers
+  entry["authors"] = authors
+  entry["latestauthors"] = latestauthors
+  entry["digest"] = "Untitled Page" // TODO
+  return nil
+}
+
+func handleInboxItem(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  perma_blobref := r.FormValue("perma")
+  var seq int64
+  s := newStore(c)
+  if r.FormValue("seq") != "" {
+    var err os.Error
+    seq, err = strconv.Atoi64(r.FormValue("seq"))
+    if err != nil {
+      http.Error(w, "Expected a seq parameter", http.StatusInternalServerError)
+      c.Errorf("handleInboxItem: %v", err)
+      return
+    }
+    s.StoreInboxItem(perma_blobref, seq)
+  } else {
+    item, err := s.GetInboxItem(perma_blobref)
+    if err != nil {
+      http.Error(w, "Could not get inbox item", http.StatusInternalServerError)
+      c.Errorf("handleInboxItem: %v", err)
+      return
+    }
+    seq = item.LastSeq
+  }
+  
+  entry := make(map[string]interface{})
+  entry["perma"] = perma_blobref
+  entry["seq"] = seq
+  err := fillInboxItem(s, entry)
+  if err != nil {
+    fmt.Fprintf(w, `{"ok":false, "error":%v}`, err.String())
+    return
+  }
+ 
+  item, _ := json.Marshal(entry)
+  fmt.Fprintf(w, `{"ok":true, "item":%v}`, string(item))
 }

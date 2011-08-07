@@ -291,7 +291,7 @@ func (self *store) ListPermas(mimeType string) (perma_blobrefs []string, err os.
 }
 
 type userStruct struct {
-  UserName string
+  UserEmail string
 }
 
 func (self *store) HasUser(userid string) (usr *userStruct, err os.Error) {
@@ -308,7 +308,7 @@ func (self *store) HasUser(userid string) (usr *userStruct, err os.Error) {
 }
 
 func (self *store) HasUserName(username string) (userid string, err os.Error) {
-  query := datastore.NewQuery("user").Filter("UserName =", username).KeysOnly()
+  query := datastore.NewQuery("user").Filter("UserEmail =", username).KeysOnly()
   it := query.Run(self.c)
   key, err := it.Next(nil)
   if err == datastore.Done {
@@ -323,24 +323,25 @@ func (self *store) HasUserName(username string) (userid string, err os.Error) {
 
 func (self *store) CreateUser() (usr *userStruct, err os.Error) {
   u := user.Current(self.c)
-  usr = &userStruct{UserName: u.Email}
+  usr = &userStruct{UserEmail: u.Email}
   _, err = datastore.Put(self.c, datastore.NewKey("user", u.Id, 0, nil), usr)
   return
 }
 
 type inboxStruct struct {
-  Digest string
-  Signer string
+  LastSeq int64
+//  Digest string
+//  Signer string
 }
 
-func (self *store) AddToInbox(perma_blobref string, signer string, digest string, username string) (err os.Error) {
+func (self *store) AddToInbox(username string, perma_blobref string, seq int64) (err os.Error) {
   userid, err := self.HasUserName(username);
   if err != nil || userid == "" {
     return err
   }
   
   // Store it
-  b := inboxStruct{Digest: digest, Signer: signer}
+  b := inboxStruct{LastSeq: seq}
   parent := datastore.NewKey("user", userid, 0, nil)
   _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), &b)
   return err
@@ -352,7 +353,7 @@ func (self *store) ListInbox() (inbox []map[string]interface{}, err os.Error) {
   parent := datastore.NewKey("user", u.Id, 0, nil)
   query := datastore.NewQuery("inbox").Ancestor(parent)
   for it := query.Run(self.c) ; ; {
-    val := make(datastore.Map)
+    val := &inboxStruct{}
     key, e := it.Next(val)
     if e == datastore.Done {
       return
@@ -363,9 +364,26 @@ func (self *store) ListInbox() (inbox []map[string]interface{}, err os.Error) {
     }
     entry := make(map[string]interface{})
     entry["perma"] = key.StringID()
-    entry["digest"] = val["Digest"]
-    entry["authors"] = []string{val["Signer"].(string)}
+    entry["seq"] = val.LastSeq
     inbox = append(inbox, entry)
   }
   return
+}
+
+func (self *store) StoreInboxItem(perma_blobref string, seq int64) (err os.Error) {
+  u := user.Current(self.c)
+  // Store it
+  b := inboxStruct{LastSeq: seq}
+  parent := datastore.NewKey("user", u.Id, 0, nil)
+  _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), &b)
+  return err  
+}
+
+func (self *store) GetInboxItem(perma_blobref string) (item *inboxStruct, err os.Error) {
+  u := user.Current(self.c)
+  // Store it
+  b := &inboxStruct{}
+  parent := datastore.NewKey("user", u.Id, 0, nil)
+  err = datastore.Get(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), b)
+  return b, err  
 }

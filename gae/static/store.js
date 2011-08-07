@@ -53,10 +53,19 @@ store.addOTNode = function(jmsg) {
     } else if (jmsg.type == "permission") {
         store.get(jmsg.perma).addPermission(jmsg);
     } else if (jmsg.type == "invitation") {
+        console.log("INVITATION " + JSON.stringify(jmsg));
         var page = new Page(book.inbox, "page-" + jmsg.perma, jmsg.digest, null);
-        page.digestAuthors = jmsg.authors;
+        page.inbox_authors = jmsg.authors;
+        page.inbox_latestauthors = jmsg.latestauthors;
+        page.inbox_followers = jmsg.followers;
         page.pageBlobRef = jmsg.perma;
         book.inbox.addPage(page);
+    } else if (jmsg.type == "notification") {
+        var page = book.inbox.getPageByPageBlobRef(jmsg.perma);
+        // Is this in the inbox?
+        if (page) {
+            store.getInboxItem(jmsg.perma);
+        }
     }
 };
 
@@ -117,7 +126,7 @@ store.close = function(perma) {
         };
         console.log("Closed");
     };
-    store.httpPost("/private/close", JSON.stringify({perma:perma, session:store.sessionID}), f);    
+    store.httpPost("/private/close", JSON.stringify({perma:perma, session:store.sessionID}), f);
 };
 
 store.inviteByMail = function(follower, mail) {
@@ -340,17 +349,46 @@ store.loadInbox = function() {
             alert(response.error);
             return;
         }
+        console.log("INBOX: " + JSON.stringify(response.items));
         var after;
         for( var i = 0; i < response.items.length; i++ ) {
             var item = response.items[i];
             var page = new Page(book.inbox, "page-" + item.perma, item.digest, after);
             page.pageBlobRef = item.perma;
-            page.digestAuthors = item.authors;
+            page.inbox_authors = item.authors;
+            page.inbox_latestauthors = item.latestauthors;
+            page.inbox_followers = item.followers;
             book.inbox.addPage(page, false);
             after = page.id;
         }
     };
     store.httpGet("/private/listinbox", f);
+};
+
+store.storeInboxItem_ = function(msg) {
+    console.log("INBOX: " + msg);
+    var response = JSON.parse(msg);
+    if (!response.ok) {
+        alert(response.error);
+        return;
+    }
+    var item = response.item;
+    var page = book.inbox.getPageByPageBlobRef(item.perma);
+    if (!page) {
+        return;
+    }
+    page.inbox_authors = item.authors;
+    page.inbox_latestauthors = item.latestauthors;
+    page.inbox_followers = item.followers;
+    book.inbox.redrawInboxItem(page);
+};
+
+store.storeInboxItem = function(perma, seq) {
+    store.httpGet( "/private/inboxitem?perma=" + perma + "&seq=" + seq.toString(), store.storeInboxItem_ );
+};
+
+store.getInboxItem = function(perma) {
+    store.httpGet( "/private/inboxitem?perma=" + perma, store.storeInboxItem_ );
 };
 
 store.httpPost = function(url, data, f) {

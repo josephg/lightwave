@@ -185,6 +185,15 @@ Book.prototype.setActiveChapter = function(chapter) {
     }
 };
 
+Chapter.prototype.getPageByPageBlobRef = function(blobref) {
+    for( var i = 0; i < this.pages.length; i++) {
+        if (this.pages[i].pageBlobRef == blobref) {
+            return this.pages[i];
+        }
+    }
+    return null;
+};
+
 Chapter.prototype.addPage = function(p, make_active) {
     // Determine where to insert the chapter
     var pos = 0;
@@ -283,6 +292,10 @@ Chapter.prototype.setActivePage = function(page) {
     // Close the current page
     if (store && this.currentPage && this.currentPage.pageBlobRef) {
         store.close(this.currentPage.pageBlobRef);
+        if (this.id == "inbox") {
+            var pi = store.get(this.currentPage.pageBlobRef);
+            store.storeInboxItem(this.currentPage.pageBlobRef, pi.seq - 1);
+        }
     }
     // Open the new page
     if (page) {
@@ -313,16 +326,46 @@ Chapter.prototype.setActivePage = function(page) {
     this.currentPage = page;
 };
 
-Chapter.prototype.renderInboxItem = function(page) {
-    var div = document.createElement("div");
-    div.className = "inboxitem inboxitemnew";
+Chapter.prototype.redrawInboxItem = function(page) {
+    if (book.currentChapter != this || this.currentPage) {
+        return;
+    }
+    var div = document.getElementById("inboxitem-" + page.pageBlobRef);
+    this.renderInboxItem(page, div);
+};
+
+Chapter.prototype.renderInboxItem = function(page, div) {
+    if (div) {
+        div.innerHTML = "";
+    } else {
+        div = document.createElement("div");
+    }
+    div.id = "inboxitem-" + page.pageBlobRef;
+    if (page.inbox_latestauthors.length > 0) {
+        div.className = "inboxitem inboxitemnew";
+    } else {
+        div.className = "inboxitem";
+    }
     var input = document.createElement("input");
     input.className = "inboxcheckbox";
     input.type = "checkbox";
     div.appendChild(input);
     var span = document.createElement("span");
     span.className = "inboxauthor";
-    span.innerText = page.digestAuthors.join(",");
+    var authors = [];
+    for (var i = 0; i < page.inbox_latestauthors.length; i++) {
+        // TODO: HTML escape
+        authors.push("<b>" +  page.inbox_latestauthors[i] + "</b>")
+    }
+    for (var i = 0; i < page.inbox_authors.length; i++) {
+        // TODO: HTML escape
+        authors.push(page.inbox_authors[i])
+    }
+    for (var i = 0; i < page.inbox_followers.length; i++) {
+        // TODO: HTML escape
+        authors.push(page.inbox_followers[i])
+    }
+    span.innerHTML = authors.join(",");
     div.appendChild(span);
     var span = document.createElement("span");
     span.className = "inboxtime";

@@ -5,6 +5,9 @@ import (
   "appengine/channel"
   "appengine/user"
   "appengine/datastore"
+  "appengine/memcache"
+  "appengine/taskqueue"
+  "encoding/binary"
   grapher "lightwavegrapher"
   ot "lightwaveot"
   "json"
@@ -29,8 +32,10 @@ func newChannelAPI(c appengine.Context, store *store, sessionid string, bufferOn
 }
 
 func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
+  log.Printf("Sending invitation ...")
   var digest = "Untitled page";
-  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef(), "digest": digest, "authors": []string{permission.Signer()}}
+  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef(), "digest": digest, "seq": int64(0)}
+  fillInboxItem(self.store, msgJson)
   schema, err := json.Marshal(msgJson)
   if err != nil {
     panic(err.String())
@@ -40,7 +45,7 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
 //    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {  
     if perma.MimeType() == "application/x-lightwave-page" {
-      self.store.AddToInbox(perma.BlobRef(), permission.Signer(), digest, permission.UserName());
+      self.store.AddToInbox(permission.UserName(), perma.BlobRef(), 0);
     }
     err = self.forwardToUser(permission.UserName(), string(schema))
   }
@@ -179,7 +184,7 @@ func (self* channelAPI) forwardToUser(username string, message string) (err os.E
     return err
   }
   for _, ch := range channels {
-//    log.Printf("Sending to %v", ch.UserID + "/" + ch.SessionID)
+    log.Printf("Sending to user %v", ch.UserID + "/" + ch.SessionID)
     err = channel.Send(self.c, ch.UserID + "/" + ch.SessionID, message)
     if err != nil {
       log.Printf("Failed sending to channel %v", ch.UserID + "/" + ch.SessionID)
@@ -206,6 +211,7 @@ func (self* channelAPI) forwardToFollowers(perma_blobref string, message string)
     }
   }
   
+  self.sendSlowNotifications(perma_blobref)
   return nil
 }
 
@@ -230,7 +236,7 @@ func (self* channelAPI) channelsByFollowers(perma_blobref string) (channels []ch
 func (self* channelAPI) channelsByUser(username string) (channels []channelStruct, err os.Error) {
   // TODO: Use query GetAll?
   log.Printf("Searching for usr %v", username)
-  query := datastore.NewQuery("channel").Filter("UserName =", username)
+  query := datastore.NewQuery("channel").Filter("UserEmail =", username)
   for it := query.Run(self.c) ; ; {
     var data channelStruct
     _, e := it.Next(&data)
@@ -244,4 +250,44 @@ func (self* channelAPI) channelsByUser(username string) (channels []channelStruc
     channels = append(channels, data)
   }
   return
+}
+
+func (self *channelAPI) sendSlowNotifications(perma_blobref string) {
+  // Try 10 times then give up
+  for i := 0; i < 10; i++ {
+    item, err := memcache.Get(self.c, "notify-" + perma_blobref)    
+    if err == memcache.ErrCacheMiss {
+      // Try to start a task
+      if item != nil {
+	binary.LittleEndian.PutUint64(item.Value, 1)
+	err = memcache.CompareAndSwap(self.c, item)
+      } else {
+	item = &memcache.Item{ Key: "notify-" + perma_blobref, Value: make([]byte, 8) }
+	binary.LittleEndian.PutUint64(item.Value, 1)
+	err = memcache.Add(self.c, item)
+      }
+      if err == memcache.ErrCASConflict {
+	// Somebody else managed to launch the task first
+	return
+      }
+      // Enqueue the task
+      t := taskqueue.NewPOSTTask("/internal/notify", map[string][]string{"perma": {perma_blobref}})
+      t.Delay = 30 * 1000000
+      if _, err := taskqueue.Add(self.c, t, ""); err != nil {
+	log.Printf("ERR: " + err.String())
+	return
+      }
+      return
+    } else if err != nil {
+      continue
+    }
+    val := binary.LittleEndian.Uint64(item.Value)
+    val++
+    binary.LittleEndian.PutUint64(item.Value, val)
+    err = memcache.CompareAndSwap(self.c, item)
+    // The task is enqueued and has not yet sent notifications
+    if err == nil {
+      return
+    }
+  }
 }

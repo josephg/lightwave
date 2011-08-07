@@ -379,6 +379,9 @@ func (self *keepNode) FromMap(permaBlobRef string, m map[string]interface{}) {
 type PermaNode interface {
   AbstractNode
   MimeType() string
+  Updates() map[string]int64
+  Followers() []string
+  Users() []string
 }
 
 type permaNode struct {
@@ -388,14 +391,16 @@ type permaNode struct {
   blobref string
   // The permission bits for all users
   permissions map[string]int
+  // The key is a userid and the value is the last sequence number attributed to this user
+  updates map[string]int64
   // The current frontier
   frontier ot.Frontier
   seqNumber int64
   mimeType string
 }
 
-func newPermaNode(grapher *Grapher) *permaNode {
-  return &permaNode{grapher: grapher, frontier: make(ot.Frontier), permissions: make(map[string]int) }
+func NewPermaNode(grapher *Grapher) *permaNode {
+  return &permaNode{grapher: grapher, frontier: make(ot.Frontier), permissions: make(map[string]int), updates: make(map[string]int64) }
 }
 
 func (self *permaNode) ToMap() map[string]interface{} {
@@ -407,10 +412,17 @@ func (self *permaNode) ToMap() map[string]interface{} {
   m["n"] = self.seqNumber
   p2 := []int64{}
   p1 := []string{}
+  u := []int64{}
   for user, perm := range self.permissions {
     p1 = append(p1, user)
     p2 = append(p2, int64(perm))
+    if seq, ok := self.updates[user]; ok {
+      u  = append(u, seq)
+    } else {
+      u = append(u, -1)
+    }
   }
+  m["up"] = u
   m["p1"] = p1
   m["p2"] = p2
   m["mt"] = self.mimeType
@@ -426,8 +438,10 @@ func (self *permaNode) FromMap(permaBlobRef string, m map[string]interface{}) {
   }
   p1 := m["p1"].([]string)
   p2 := m["p2"].([]int64)
+  u := m["up"].([]int64)
   for i := 0; i < len(p1); i++ {
     self.permissions[p1[i]] = int(p2[i])
+    self.updates[p1[i]] = int64(u[i])
   }
   self.mimeType = m["mt"].(string)
 }
@@ -451,6 +465,10 @@ func (self *permaNode) MimeType() string {
   return self.mimeType
 }
 
+func (self *permaNode) Updates() map[string]int64 {
+  return self.updates
+}
+
 func (self *permaNode) sequenceNumber() int64 {
   return self.seqNumber
 }
@@ -472,9 +490,20 @@ func (self *permaNode) followersWithPermission(bits int) (users []string) {
   return
 }
 
-func (self *permaNode) followers() (users []string) {
+func (self *permaNode) Followers() (users []string) {
   for userid, allowed := range self.permissions {
     if allowed & Perm_Keep != Perm_Keep {
+      continue
+    }
+    users = append(users, userid)
+  }
+  return
+}
+
+// This includes all followers and user that have been invited but not committed to follow so far
+func (self *permaNode) Users() (users []string) {
+  for userid, allowed := range self.permissions {
+    if allowed == 0 || allowed == Perm_Keep { // No permission at all (except havin created a keep)?
       continue
     }
     users = append(users, userid)
@@ -531,6 +560,7 @@ func (self *permaNode) apply(newnode OTNode, transformer Transformer) (deps []st
 
   self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
   newnode.SetSequenceNumber(self.seqNumber)
+  self.updates[newnode.Signer()] = self.seqNumber
   self.seqNumber++
   
   return nil, err

@@ -131,10 +131,12 @@ body {
   color:black;
 }
 .inboxauthor {
+  font-weight:normal;
   float:left;
   width:200px;
   display:inline-block;
   color:black;
+  text-overflow:ellipsis;
 }
 .inboxtime {
   text-align:right;

@@ -183,7 +183,7 @@ function share() {
   };
   // Add as a follower
   var follower = new Follower(book.currentChapter.currentPage, username, null);
-  book.currentChapter.currentPage.addFollower(follower);
+  book.currentChapter.currentPage.addInvitation(follower);
   store.invite(follower, f);
 }
 
