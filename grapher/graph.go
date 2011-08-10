@@ -226,6 +226,7 @@ type MutationNode interface {
   Operation() interface{}
   SetOperation(op interface{})
   EntityBlobRef() string
+  Field() string
 }
 
 type mutationNode struct {
@@ -237,6 +238,7 @@ type mutationNode struct {
   entityBlobRef string
   dependencies []string
   seqNumber int64
+  field string
 }
 
 func (self *mutationNode) BlobRef() string {
@@ -275,6 +277,10 @@ func (self *mutationNode) EntityBlobRef() string {
   return self.entityBlobRef
 }
 
+func (self *mutationNode) Field() string {
+  return self.field
+}
+
 func (self *mutationNode) ToMap() map[string]interface{} {
   m := make(map[string]interface{})
   m["k"] = int64(OTNode_Mutation)
@@ -295,6 +301,7 @@ func (self *mutationNode) ToMap() map[string]interface{} {
   m["e"] = self.entityBlobRef
   m["dep"] = self.dependencies
   m["seq"] = self.seqNumber
+  m["f"] = self.field
   return m
 }
 
@@ -308,6 +315,7 @@ func (self *mutationNode) FromMap(permaBlobRef string, m map[string]interface{})
   }
   self.entityBlobRef = m["e"].(string)
   self.seqNumber = m["seq"].(int64)
+  self.field = m["f"].(string)
 }
 
 type KeepNode interface {
@@ -666,7 +674,7 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
   for c, _ := range prune {
     concurrent = append(concurrent, c)
   }
-  ch, err := self.grapher.getMutationsAscending(self.blobref, newnode.EntityBlobRef(), self.sequenceNumber() - rollback, self.sequenceNumber())
+  ch, err := self.grapher.getMutationsAscending(self.blobref, newnode.EntityBlobRef(), newnode.Field(), self.sequenceNumber() - rollback, self.sequenceNumber())
   if err != nil {
     return err
   }

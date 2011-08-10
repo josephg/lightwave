@@ -419,7 +419,7 @@ Page.prototype.showContent = function(content) {
         console.log("UNKNOWN layout")
         return;
     }
-    var editor = new LW.Editor(content, div);
+    var editor = new LW.Editor(content, "text", div);
 };
 
 Page.prototype.addFollower = function(follower) {
@@ -532,7 +532,11 @@ Page.prototype.getContent = function(id) {
 };
 
 PageContent.prototype.mutate = function(mutation) {
-    lightwave.ot.ExecuteOperation(this, mutation.op);
+    if (mutation.field == "text") {
+        lightwave.ot.ExecuteOperation(this, mutation.op);
+    } else {
+        console.log("Err: Unknown mutation field: " + mutation.field)
+    }
 };
 
 PageContent.prototype.buildParagraphs = function() {

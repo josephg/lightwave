@@ -135,8 +135,8 @@ func (self *store) GetOTNodeBySeqNumber(perma_blobref string, seqNumber int64) (
   return
 }
 
-func (self *store) GetMutationsAscending(perma_blobref string, entity_blobref string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error) {
-  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("k =", int64(grapher.OTNode_Mutation)).Filter("e =", entity_blobref).Filter("seq >=", startWithSeqNumber).Order("seq")
+func (self *store) GetMutationsAscending(perma_blobref string, entity_blobref string, field string, startWithSeqNumber int64, endSeqNumber int64) (ch <-chan map[string]interface{}, err os.Error) {
+  query := datastore.NewQuery("node").Filter("perma =", perma_blobref).Filter("k =", int64(grapher.OTNode_Mutation)).Filter("e =", entity_blobref).Filter("f =", field).Filter("seq >=", startWithSeqNumber).Order("seq")
   if endSeqNumber >= 0 {
     query = query.Filter("seq <", endSeqNumber)
   }

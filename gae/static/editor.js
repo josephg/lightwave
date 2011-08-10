@@ -9,8 +9,9 @@ if ( !window.LW ) {
   * @constructor
   * @param text is an instance of LW.Richtext
   */
-LW.Editor = function(entity, dom) {
+LW.Editor = function(entity, entityField, dom) {
     this.entity = entity;
+    this.entityField = entityField;
     // Register event handler at the entity
     this.entity.listener = this;
 
@@ -589,7 +590,7 @@ LW.Editor.prototype.submitMutation = function(mut) {
     // Apply locally
     lightwave.ot.ExecuteOperation(this.entity, op);
     // Send mutation to the server
-    var msg = {perma: this.entity.page.pageBlobRef, op: op, type: "mutation", entity: this.entity.id};
+    var msg = {perma: this.entity.page.pageBlobRef, op: op, type: "mutation", entity: this.entity.id, field: this.entityField};
     var pageContent = this.entity;
     store.submit(msg, null, null, function(m) { m.entity = pageContent.id });
 };

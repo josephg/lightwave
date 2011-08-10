@@ -513,12 +513,12 @@ PermaInfo.prototype.transformIncoming = function(blob) {
     }
     // Find all queued mutations of the same entity
     var lst = [];
-    if (this.inflight && this.inflight.type == "mutation" && this.inflight.entity == blob.entity) {
+    if (this.inflight && this.inflight.type == "mutation" && this.inflight.entity == blob.entity && this.inflight.field == blob.field) {
         lst.push(this.inflight);
     }
     for( var i = 0; i < this.outqueue.length; i++) {
         var msg = this.outqueue[i];
-        if (msg.blob.type == "mutation" && msg.blob.entity == blob.entity) {
+        if (msg.blob.type == "mutation" && msg.blob.entity == blob.entity && msg.blob.field == blob.field) {
             lst.push(msg.blob);
         }
     }
