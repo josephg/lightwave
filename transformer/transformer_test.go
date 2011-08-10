@@ -30,6 +30,10 @@ func (self *dummyAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.Entity
 }
 
 func (self *dummyAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
+  if mutation.Field() != "text" {
+    self.t.Fatal("Expected 'text' as the field in all mutations")
+    return
+  }
   var op ot.Operation
   switch mutation.Operation().(type) {
   case ot.Operation:
@@ -70,11 +74,11 @@ func TestTransformer(t *testing.T) {
   blobref1b := store.NewBlobRef(blob1b)
   blob1c := []byte(`{"type":"entity", "signer":"a@b", "perma":"` + blobref1 + `", "content":"", "dep":["` + blobref1b + `"]}`)
   blobref1c := store.NewBlobRef(blob1c)
-  blob2 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Hello World"]}, "entity":"` + blobref1c + `"}`)
+  blob2 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Hello World"]}, "entity":"` + blobref1c + `", "field":"text"}`)
   blobref2 := store.NewBlobRef(blob2)
-  blob3 := []byte(`{"type":"mutation", "signer":"x@b", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Olla!!"]}, "entity":"` + blobref1c + `"}`)
+  blob3 := []byte(`{"type":"mutation", "signer":"x@b", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Olla!!"]}, "entity":"` + blobref1c + `", "field":"text"}`)
   blobref3 := store.NewBlobRef(blob3)
-  blob4 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "entity":"` + blobref1c + `"}`)
+  blob4 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "entity":"` + blobref1c + `", "field":"text"}`)
   blobref4 := store.NewBlobRef(blob4)
 
   s.StoreBlob(blob1, blobref1)

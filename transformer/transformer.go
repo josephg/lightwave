@@ -13,7 +13,7 @@ type transformer struct {
 
 func NewTransformer(grapher *grapher.Grapher) grapher.Transformer {
   t := &transformer{grapher: grapher}
-  grapher.SetTransformer(t)
+  grapher.AddTransformer(t)
   return t
 }
 
@@ -32,6 +32,10 @@ func decodeMutation(mutation grapher.MutationNode) (mut ot.Mutation, err os.Erro
   mut.ID = mutation.BlobRef()
   mut.Site = mutation.Signer()
   return
+}
+
+func (self *transformer) Kind() int {
+  return grapher.TransformationString
 }
 
 // Interface towards the Grapher

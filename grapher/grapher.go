@@ -70,6 +70,7 @@ type Federation interface {
 type Transformer interface {
   TransformMutation(mutation MutationNode, rollback <-chan MutationNode, concurrent []string) os.Error
   TransformClientMutation(mutation_input MutationNode, rollback <-chan MutationNode) os.Error
+  Kind() int
 }
 
 // The API layer as seen by the Grapher
@@ -118,23 +119,24 @@ type Grapher struct {
   fed Federation
   // 'user@domain' of the local user.
   userID string 
-  transformer Transformer
+  transformers map[int]Transformer
   api API
+  schema *Schema
 }
 
 // Creates a new indexer for the specified user based on the blob store.
 // The indexer calls the federation object to send messages to other users.
 // Federation may be nil as well.
-func NewGrapher(userid string, store BlobStore, gstore GraphStore, fed Federation) *Grapher {
-  idx := &Grapher{userID: userid, store: store, gstore: gstore, fed: fed}
+func NewGrapher(userid string, schema *Schema, store BlobStore, gstore GraphStore, fed Federation) *Grapher {
+  idx := &Grapher{userID: userid, store: store, gstore: gstore, fed: fed, schema: schema, transformers: make(map[int]Transformer)}
   if fed != nil {
     fed.SetGrapher(idx)
   }
   return idx
 }
 
-func (self *Grapher) SetTransformer(transformer Transformer) {
-  self.transformer = transformer
+func (self *Grapher) AddTransformer(transformer Transformer) {
+  self.transformers[transformer.Kind()] = transformer
 }
 
 func (self *Grapher) SetAPI(api API) {
@@ -168,6 +170,46 @@ func (self *Grapher) permaNode(blobref string) (perma *permaNode, err os.Error) 
   p := NewPermaNode(self)
   p.FromMap(blobref, m)
   return p, nil  
+}
+
+func (self *Grapher) transformer(perma PermaNode, entity EntityNode, field string) (t Transformer, err os.Error) {
+  fileSchema, ok := self.schema.FileSchemas[perma.MimeType()]
+  if !ok {
+    err = os.NewError("Unknown document mime type")
+    return
+  }
+  entitySchema, ok := fileSchema.EntitySchemas[entity.MimeType()]
+  if !ok {
+    err = os.NewError("Unknown entity mime type")
+    return
+  }
+  fieldSchema, ok := entitySchema.FieldSchemas[field]
+  if !ok {
+    err = os.NewError("Unknown field")
+    return
+  }
+  if fieldSchema.Transformation == TransformationNone {
+    return nil, nil
+  }
+  t, ok = self.transformers[fieldSchema.Transformation]
+  if !ok {
+    err = os.NewError("Unknown transformer")
+    return
+  }
+  return
+}
+
+func (self *Grapher) entity(perma_blobref string, blobref string) (entity *entityNode, err os.Error) {
+  m, err := self.gstore.GetOTNodeByBlobRef(perma_blobref, blobref)
+  if err != nil || m == nil {
+    return nil, err
+  }
+  if m["k"].(int64) != OTNode_Entity {
+    return nil, os.NewError("Blob is not an entity blob")
+  } 
+  e := &entityNode{}
+  e.FromMap(perma_blobref, m)
+  return e, nil  
 }
 
 func (self *Grapher) permission(perma_blobref string, blobref string) (permission *permissionNode, err os.Error) {
@@ -351,7 +393,18 @@ func (self *Grapher) handleSchemaBlob(schema *superSchema, blobref string) (perm
 	return
       }
     }
-    deps, err := perma.apply(newnode.(OTNode), self.transformer)
+    var transformer Transformer
+    if mut, ok := newnode.(*mutationNode); ok {
+      entity, err := self.entity(perma.BlobRef(), mut.EntityBlobRef())
+      if err != nil {
+	return nil, nil, err
+      }
+      transformer, err = self.transformer(perma, entity, mut.Field())
+      if err != nil {
+	return nil, nil, err
+      }
+    }
+    deps, err := perma.apply(newnode.(OTNode), transformer)
     if err != nil {
       log.Printf("Err: applying blob failed: %v\nblobref=%v\n", err, blobref)
       return nil, nil, err
@@ -835,25 +888,36 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref str
   if e != nil {
     err = e
     return
-  }  
+  }
+  entity, e := self.entity(perma.BlobRef(), entity_blobref)
+  if e != nil {
+    err = e
+    return
+  }
+  transformer, e := self.transformer(perma, entity, field)
+  if e != nil {
+    err = e
+    return
+  }
   // Update the operation such that it can be applied after all currently applied operations
   m := &mutationNode{}
   m.permaBlobRef = perma_blobref
-//  m.mutationBlobRef = fmt.Sprintf("%v%v", self.userID, applyAtSeqNumber + 1) // This is not a hash ID. This ID is only temporary
   m.mutationBlobRef = "Z"  // This ensures that the client mutation looses against all server mutations. The client-side must handle it the same.
   m.mutationSigner = self.userID
   m.entityBlobRef = entity_blobref
   m.field = field
   m.operation = operation
-  ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, field, applyAtSeqNumber, perma.sequenceNumber())
-  if e != nil {
-    err = e
-    return
-  }  
-  e = self.transformer.TransformClientMutation(m, ch)
-  if e != nil {
-    err = e
-    return
+  if transformer != nil {
+    ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, field, applyAtSeqNumber, perma.sequenceNumber())
+    if e != nil {
+      err = e
+      return
+    }  
+    e = transformer.TransformClientMutation(m, ch)
+    if e != nil {
+      err = e
+      return
+    }
   }
   deps := perma.frontier.IDs()
   mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": deps, "entity":entity_blobref, "field":field}

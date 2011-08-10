@@ -5,6 +5,7 @@ GOFILES=\
 	grapher.go \
 	magic.go \
 	graph.go \
-	simplestore.go
+	simplestore.go \
+	schema.go
 
 include $(GOROOT)/src/Make.pkg

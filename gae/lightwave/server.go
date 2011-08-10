@@ -36,8 +36,26 @@ type channelStruct struct {
   OpenPermas []string
 }
 
+var schema *grapher.Schema
+
 func init() {
   rand.Seed(time.Nanoseconds())
+
+  schema = &grapher.Schema{ FileSchemas: map[string]*grapher.FileSchema {
+      "application/x-lightwave-book": &grapher.FileSchema{ EntitySchemas: map[string]*grapher.EntitySchema {
+	  "application/x-lightwave-entity-chapter": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
+	      "after": &grapher.FieldSchema{ Type: grapher.TypeEntityBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "title": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "color": &grapher.FieldSchema{ Type: grapher.TypeInt64, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone } } },
+	  "application/x-lightwave-entity-page": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
+	      "after": &grapher.FieldSchema{ Type: grapher.TypeEntityBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "title": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "chapter": &grapher.FieldSchema{ Type: grapher.TypeEntityBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "page": &grapher.FieldSchema{ Type: grapher.TypePermaBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone } } } } },
+      "application/x-lightwave-page": &grapher.FileSchema{ EntitySchemas: map[string]*grapher.EntitySchema {
+	  "application/x-lightwave-entity-content": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
+	      "layout": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "text": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationString } } } } } } }
 
   frontPageTmpl = template.New(nil)
   frontPageTmpl.SetDelims("{{", "}}")
@@ -212,7 +230,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     }
     // Repeat all blobs from this document.  
     s := newStore(c)
-    g := grapher.NewGrapher(u.Email, s, s, nil)
+    g := grapher.NewGrapher(u.Email, schema, s, s, nil)
     s.SetGrapher(g)
     ch := newChannelAPI(c, s, req.Session, true, g)
     g.Repeat(req.Perma, req.From)
@@ -306,7 +324,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   r.Body.Close()
 
   s := newStore(c)
-  g := grapher.NewGrapher(u.Email, s, s, nil)
+  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
   newChannelAPI(c, s, sessionid, false, g)
@@ -411,7 +429,7 @@ func createBook(r *http.Request) (perma_blobref string, err os.Error) {
   c := appengine.NewContext(r)
   u := user.Current(c)
   s := newStore(c)
-  g := grapher.NewGrapher(u.Email, s, s, nil)
+  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
   s.SetGrapher(g)
 
   blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
