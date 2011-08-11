@@ -219,6 +219,36 @@ body {
   margin-right:2px;
   background-color: white;
 }
+.pagesunread {
+  background-color:red;
+  color:white;
+  font-size:9pt;
+  padding-left:3px;
+  padding-right:3px;
+  border-radius:10px;
+}
+.activetab .pagesunread {
+  font-size:10pt;
+}
+.authorsunread {
+  float:right;
+  background-color:red;
+  color:white;
+  font-size:9pt;
+  padding-left:3px;
+  padding-right:3px;
+  border-radius:10px;
+  margin-left:3px;
+  margin-right:3px;
+}
+.pagemarker {
+  position:relative;
+  top:-2px;
+  float:right;
+  padding-left:3px;
+  padding-right:3px;
+  color:orange;
+}
 .title {
   border:1px dashed #888888;
   -webkit-border-radius:12px;
