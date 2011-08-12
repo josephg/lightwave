@@ -372,6 +372,21 @@ Chapter.prototype.renderInboxItem = function(page, div) {
     var input = document.createElement("input");
     input.className = "inboxcheckbox";
     input.type = "checkbox";
+    input.addEventListener("click", function(e) {
+        if (!e) var e = window.event;
+ 	e.cancelBubble = true;
+	if (e.stopPropagation) e.stopPropagation();
+        var targ;
+	if (e.target) targ = e.target;
+	else if (e.srcElement) targ = e.srcElement;
+        if (targ && targ.checked) {
+            page.inbox_selected = true;
+            $(div).addClass("inboxitemselected");
+        } else {
+            page.inbox_selected = false;
+            $(div).removeClass("inboxitemselected");
+        }
+    });
     div.appendChild(input);
     var span = document.createElement("span");
     span.className = "inboxauthor";
@@ -403,6 +418,10 @@ Chapter.prototype.renderInboxItem = function(page, div) {
             document.getElementById("pagecontainer").style.display = "block"; 
             c.setActivePage(page);
         });
+        if (page.inbox_selected) {
+            $(div).addClass("inboxitemselected");
+            input.checked = true;
+        }
     }
     return div;
 };
@@ -634,7 +653,7 @@ Page.prototype.setUnread = function(unread) {
         return;
     }
     this.unread = unread;
-    if (!this.unread) {
+    if (!this.unread && this.inbox_latestauthors) {
         this.inbox_authors = this.inbox_latestauthors.concat(this.inbox_authors);
         this.inbox_latestauthors = [];
     }

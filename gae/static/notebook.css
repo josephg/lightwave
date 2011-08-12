@@ -130,6 +130,9 @@ body {
   background-color:white;
   color:black;
 }
+.inboxitemselected {
+  background-color:#bbdafd;
+}
 .inboxauthor {
   font-weight:normal;
   float:left;
