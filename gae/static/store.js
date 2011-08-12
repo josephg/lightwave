@@ -57,6 +57,7 @@ store.addOTNode = function(jmsg) {
         page.inbox_authors = jmsg.authors;
         page.inbox_latestauthors = jmsg.latestauthors;
         page.inbox_followers = jmsg.followers;
+        page.unread = true;
         page.pageBlobRef = jmsg.perma;
         book.inbox.addPage(page);
     } else if (jmsg.type == "notification") {

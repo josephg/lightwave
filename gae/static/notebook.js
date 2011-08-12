@@ -102,6 +102,7 @@ Book.prototype.addChapter = function(c, make_active) {
         tab.className = "tab tab" + c.colorScheme.toString() + " inactivetab";
     }
     tab.appendChild(document.createTextNode(c.text));
+    c.showUnreadPagesCount();
     var book = this;
     tab.addEventListener("click", function() { 
         book.setActiveChapter(c);
@@ -243,17 +244,19 @@ Chapter.prototype.addPage = function(p, make_active) {
         }
     }
     this.pages.splice(pos, 0, p);
-    if (!$(this.tab).hasClass("activetab")) {
-        return
-    }
+    // Perhaps the page is unread? -> show it
+    this.updateUnreadPagesCount();
     // Do not update the UI if the chapter is not visible at all
     if (this.book.currentChapter != this ) {
         return;
     }
+    // Inbox?
     if ( this.id == "inbox") {
-        var div = this.renderInboxItem(p);
-        var inboxdiv = document.getElementById("inbox");
-        inboxdiv.insertBefore(div, inboxdiv.children[1]);
+        if (!this.currentPage) {
+            var div = this.renderInboxItem(p);
+            var inboxdiv = document.getElementById("inbox");
+            inboxdiv.insertBefore(div, inboxdiv.children[1]);
+        }
         return;
     }
     // Insert vtab
@@ -277,6 +280,7 @@ Chapter.prototype.addPage = function(p, make_active) {
 };
 
 Chapter.prototype.setActivePage = function(page) {
+    console.log("SET ACTIVE PAGE " + (page ? page.pageBlobRef : "null") );
     // Deactivate a tab (if one is active)
     var p = this.currentPage;
     // Shift all tabs on the right (including the '+' tab) ....
@@ -352,7 +356,9 @@ Chapter.prototype.redrawInboxItem = function(page) {
 };
 
 Chapter.prototype.renderInboxItem = function(page, div) {
+    var isnew = true;
     if (div) {
+        isnew = false;
         div.innerHTML = "";
     } else {
         div = document.createElement("div");
@@ -390,12 +396,14 @@ Chapter.prototype.renderInboxItem = function(page, div) {
     div.appendChild(span);
     div.appendChild(document.createTextNode(page.text));
     var c = this;
-    div.addEventListener("click", function() {
-        book.setPageUnread(page.pageBlobRef);
-        document.getElementById("inbox").style.display = "none";
-        document.getElementById("pagecontainer").style.display = "block"; 
-        c.setActivePage(page);
-    });
+    if (isnew) {
+        div.addEventListener("click", function() {
+            book.setPageUnread(page.pageBlobRef);
+            document.getElementById("inbox").style.display = "none";
+            document.getElementById("pagecontainer").style.display = "block"; 
+            c.setActivePage(page);
+        });
+    }
     return div;
 };
 
@@ -436,6 +444,7 @@ Chapter.prototype.setPageUnread = function(perma_blobref, unread) {
 };
 
 Chapter.prototype.updateUnreadPagesCount = function() {
+    var old = this.unreadPagesCount;
     this.unreadPagesCount = 0;
     for( var i = 0; i < this.pages.length; i++ ) {
         var p = this.pages[i];
@@ -443,7 +452,13 @@ Chapter.prototype.updateUnreadPagesCount = function() {
             this.unreadPagesCount++;
         }
     }
+    if (!this.tab || old == this.unreadPagesCount) {
+        return
+    }
+    this.showUnreadPagesCount()
+};
 
+Chapter.prototype.showUnreadPagesCount = function() {
     var span = this.tab.lastChild;
     if (!$(span).hasClass("pagesunread")) {
         span = null;
