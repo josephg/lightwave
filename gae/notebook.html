@@ -94,6 +94,7 @@ function newChapter() {
   p.addContent(co1);
   var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text", "textbox");
   p.addContent(co2);
+  p.addFollower(new Follower(p, store.userID));
   book.addChapter(c, true);
   store.createChapterEntity(c);
   store.createPage(p);
@@ -114,6 +115,7 @@ function newPage() {
   p.addContent(co1);
   var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text " + Math.random().toString(), "textbox");
   p.addContent(co2);
+  p.addFollower(new Follower(p, store.userID));
   store.createPage(p);
   store.createContentEntity(co1);
   store.createContentEntity(co2);
@@ -202,6 +204,7 @@ function showInbox() {
 }
 
 function inboxMarkAsRead() {
+// TODO
 }
 
 function pageMarkAsRead() {

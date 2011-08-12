@@ -297,30 +297,29 @@ Chapter.prototype.setActivePage = function(page) {
     } else {
         document.getElementById("back-to-inbox").style.display = "block";
     }
-   // Cleanup
+    // Cleanup
     var pagediv = document.getElementById("page");
     var content = document.getElementsByClassName("content");
     for( ; content.length > 0; ) {
         pagediv.removeChild(content[0]);
     }
-   // Cleanup
+    // Cleanup
     var sharediv = document.getElementById("share");
     var friends = document.getElementsByClassName("friend");
     for( ; friends.length > 0; ) {
         sharediv.removeChild(friends[0]);
     }
     // Close the current page
-    if (store && this.currentPage && this.currentPage.pageBlobRef) {
+    if (this.currentPage && this.currentPage.pageBlobRef) {
         store.close(this.currentPage.pageBlobRef);
-        var pi = store.get(this.currentPage.pageBlobRef);
-        store.markAsRead(this.currentPage.pageBlobRef, pi.seq - 1);
     }
     // Open the new page
     if (page) {
         page.showContents();
         page.showFollowers();
+        // If the page blobref is marked with "tmp-" then the page has just been created and there is no need to open it.
         if (store && page.pageBlobRef.substring(0,4) != "tmp-") {
-            store.openPage(page);
+            store.openPage(page, this.id == "inbox");
         }
         document.getElementById("inbox").style.display = "none";
         document.getElementById("pagecontainer").style.display = "block";
@@ -392,6 +391,7 @@ Chapter.prototype.renderInboxItem = function(page, div) {
     div.appendChild(document.createTextNode(page.text));
     var c = this;
     div.addEventListener("click", function() {
+        book.setPageUnread(page.pageBlobRef);
         document.getElementById("inbox").style.display = "none";
         document.getElementById("pagecontainer").style.display = "block"; 
         c.setActivePage(page);
@@ -404,6 +404,9 @@ Chapter.prototype.setUnreadInfo = function(unread) {
         var page = this.pages[i];
         if (unread[page.pageBlobRef]) {
             page.setUnread(true);
+            if (unread && this.id == "inbox") {
+                this.redrawInboxItem(page);
+            }
         } else {
             page.setUnread(false);
         }
@@ -422,6 +425,9 @@ Chapter.prototype.setPageUnread = function(perma_blobref, unread) {
                 continue;
             }
             page.setUnread(unread);
+            if (unread && this.id == "inbox") {
+                this.redrawInboxItem(page);
+            }
         }
     }
     if (dirty) {
@@ -613,6 +619,10 @@ Page.prototype.setUnread = function(unread) {
         return;
     }
     this.unread = unread;
+    if (!this.unread) {
+        this.inbox_authors = this.inbox_latestauthors.concat(this.inbox_authors);
+        this.inbox_latestauthors = [];
+    }
     if (!this.vtab) {
         return;
     }
@@ -620,7 +630,7 @@ Page.prototype.setUnread = function(unread) {
     if (!$(span).hasClass("authorsunread")) {
         span = null;
     }
-    if (this.unread > 0) {
+    if (this.unread) {
         if (!span) {
             span = document.createElement("span");
             span.className = "authorsunread";

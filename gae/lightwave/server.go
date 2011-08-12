@@ -100,7 +100,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
   s := newStore(c)
 
   // New User?
-  usr, err := s.HasUser(u.Id)
+  usr, err := hasUser(c, u.Id)
   if err != nil {
     http.Error(w, "Couldn't search for user", http.StatusInternalServerError)
     c.Errorf("HasUser: %v", err)
@@ -115,7 +115,7 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
       c.Errorf("CreateUser: %v", err)
       return
     }
-    _, err := createBook(r);
+    _, err := createBook(c);
     if err != nil {
       http.Error(w, "Couldn't create book", http.StatusInternalServerError)
       c.Errorf("CreateBook: %v", err)
@@ -185,6 +185,7 @@ type openCloseRequest struct {
   Session string "session"
   Perma string "perma"
   From int64 "from"
+  MarkAsRead bool "markasread"
 }
 
 func handleOpen(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +226,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
       break
     }
   }
+  var perma grapher.PermaNode
   if !is_open {
     // Update channel infos
     ch.OpenPermas = append(ch.OpenPermas, req.Perma)
@@ -237,12 +239,28 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     g := grapher.NewGrapher(u.Email, schema, s, s, nil)
     s.SetGrapher(g)
     ch := newChannelAPI(c, s, req.Session, true, g)
-    g.Repeat(req.Perma, req.From)
+    perma, err = g.Repeat(req.Perma, req.From)
+    if err != nil {
+      sendError(w, r, "Failed opening")
+    }
     fmt.Fprintf(w, `{"ok":true, "blobs":[%v]}`, strings.Join(ch.messageBuffer, ","))
-    return
+  } else {
+    fmt.Fprint(w, `{"ok":true, "blobs":[]}`)
   }
-  // Done
-  fmt.Fprint(w, `{"ok":true, "blobs":[]}`)
+
+  if req.MarkAsRead {
+    if perma == nil {
+      s := newStore(c)
+      data, err := s.GetPermaNode(req.Perma)
+      if err != nil {
+	log.Printf("Err: Failed reading permanode")
+	return
+      }
+      perma = grapher.NewPermaNode(nil)
+      perma.FromMap(req.Perma, data)
+    }
+    markAsRead(c, perma.BlobRef(), perma.SequenceNumber() - 1)
+  }
 }
 
 func handleClose(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +360,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 
   if perm, ok := node.(grapher.PermissionNode); ok {
     // Is the user who was granted permissions registered locally?
-    usr, err := s.HasUserName(perm.UserName())
+    usr, err := hasUserName(c, perm.UserName())
     if err != nil {
       log.Printf("Err in HasUserName: %v", err)
     }
@@ -354,7 +372,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   } else if otnode, ok := node.(grapher.OTNode); ok {
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v}`, otnode.BlobRef(), otnode.SequenceNumber())
   } else if perma, ok := node.(grapher.PermaNode); ok {
-    // Add to the inbox
+    // Add to the inbox of the user who created the permanode
     b := inboxStruct{LastSeq: 0, Archived: true}
     parent := datastore.NewKey("user", u.Id, 0, nil)
     _, err = datastore.Put(c, datastore.NewKey("inbox", perma.BlobRef(), 0, parent), &b)
@@ -425,7 +443,7 @@ func handleListInbox(w http.ResponseWriter, r *http.Request) {
 
   // Read the updates for all items in the inbox
   for _, entry := range inbox {
-    fillInboxItem(s, entry)
+    fillInboxItem(s, entry["perma"].(string), entry["seq"].(int64), entry)
   }
   
   j := map[string]interface{}{"ok":true, "items":inbox}
@@ -491,11 +509,11 @@ func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
   }
   perma := grapher.NewPermaNode(nil)
   perma.FromMap(perma_blobref, data)
-  message := `{"type":"notification", "perma":"` + perma_blobref + `"}`
+  message := fmt.Sprintf(`{"type":"notification", "perma":"%v", "lastseq":%v}`, perma_blobref, perma.SequenceNumber() - 1);
   // For all users find all channels on which they are listening
   for _, user := range perma.Users() {
     // Do we know this user?
-    userid, err := s.HasUserName(user)
+    userid, err := hasUserName(c, user)
     if err != nil {
       log.Printf("Err: Unknown user %v", user)
       continue
@@ -543,7 +561,7 @@ func handleInboxItem(w http.ResponseWriter, r *http.Request) {
   entry := make(map[string]interface{})
   entry["perma"] = perma_blobref
   entry["seq"] = item.LastSeq
-  err = fillInboxItem(s, entry)
+  err = fillInboxItem(s, perma_blobref, item.LastSeq, entry)
   if err != nil {
     fmt.Fprintf(w, `{"ok":false, "error":%v}`, err.String())
     return
@@ -556,7 +574,6 @@ func handleInboxItem(w http.ResponseWriter, r *http.Request) {
 func handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
   // TODO: In a transaction first read it, build max, then write it back
   c := appengine.NewContext(r)
-  s := newStore(c)
   perma_blobref := r.FormValue("perma")
   seq, err := strconv.Atoi64(r.FormValue("seq"))
   if err != nil {
@@ -564,8 +581,17 @@ func handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
     c.Errorf("handleInboxItem: %v", err)
     return
   }
-  s.StoreInboxItem(perma_blobref, seq)
-  fmt.Fprintf(w, `{"ok":true}`)
+  err = markAsRead(c, perma_blobref, seq)
+  if err != nil {
+    fmt.Fprintf(w, `{"ok":false, "error":"Failed accessing database"}`)
+  } else {
+    fmt.Fprintf(w, `{"ok":true}`)
+  }
+}
+
+func markAsRead(c appengine.Context, perma_blobref string, seq int64) os.Error {
+  s := newStore(c)
+  return s.MarkInboxItemAsRead(perma_blobref, seq)
 }
 
 type UnreadStruct struct {
@@ -643,20 +669,19 @@ func handleListUnread(w http.ResponseWriter, r *http.Request) {
 }
 
 // A helper function to produce information about inbox items
-func fillInboxItem(s *store, entry map[string]interface{}) (err os.Error) {
+func fillInboxItem(s *store, perma_blobref string, lastSeq int64, entry map[string]interface{}) (err os.Error) {
   followers := []string{}
   authors := []string{}
   latestauthors := []string{}
-  lastSeq := entry["seq"].(int64)
-  data, err := s.GetPermaNode(entry["perma"].(string))
+  data, err := s.GetPermaNode(perma_blobref)
   if err != nil {
     log.Printf("ERR: Failed reading permanode")
     return err
   }
   perma := grapher.NewPermaNode(nil)
-  perma.FromMap(entry["perma"].(string), data);
+  perma.FromMap(perma_blobref, data);
   updates := perma.Updates()
-  for _, user := range perma.Users() {
+  for _, user := range perma.Followers() {
     if seq, ok := updates[user]; ok {
       if seq > lastSeq {
 	latestauthors = append(latestauthors, userShortName(user))
@@ -679,7 +704,6 @@ func fillInboxItem(s *store, entry map[string]interface{}) (err os.Error) {
 func addUnread(c appengine.Context, userid string, perma_blobref string) os.Error {
   // TODO: Execute in a transaction
   filter := NewBloomFilter(sha256.New())
-  log.Printf("Filter size is %v", filter.Size())
   parent := datastore.NewKey("user", userid, 0, nil)
   key := datastore.NewKey("unread", "unread", 0, parent)
   var b UnreadStruct
@@ -701,8 +725,7 @@ func addUnread(c appengine.Context, userid string, perma_blobref string) os.Erro
   return err
 }
 
-func createBook(r *http.Request) (perma_blobref string, err os.Error) {
-  c := appengine.NewContext(r)
+func createBook(c appengine.Context) (perma_blobref string, err os.Error) {
   u := user.Current(c)
   s := newStore(c)
   g := grapher.NewGrapher(u.Email, schema, s, s, nil)
@@ -715,4 +738,51 @@ func createBook(r *http.Request) (perma_blobref string, err os.Error) {
     perma_blobref = node.BlobRef();
   }
   return 
+}
+
+func addToInbox(c appengine.Context, username string, perma_blobref string, seq int64) (err os.Error) {
+  // Does this user have an inbox on this machine?
+  userid, err := hasUserName(c, username);
+  if err != nil || userid == "" {
+    return err
+  }
+  
+  log.Printf("INBOX for user %v", username)
+  
+  // Store it
+  b := inboxStruct{LastSeq: seq}
+  parent := datastore.NewKey("user", userid, 0, nil)
+  _, err = datastore.Put(c, datastore.NewKey("inbox", perma_blobref, 0, parent), &b)
+  return err
+}
+
+type userStruct struct {
+  UserEmail string
+}
+
+func hasUser(c appengine.Context, userid string) (usr *userStruct, err os.Error) {
+  key := datastore.NewKey("user", userid, 0, nil)
+  usr = &userStruct{}
+  if err = datastore.Get(c, key, usr); err != nil {
+    usr = nil;
+    if err == datastore.ErrNoSuchEntity || err == datastore.ErrInvalidEntityType {
+      err = nil
+    }
+    return
+  }
+  return
+}
+
+func hasUserName(c appengine.Context, username string) (userid string, err os.Error) {
+  query := datastore.NewQuery("user").Filter("UserEmail =", username).KeysOnly()
+  it := query.Run(c)
+  key, err := it.Next(nil)
+  if err == datastore.Done {
+    return "", nil
+  }
+  if err != nil {
+    log.Printf("Err: in query: %v", err)
+    return "", err
+  }
+  return key.StringID(), nil
 }

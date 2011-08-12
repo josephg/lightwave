@@ -11,7 +11,6 @@ store.init = function(userid, sessionid, token) {
     store.socket.onerror = onError;
     store.socket.onclose = onClose;
     store.openPermas = { };
-    store.bookPermaInfo = null;
 };
 
 function onOpened() {
@@ -61,12 +60,15 @@ store.addOTNode = function(jmsg) {
         page.pageBlobRef = jmsg.perma;
         book.inbox.addPage(page);
     } else if (jmsg.type == "notification") {
-        var page = book.inbox.getPageByPageBlobRef(jmsg.perma);
         // Is this in the inbox?
-        if (page) {
+        if (book.inbox.getPageByPageBlobRef(jmsg.perma)) {
             store.getInboxItem(jmsg.perma);
         }
-        book.setPageUnread(jmsg.perma, true);
+        var pi = store.get(jmsg.perma);
+        // Is this really newer than the latest update we have seen?
+        if (pi.sequenceNumber() <= jmsg.lastseq) {
+            book.setPageUnread(jmsg.perma, true);
+        }
     }
 };
 
@@ -102,7 +104,7 @@ store.submit = function(blob, onsuccess, onerror, beforesend) {
         }
         if (pi && response.seq) { pi.seq = response.seq + 1; }
         if (onsuccess) onsuccess(response);
-        if (pi)  pi.dequeueOut();
+        if (pi) pi.dequeueOut();
     };
     if (pi) pi.inflight = blob;
     if (beforesend) {
@@ -125,7 +127,7 @@ store.close = function(perma) {
             alert(response.error);
             return;
         };
-        console.log("Closed");
+        console.log("Closed " + perma);
     };
     store.httpPost("/private/close", JSON.stringify({perma:perma, session:store.sessionID}), f);
 };
@@ -176,19 +178,21 @@ store.openBook = function(perma) {
         };
         console.log("Opened book");
         book.id = perma;
-        // Install event handlers
-        store.bookPermaInfo = store.get(perma);
-        store.bookPermaInfo.onEntity = store.onBookEntity;
         // Replay the received blobs
         for( var i = 0; i < response.blobs.length; i++ ) {
             store.addOTNode(response.blobs[i]);
         }
         store.loadUnread();
     };
+
+    // Install event handlers
+    var pi = store.get(perma);
+    pi.onEntity = store.onBookEntity;
+
     store.httpPost("/private/open", JSON.stringify({perma:perma, session:store.sessionID}), f);    
 };
 
-store.openPage = function(page) {
+store.openPage = function(page, markasread) {
     var f = function(msg) {
         console.log("Got: " + msg)
         var response = JSON.parse(msg);
@@ -197,12 +201,6 @@ store.openPage = function(page) {
             return;
         };
         console.log("Opened page: " + page.pageBlobRef);
-        // Install event handlers
-        var pagePermaInfo = store.get(page.pageBlobRef);
-        pagePermaInfo.onEntity = store.onPageEntity;
-        pagePermaInfo.onKeep = store.onPageKeep;
-        pagePermaInfo.onPermission = store.onPagePermission;
-        pagePermaInfo.onMutation = store.onPageMutation;
         var haskeep = false;
         var permission;
         // Replay the received blobs
@@ -221,10 +219,23 @@ store.openPage = function(page) {
             console.log("NO KEEP YET. Sending one");
             // Send out a keep
             store.submit({type:"keep", perma:page.pageBlobRef, permission:permission}, null, null, null);
+            if (pi.onKeep) {
+                pi.onKeep(store.get(page.pageBlobRef), {type:"keep", perma:page.pageBlobRef, permission:permission, "signer": store.userID});
+            }
         }
     };
     var pi = store.get(page.pageBlobRef);
-    store.httpPost("/private/open", JSON.stringify({perma:page.pageBlobRef, session:store.sessionID, from: pi.seq}), f);    
+    // Install event handlers
+    pi.onEntity = store.onPageEntity;
+    pi.onKeep = store.onPageKeep;
+    pi.onPermission = store.onPagePermission;
+    pi.onMutation = store.onPageMutation;
+
+    store.httpPost("/private/open", JSON.stringify({perma:page.pageBlobRef, session:store.sessionID, from: pi.seq, markasread:markasread}), f);
+
+    if (markasread) {
+        book.setPageUnread(page.pageBlobRef, false);
+    }
 };
 
 store.createChapterEntity = function(chapter) {
@@ -235,7 +246,7 @@ store.createChapterEntity = function(chapter) {
     if (chapter.after && chapter.after != "inbox") {
         content.after = chapter.after;
     }
-    var msg = {perma: store.bookPermaInfo.blobref, content: content, mimetype:"application/x-lightwave-entity-chapter", type: "entity"};
+    var msg = {perma: book.id, content: content, mimetype:"application/x-lightwave-entity-chapter", type: "entity"};
     store.submit(msg, f, null);
 };
 
@@ -247,7 +258,7 @@ store.createPageEntity = function(page) {
     if (page.after) {
         content.after = page.after;
     }
-    var msg = {perma: store.bookPermaInfo.blobref, content: content, mimetype:"application/x-lightwave-entity-page", type: "entity"};
+    var msg = {perma: book.id, content: content, mimetype:"application/x-lightwave-entity-page", type: "entity"};
     store.submit(msg, f, null, function(m) { m.content.chapter = page.chapter.id; } );
 };
 
@@ -256,7 +267,7 @@ store.createPage = function(page) {
         page.pageBlobRef = response.blobref;
         store.openPage(page);
         store.createPageEntity(page);
-        store.getInboxItem(page.pageBlobRef);
+        // store.getInboxItem(page.pageBlobRef);
     };
     store.submit({type:"permanode", mimetype:"application/x-lightwave-page", perma:page.pageBlobRef}, f, null);
 };
@@ -274,7 +285,7 @@ store.createContentEntity = function(pageContent) {
 
 store.onBookEntity = function(permaInfo, entity) {
     // This book is currently not open? -> do nothing
-    if (permaInfo != store.bookPermaInfo) {
+    if (permaInfo.blobref != book.id) {
         return
     }
     if (entity.mimetype == "application/x-lightwave-entity-chapter") {
@@ -309,6 +320,7 @@ store.onPageEntity = function(permaInfo, entity) {
 };
 
 store.onPageKeep = function(permaInfo, keep) {
+    console.log("??????? onPageKeep for " + keep.signer);
     // This book is currently not open? -> do nothing
     if ( !book || !book.currentChapter || !book.currentChapter.currentPage) {
         return
@@ -317,6 +329,7 @@ store.onPageKeep = function(permaInfo, keep) {
     if (permaInfo.blobref != page.pageBlobRef) {
         return
     }
+    // Follower is already known? Do nothing. 
     if (page.getFollower(keep.signer)) {
         return
     }
@@ -399,7 +412,7 @@ store.loadUnread = function() {
 store.markAsRead = function(perma, seq) {
     var page = book.inbox.getPageByPageBlobRef(perma);
     if (page) {
-        page.inbox_authors = page.inbox_authors.concat(page.inbox_latestauthors)
+        page.inbox_authors = page.inbox_authors.concat(page.inbox_latestauthors);
         page.inbox_latestauthors = [];
         book.inbox.redrawInboxItem(page);
     }
@@ -410,7 +423,7 @@ store.markAsRead = function(perma, seq) {
 
 store.getInboxItem = function(perma) {
     var f = function(msg) {
-        console.log("INBOX: " + msg);
+        console.log("INBOX  ITEM: " + msg);
         var response = JSON.parse(msg);
         if (!response.ok) {
             alert(response.error);
@@ -424,6 +437,7 @@ store.getInboxItem = function(perma) {
         page.inbox_authors = item.authors;
         page.inbox_latestauthors = item.latestauthors;
         page.inbox_followers = item.followers;
+        page.text = item.digest;
         book.inbox.redrawInboxItem(page);
     };
 
@@ -577,10 +591,10 @@ PermaInfo.prototype.transformIncoming = function(blob) {
 };
 
 PermaInfo.prototype.addMutation = function(mut) {
-    var ok = this.addOTNode_(mut);
-    if (ok) {
-        this.transformIncoming(mut);
+    if (!this.addOTNode_(mut)) {
+        return
     }
+    this.transformIncoming(mut);
     if (this.onMutation) {
         this.onMutation(this, mut);
     }
@@ -588,7 +602,9 @@ PermaInfo.prototype.addMutation = function(mut) {
 };
 
 PermaInfo.prototype.addEntity = function(entity) {
-    this.addOTNode_(entity);
+    if (!this.addOTNode_(entity)) {
+        return;
+    }
     if (this.onEntity) {
         this.onEntity(this, entity);
     }
@@ -596,7 +612,9 @@ PermaInfo.prototype.addEntity = function(entity) {
 };
 
 PermaInfo.prototype.addKeep = function(keep) {
-    this.addOTNode_(keep);
+    if (!this.addOTNode_(keep)) {
+        return;
+    }
     if (this.onKeep) {
         this.onKeep(this, keep);
     }
@@ -604,7 +622,9 @@ PermaInfo.prototype.addKeep = function(keep) {
 };
 
 PermaInfo.prototype.addPermission = function(perm) {
-    this.addOTNode_(perm);
+    if (!this.addOTNode_(perm)) {
+        return;
+    }
     if (this.onPermission) {
         this.onPermission(this, perm);
     }

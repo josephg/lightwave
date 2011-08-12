@@ -569,7 +569,10 @@ func (self *permaNode) apply(newnode OTNode, transformer Transformer) (deps []st
 
   self.frontier.AddBlob(newnode.BlobRef(), newnode.Dependencies())
   newnode.SetSequenceNumber(self.seqNumber)
-  self.updates[newnode.Signer()] = self.seqNumber
+  // Ignore if the user issued a keep node
+  if _, ok := newnode.(*keepNode); !ok {
+    self.updates[newnode.Signer()] = self.seqNumber
+  }
   self.seqNumber++
   
   return nil, err

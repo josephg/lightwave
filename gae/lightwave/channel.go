@@ -35,8 +35,8 @@ func newChannelAPI(c appengine.Context, store *store, sessionid string, bufferOn
 func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
   // TODO: Compute digest
   var digest = "Untitled page";
-  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef(), "digest": digest, "seq": int64(0)}
-  fillInboxItem(self.store, msgJson)
+  msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef(), "digest": digest}
+  fillInboxItem(self.store, perma.BlobRef(), int64(0), msgJson)
   schema, err := json.Marshal(msgJson)
   if err != nil {
     panic(err.String())
@@ -45,7 +45,7 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
     self.messageBuffer = append(self.messageBuffer, string(schema));
   } else {  
     if perma.MimeType() == "application/x-lightwave-page" {
-      self.store.AddToInbox(permission.UserName(), perma.BlobRef(), 0);
+      addToInbox(self.c, permission.UserName(), perma.BlobRef(), 0);
     }
     err = self.forwardToUser(permission.UserName(), string(schema))
   }
@@ -85,11 +85,7 @@ func (self* channelAPI) Blob_Keep(perma grapher.PermaNode, permission grapher.Pe
   message := string(schema)
   if self.bufferOnly {
     self.messageBuffer = append(self.messageBuffer, string(schema));
-//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
-//    if perma.MimeType() == "application/x-lightwave-page" {
-//      self.store.AddToInbox(perma.BlobRef());
-//    }
     self.forwardToUser(keep.Signer(), message)
     err = self.forwardToFollowers(perma.BlobRef(), message)
   }
@@ -108,7 +104,6 @@ func (self *channelAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.Enti
   }
   if self.bufferOnly {
     self.messageBuffer = append(self.messageBuffer, string(schema));
-//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }
@@ -135,7 +130,6 @@ func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.
   }
   if self.bufferOnly {
     self.messageBuffer = append(self.messageBuffer, string(schema));
-//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }
@@ -162,7 +156,6 @@ func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grap
   }
   if self.bufferOnly {
     self.messageBuffer = append(self.messageBuffer, string(schema));
-//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToFollowers(perma.BlobRef(), string(schema))
   }

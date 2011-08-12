@@ -381,7 +381,7 @@ func (self *Grapher) handleSchemaBlob(schema *superSchema, blobref string) (perm
       log.Printf("Err: OT node without a permanode: %v", node.PermaBlobRef())
       return nil, nil, os.NewError("OT node without a permanode");
     }
-    // Is this an invitation? Then we cannot apply it, because most data is missing.
+    // Is this an invitation?
     if inv, ok := newnode.(*permissionNode); ok && inv.action == PermAction_Invite {
       self.handleInvitation(perma, inv)
       // Do not apply the blob here. We must first download all the data
@@ -559,10 +559,6 @@ func (self *Grapher) handleKeep(perma *permaNode, keep *keepNode) bool {
     }
   }
 
-  // Does this implicitly accept a pending invitation? Clean it up.
-//  if _, ok := perma.pendingInvitations[keep.Signer()]; ok {
-//    perma.pendingInvitations[keep.Signer()] = "", false
-//  }
   // This keep is new. The permaNode has a new user.
   perma.addKeep(keep.Signer())
   log.Printf("Processing keep of %v\n", keep.Signer())
@@ -714,14 +710,14 @@ func (self *Grapher) mutationNodeFromMap(perma_blobref string, data map[string]i
 }
 
 // Interface towards the API
-func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (err os.Error) {
-  perma, err := self.permaNode(perma_blobref)
+func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (perma PermaNode, err os.Error) {
+  perma, err = self.permaNode(perma_blobref)
   if err != nil {
-    return err
+    return nil, err
   }  
   ch, err := self.getOTNodesAscending(perma_blobref, startWithSeqNumber, -1)
   if err != nil {
-    return err
+    return nil, err
   }
   
   for n := range ch {
@@ -736,7 +732,7 @@ func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (err
 	perm, err = self.permission(perma.BlobRef(), keep.permissionBlobRef)
 	if err != nil {
 	  log.Printf("Could not get permission")
-	  return err
+	  return nil, err
         }
       }
       self.api.Blob_Keep(perma, perm, keep)
