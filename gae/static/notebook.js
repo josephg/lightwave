@@ -172,7 +172,13 @@ Book.prototype.setActiveChapter = function(chapter) {
         p.vtab = vtab;
         vtab.className = "vtab inactivevtab" + chapter.colorScheme.toString();
         vtab.appendChild(document.createTextNode(p.text));
-        vtab.addEventListener("click", function(x) { return function() { chapter.setActivePage(x); }; }(p) ); 
+        vtab.addEventListener("click", function(x) { return function() { chapter.setActivePage(x); }; }(p) );
+        if (p.unread) {
+            var span = document.createElement("span");
+            span.className = "authorsunread";
+            span.innerHTML = "&nbsp";
+            vtab.appendChild(span);
+        }
         vtabs.appendChild(vtab);
     }
     var p = chapter.currentPage;
@@ -182,6 +188,20 @@ Book.prototype.setActiveChapter = function(chapter) {
     if (p) {
         chapter.currentPage = null;
         chapter.setActivePage(p);
+    }
+};
+
+Book.prototype.setUnreadInfo = function(unread) {
+    for (var i = 0; i < this.chapters.length; i++) {
+        var chapter = this.chapters[i];
+        chapter.setUnreadInfo(unread);
+    }
+};
+
+Book.prototype.setPageUnread = function(perma_blobref, unread) {
+    for (var i = 0; i < this.chapters.length; i++) {
+        var chapter = this.chapters[i];
+        chapter.setPageUnread(perma_blobref, unread);
     }
 };
 
@@ -292,10 +312,8 @@ Chapter.prototype.setActivePage = function(page) {
     // Close the current page
     if (store && this.currentPage && this.currentPage.pageBlobRef) {
         store.close(this.currentPage.pageBlobRef);
-        if (this.id == "inbox") {
-            var pi = store.get(this.currentPage.pageBlobRef);
-            store.storeInboxItem(this.currentPage.pageBlobRef, pi.seq - 1);
-        }
+        var pi = store.get(this.currentPage.pageBlobRef);
+        store.markAsRead(this.currentPage.pageBlobRef, pi.seq - 1);
     }
     // Open the new page
     if (page) {
@@ -381,6 +399,63 @@ Chapter.prototype.renderInboxItem = function(page, div) {
     return div;
 };
 
+Chapter.prototype.setUnreadInfo = function(unread) {
+    for (var i = 0; i < this.pages.length; i++) {
+        var page = this.pages[i];
+        if (unread[page.pageBlobRef]) {
+            page.setUnread(true);
+        } else {
+            page.setUnread(false);
+        }
+    }
+    this.updateUnreadPagesCount();
+};
+
+Chapter.prototype.setPageUnread = function(perma_blobref, unread) {
+    var dirty = false
+    for (var i = 0; i < this.pages.length; i++) {
+        var page = this.pages[i];
+        if (page.pageBlobRef == perma_blobref && page.unread != unread) {
+            dirty = true
+            // The current page cannot be marked unread
+            if (this == this.book.currentChapter && page == this.currentPage && unread) {
+                continue;
+            }
+            page.setUnread(unread);
+        }
+    }
+    if (dirty) {
+        this.updateUnreadPagesCount();
+    }
+};
+
+Chapter.prototype.updateUnreadPagesCount = function() {
+    this.unreadPagesCount = 0;
+    for( var i = 0; i < this.pages.length; i++ ) {
+        var p = this.pages[i];
+        if (p.unread) {
+            this.unreadPagesCount++;
+        }
+    }
+
+    var span = this.tab.lastChild;
+    if (!$(span).hasClass("pagesunread")) {
+        span = null;
+    }
+    if (this.unreadPagesCount > 0) {
+        if (!span) {
+            span = document.createElement("span");
+            span.className = "pagesunread";
+            this.tab.appendChild(span);
+        }
+        span.innerText = this.unreadPagesCount.toString();
+    } else {
+        if (span) {
+            this.tab.removeChild(span);
+        }
+    }
+};
+
 Page.prototype.addContent = function(content) {
     this.contents.push(content);
     if (!this.isVisible()) {
@@ -429,7 +504,7 @@ Page.prototype.addFollower = function(follower) {
         if (this.invitations[i].id == follower.id) {
             this.invitations.splice(i, 1);
             if (this.isVisible()) {
-                var div = document.getElementById("friend-" + follower.id);
+                var div = document.getElementById("invitee-" + follower.id);
                 if (div ) {
                     var sharediv = document.getElementById("share");
                     sharediv.removeChild(div);
@@ -481,12 +556,14 @@ Page.prototype.showFollowers = function() {
 
 Page.prototype.showFollower = function(follower, inviteOnly) {
     var div = document.createElement("div");
-    div.id = "follower-" + follower.id;
     // HACK
-    if (!inviteOnly)
+    if (!inviteOnly) {
+        div.id = "follower-" + follower.id;
         div.className = "friend friendonline";
-    else
+    } else {
         div.className = "friend friendaway";
+        div.id = "invitee-" + follower.id;
+    }
     var img = document.createElement("img");
     img.className = "friend-image";
     img.src = "unknown.png";
@@ -529,6 +606,32 @@ Page.prototype.getContent = function(id) {
         }
     }
     return null;
+};
+
+Page.prototype.setUnread = function(unread) {
+    if (this.unread == unread) {
+        return;
+    }
+    this.unread = unread;
+    if (!this.vtab) {
+        return;
+    }
+    var span = this.vtab.lastChild;
+    if (!$(span).hasClass("authorsunread")) {
+        span = null;
+    }
+    if (this.unread > 0) {
+        if (!span) {
+            span = document.createElement("span");
+            span.className = "authorsunread";
+            this.vtab.appendChild(span);
+        }
+        span.innerHTML = "&nbsp";
+    } else {
+        if (span) {
+            this.vtab.removeChild(span);
+        }
+    }
 };
 
 PageContent.prototype.mutate = function(mutation) {

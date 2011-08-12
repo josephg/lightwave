@@ -16,6 +16,7 @@ import (
 )
 
 type channelAPI struct {
+  grapher *grapher.Grapher
   c appengine.Context
   store *store
   sessionID string
@@ -26,13 +27,13 @@ type channelAPI struct {
 
 func newChannelAPI(c appengine.Context, store *store, sessionid string, bufferOnly bool, grapher *grapher.Grapher) *channelAPI {
   u := user.Current(c)
-  a := &channelAPI{sessionID: sessionid, store: store, userID: u.Id, c: c, bufferOnly: bufferOnly}
+  a := &channelAPI{sessionID: sessionid, store: store, userID: u.Id, c: c, bufferOnly: bufferOnly, grapher: grapher}
   grapher.SetAPI(a)
   return a
 }
 
 func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode) {
-  log.Printf("Sending invitation ...")
+  // TODO: Compute digest
   var digest = "Untitled page";
   msgJson := map[string]interface{}{ "perma":perma.BlobRef(), "type":"invitation", "signer":permission.Signer(), "permission":permission.BlobRef(), "digest": digest, "seq": int64(0)}
   fillInboxItem(self.store, msgJson)
@@ -42,7 +43,6 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
   }
   if self.bufferOnly {
     self.messageBuffer = append(self.messageBuffer, string(schema));
-//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {  
     if perma.MimeType() == "application/x-lightwave-page" {
       self.store.AddToInbox(permission.UserName(), perma.BlobRef(), 0);
@@ -52,6 +52,9 @@ func (self* channelAPI) Signal_ReceivedInvitation(perma grapher.PermaNode, permi
   if err != nil {
     log.Printf("Err Forward: %v", err)
   }
+  
+  // Automatically accept the invitation
+//  self.grapher.CreateKeepBlob(perma.BlobRef(), permission.BlobRef())
 }
 
 func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permission grapher.PermissionNode, keep grapher.KeepNode) {
@@ -62,7 +65,6 @@ func (self* channelAPI) Signal_AcceptedInvitation(perma grapher.PermaNode, permi
   }
   if self.bufferOnly {
     self.messageBuffer = append(self.messageBuffer, string(schema));
-//    err = self.forwardToSession(self.userID, self.sessionID, string(schema))
   } else {
     err = self.forwardToUser(keep.Signer(), string(schema))
   }
@@ -143,7 +145,7 @@ func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.
 }
 
 func (self* channelAPI) Blob_Permission(perma grapher.PermaNode, permission grapher.PermissionNode) {
-  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": permission.SequenceNumber(), "type":"permission", "user": permission.UserName(), "allow": permission.AllowBits(), "deny": permission.DenyBits()}
+  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": permission.SequenceNumber(), "type":"permission", "user": permission.UserName(), "allow": permission.AllowBits(), "deny": permission.DenyBits(), "blobref": permission.BlobRef()}
   switch permission.Action() {
   case grapher.PermAction_Invite:
     mutJson["action"] = "invite"
@@ -271,7 +273,7 @@ func (self *channelAPI) sendSlowNotifications(perma_blobref string) {
 	return
       }
       // Enqueue the task
-      t := taskqueue.NewPOSTTask("/internal/notify", map[string][]string{"perma": {perma_blobref}})
+      t := taskqueue.NewPOSTTask("/internal/notify", map[string][]string{"perma": {perma_blobref} })
       t.Delay = 30 * 1000000
       if _, err := taskqueue.Add(self.c, t, ""); err != nil {
 	log.Printf("ERR: " + err.String())

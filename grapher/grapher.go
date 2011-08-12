@@ -309,9 +309,9 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     }
     return n, nil    
   default:
-    log.Printf("Err: Unknown schema type")
+    log.Printf("Err: Unknown schema type: " + schema.Type)
   }
-  return nil, os.NewError("Unknown schema type")
+  return nil, os.NewError("Unknown schema type: " + schema.Type)
 }
 
 // Invoked from the blob store
@@ -908,7 +908,7 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref str
   m.field = field
   m.operation = operation
   if transformer != nil {
-    ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, field, applyAtSeqNumber, perma.sequenceNumber())
+    ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, field, applyAtSeqNumber, perma.SequenceNumber())
     if e != nil {
       err = e
       return
@@ -1016,6 +1016,7 @@ func (self *Grapher) HandleClientBlob(blob []byte) (node AbstractNode, err os.Er
     if err != nil {
       return nil, err
     }
+    return
   case "mutation":
     if schema.Operation == nil {
       return nil, os.NewError("Mutation is lacking an operation")
@@ -1047,9 +1048,9 @@ func (self *Grapher) HandleClientBlob(blob []byte) (node AbstractNode, err os.Er
     node, err = self.CreatePermissionBlob(schema.PermaNode, schema.ApplyAt, schema.User, schema.Allow, schema.Deny, action)
     return
   default:
-    log.Printf("Err: Unknown schema type")
+    log.Printf("Err: Unknown schema type: " + schema.Type)
   }
-  return nil, os.NewError("Unknown schema type")
+  return nil, os.NewError("Unknown schema type: " + schema.Type)
 }
 
 func domain(userid string) string {

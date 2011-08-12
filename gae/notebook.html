@@ -22,7 +22,7 @@
 </div>
 <div class="stack" id="stack">
   <div class="pagecontainer" id="pagecontainer" style="display:none">
-    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div></div>    
+    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
   <div class="page" id="page">
    <div class="vtabs" id="vtabs">
       <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
@@ -46,7 +46,7 @@
   </div>
   </div>
   <div id="inbox" class="inbox">
-    <div class="inboxcontrols"><div class="ui-toolbar"><button><input type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div></div>
+    <div class="inboxcontrols"><div class="ui-toolbar"><button><input type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxMarkAsRead">Mark as read</button></div></div>
  </div>
 </div>
 
@@ -199,6 +199,16 @@ function closeInvite() {
 
 function showInbox() {
   book.inbox.setActivePage(null);
+}
+
+function inboxMarkAsRead() {
+}
+
+function pageMarkAsRead() {
+  if (book.currentChapter && book.currentChapter.currentPage && book.currentChapter.currentPage.pageBlobRef) {
+    var pi = store.get(book.currentChapter.currentPage.pageBlobRef);
+    store.markAsRead(book.currentChapter.currentPage.pageBlobRef, pi.sequenceNumber() - 1);
+  }
 }
 
 function toggleQueue() {

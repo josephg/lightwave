@@ -390,6 +390,7 @@ type PermaNode interface {
   Updates() map[string]int64
   Followers() []string
   Users() []string
+  SequenceNumber() int64
 }
 
 type permaNode struct {
@@ -477,7 +478,7 @@ func (self *permaNode) Updates() map[string]int64 {
   return self.updates
 }
 
-func (self *permaNode) sequenceNumber() int64 {
+func (self *permaNode) SequenceNumber() int64 {
   return self.seqNumber
 }
 
@@ -674,7 +675,7 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
   for c, _ := range prune {
     concurrent = append(concurrent, c)
   }
-  ch, err := self.grapher.getMutationsAscending(self.blobref, newnode.EntityBlobRef(), newnode.Field(), self.sequenceNumber() - rollback, self.sequenceNumber())
+  ch, err := self.grapher.getMutationsAscending(self.blobref, newnode.EntityBlobRef(), newnode.Field(), self.SequenceNumber() - rollback, self.SequenceNumber())
   if err != nil {
     return err
   }
@@ -687,7 +688,7 @@ func (self *permaNode) applyMutation(newnode *mutationNode, transformer Transfor
 
 func (self *permaNode) transformLocalPermission(perm *permissionNode, applyAtSeqNumber int64) (tperm *permissionNode, appliedAtSeqNumber int64, err os.Error) {
   var reverse_permissions []*permissionNode
-  i := self.sequenceNumber()
+  i := self.SequenceNumber()
   appliedAtSeqNumber = i
   if i < applyAtSeqNumber {
     return nil, 0, os.NewError("Invalid sequence number")

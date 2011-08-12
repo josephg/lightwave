@@ -19,6 +19,7 @@ import (
   "time"
   "rand"
   "strings"
+  "crypto/sha256"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
 )
@@ -41,6 +42,7 @@ var schema *grapher.Schema
 func init() {
   rand.Seed(time.Nanoseconds())
 
+  // TODO: This should end up in a configuration file
   schema = &grapher.Schema{ FileSchemas: map[string]*grapher.FileSchema {
       "application/x-lightwave-book": &grapher.FileSchema{ EntitySchemas: map[string]*grapher.EntitySchema {
 	  "application/x-lightwave-entity-chapter": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
@@ -70,8 +72,10 @@ func init() {
   http.HandleFunc("/private/close", handleClose)
   http.HandleFunc("/private/listpermas", handleListPermas)
   http.HandleFunc("/private/listinbox", handleListInbox)
+  http.HandleFunc("/private/listunread", handleListUnread)
   http.HandleFunc("/private/invitebymail", handleInviteByMail)
   http.HandleFunc("/private/inboxitem", handleInboxItem)
+  http.HandleFunc("/private/markasread", handleMarkAsRead)
 
   http.HandleFunc("/internal/notify", handleDelayedNotify)
 
@@ -337,6 +341,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   }
 
   if perm, ok := node.(grapher.PermissionNode); ok {
+    // Is the user who was granted permissions registered locally?
     usr, err := s.HasUserName(perm.UserName())
     if err != nil {
       log.Printf("Err in HasUserName: %v", err)
@@ -348,6 +353,12 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v, "knownuser":%v}`, perm.BlobRef(), perm.SequenceNumber(), knownuser )
   } else if otnode, ok := node.(grapher.OTNode); ok {
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v}`, otnode.BlobRef(), otnode.SequenceNumber())
+  } else if perma, ok := node.(grapher.PermaNode); ok {
+    // Add to the inbox
+    b := inboxStruct{LastSeq: 0, Archived: true}
+    parent := datastore.NewKey("user", u.Id, 0, nil)
+    _, err = datastore.Put(c, datastore.NewKey("inbox", perma.BlobRef(), 0, parent), &b)
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, node.BlobRef())
   } else {
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, node.BlobRef())
   }
@@ -406,7 +417,7 @@ func handleListInbox(w http.ResponseWriter, r *http.Request) {
   }
 
   s := newStore(c)
-  inbox, err := s.ListInbox()
+  inbox, err := s.ListInbox(false)
   if err != nil {
     sendError(w, r, err.String())
     return
@@ -423,22 +434,6 @@ func handleListInbox(w http.ResponseWriter, r *http.Request) {
     panic("Cannot serialize")
   }
   fmt.Fprint(w, string(msg))
-}
-
-func createBook(r *http.Request) (perma_blobref string, err os.Error) {
-  c := appengine.NewContext(r)
-  u := user.Current(c)
-  s := newStore(c)
-  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
-  s.SetGrapher(g)
-
-  blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
-  var node grapher.AbstractNode
-  node, err = g.HandleClientBlob(blob)
-  if err == nil {
-    perma_blobref = node.BlobRef();
-  }
-  return 
 }
 
 type inviteByMail struct {
@@ -481,9 +476,11 @@ func handleInviteByMail(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
-  c := appengine.NewContext(r)
-  perma_blobref := r.FormValue("perma")
   log.Printf("Task started")
+  c := appengine.NewContext(r)
+  // Read the form data
+  perma_blobref := r.FormValue("perma")
+  // Allow for further notification tasks to be enqueued
   memcache.Delete(c, "notify-" + perma_blobref)
   // Find out about the users of this permanode
   s := newStore(c)
@@ -497,6 +494,18 @@ func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
   message := `{"type":"notification", "perma":"` + perma_blobref + `"}`
   // For all users find all channels on which they are listening
   for _, user := range perma.Users() {
+    // Do we know this user?
+    userid, err := s.HasUserName(user)
+    if err != nil {
+      log.Printf("Err: Unknown user %v", user)
+      continue
+    }
+    // Mark that there is an unread file
+    err = addUnread(c, userid, perma_blobref)
+    if err != nil {
+      log.Printf("Err writing unread: %v", err)
+    }
+    // Notify browser instances where this user is logged in
     var channels []channelStruct
     query := datastore.NewQuery("channel").Filter("UserEmail =", user)
     for it := query.Run(c) ; ; {
@@ -519,6 +528,118 @@ func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
       }
     }
   }
+}
+
+func handleInboxItem(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  s := newStore(c)
+  perma_blobref := r.FormValue("perma")
+  item, err := s.GetInboxItem(perma_blobref)
+  if err != nil {
+    http.Error(w, "Could not get inbox item", http.StatusInternalServerError)
+    c.Errorf("handleInboxItem: %v", err)
+    return
+  }
+  entry := make(map[string]interface{})
+  entry["perma"] = perma_blobref
+  entry["seq"] = item.LastSeq
+  err = fillInboxItem(s, entry)
+  if err != nil {
+    fmt.Fprintf(w, `{"ok":false, "error":%v}`, err.String())
+    return
+  }
+ 
+  info, _ := json.Marshal(entry)
+  fmt.Fprintf(w, `{"ok":true, "item":%v}`, string(info))
+}
+
+func handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
+  // TODO: In a transaction first read it, build max, then write it back
+  c := appengine.NewContext(r)
+  s := newStore(c)
+  perma_blobref := r.FormValue("perma")
+  seq, err := strconv.Atoi64(r.FormValue("seq"))
+  if err != nil {
+    http.Error(w, "Expected a seq parameter", http.StatusInternalServerError)
+    c.Errorf("handleInboxItem: %v", err)
+    return
+  }
+  s.StoreInboxItem(perma_blobref, seq)
+  fmt.Fprintf(w, `{"ok":true}`)
+}
+
+type UnreadStruct struct {
+  BloomFilter []byte
+}
+
+func handleListUnread(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  if u == nil {
+    sendError(w, r, "No user attached to the request")
+    return
+  }
+
+  s := newStore(c)
+  inbox, err := s.ListInbox(true)
+  if err != nil {
+    sendError(w, r, err.String())
+    return
+  }
+
+  // Read the bloom filter
+  parent := datastore.NewKey("user", u.Id, 0, nil)
+  key := datastore.NewKey("unread", "unread", 0, parent)
+  filter := NewBloomFilter(sha256.New())
+  var b UnreadStruct
+  err = datastore.Get(c, key, &b)
+  if err == datastore.ErrNoSuchEntity {
+    log.Printf("No filter found")
+    // Do nothing
+  } else if err != nil {
+    sendError(w, r, "Failed reading unread-bloom-filter")
+    return    
+  } else {
+    filter.Load(b.BloomFilter)
+  }
+  
+  // Read the updates for all items in the inbox
+  unread := map[string]interface{}{}
+  for _, entry := range inbox {
+    perma_blobref := entry["perma"].(string)
+    lastSeq := entry["seq"].(int64)
+    log.Printf("Testing %v for unread", perma_blobref)
+    if !filter.Has([]byte(perma_blobref)) {
+      log.Printf("   not in filter")
+      continue
+    }
+    data, err := s.GetPermaNode(perma_blobref)
+    if err != nil {
+      log.Printf("ERR: Failed reading permanode")
+      continue
+    }
+    perma := grapher.NewPermaNode(nil)
+    perma.FromMap(perma_blobref, data)
+    updates := perma.Updates()
+    var authors int64 = 0
+    for _, user := range perma.Users() {
+      if seq, ok := updates[user]; ok {
+	if seq > lastSeq {
+	  authors++
+	}
+      }
+    }
+    if authors > 0 {
+      unread[perma_blobref] = lastSeq
+    }
+  }
+  
+  j := map[string]interface{}{"ok":true, "unread":unread}
+  msg, err := json.Marshal(j)
+  if err != nil {
+    panic("Cannot serialize")
+  }
+  fmt.Fprint(w, string(msg))
 }
 
 // A helper function to produce information about inbox items
@@ -555,39 +676,43 @@ func fillInboxItem(s *store, entry map[string]interface{}) (err os.Error) {
   return nil
 }
 
-func handleInboxItem(w http.ResponseWriter, r *http.Request) {
-  c := appengine.NewContext(r)
-  perma_blobref := r.FormValue("perma")
-  var seq int64
-  s := newStore(c)
-  if r.FormValue("seq") != "" {
-    var err os.Error
-    seq, err = strconv.Atoi64(r.FormValue("seq"))
-    if err != nil {
-      http.Error(w, "Expected a seq parameter", http.StatusInternalServerError)
-      c.Errorf("handleInboxItem: %v", err)
-      return
-    }
-    s.StoreInboxItem(perma_blobref, seq)
+func addUnread(c appengine.Context, userid string, perma_blobref string) os.Error {
+  // TODO: Execute in a transaction
+  filter := NewBloomFilter(sha256.New())
+  log.Printf("Filter size is %v", filter.Size())
+  parent := datastore.NewKey("user", userid, 0, nil)
+  key := datastore.NewKey("unread", "unread", 0, parent)
+  var b UnreadStruct
+  err := datastore.Get(c, key, &b)
+  if err == datastore.ErrNoSuchEntity {
+    // Do nothing
+  } else if err != nil {
+    return err
   } else {
-    item, err := s.GetInboxItem(perma_blobref)
-    if err != nil {
-      http.Error(w, "Could not get inbox item", http.StatusInternalServerError)
-      c.Errorf("handleInboxItem: %v", err)
-      return
-    }
-    seq = item.LastSeq
+    filter.Load(b.BloomFilter)
   }
-  
-  entry := make(map[string]interface{})
-  entry["perma"] = perma_blobref
-  entry["seq"] = seq
-  err := fillInboxItem(s, entry)
-  if err != nil {
-    fmt.Fprintf(w, `{"ok":false, "error":%v}`, err.String())
-    return
+  if filter.Has([]byte(perma_blobref)) {
+    return nil
   }
- 
-  item, _ := json.Marshal(entry)
-  fmt.Fprintf(w, `{"ok":true, "item":%v}`, string(item))
+  log.Printf("Writing unread %v for user %v", perma_blobref, userid);
+  filter.Add([]byte(perma_blobref))
+  b.BloomFilter = filter.Bytes()
+   _, err = datastore.Put(c, key, &b)
+  return err
+}
+
+func createBook(r *http.Request) (perma_blobref string, err os.Error) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  s := newStore(c)
+  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
+  s.SetGrapher(g)
+
+  blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
+  var node grapher.AbstractNode
+  node, err = g.HandleClientBlob(blob)
+  if err == nil {
+    perma_blobref = node.BlobRef();
+  }
+  return 
 }

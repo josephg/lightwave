@@ -59,7 +59,7 @@ body {
   background: -webkit-gradient(linear, left top, left bottom, from(#bbffff), to(#bbffff));
 }
 .activetab {
- border-bottom-width:0px;
+  border-bottom-width:0px;
   padding-top:4px;
   padding-bottom:4px;
 }
@@ -226,6 +226,7 @@ body {
   padding-left:3px;
   padding-right:3px;
   border-radius:10px;
+  margin-left:8px;
 }
 .activetab .pagesunread {
   font-size:10pt;
@@ -240,6 +241,7 @@ body {
   border-radius:10px;
   margin-left:3px;
   margin-right:3px;
+  min-width:8px;
 }
 .pagemarker {
   position:relative;

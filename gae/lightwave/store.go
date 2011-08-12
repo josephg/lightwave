@@ -79,7 +79,7 @@ func (self *store) StoreNode(perma_blobref string, blobref string, data map[stri
   }
   parent := datastore.NewKey("perma", perma_blobref, 0, nil)
   // Since we cannot do anchestor queries :-(
-  data["perma"] = perma_blobref
+//  data["perma"] = perma_blobref
   // Store it
   _, err = datastore.Put(self.c, datastore.NewKey("node", blobref, 0, parent), datastore.Map(data))
   return
@@ -334,8 +334,7 @@ func (self *store) CreateUser() (usr *userStruct, err os.Error) {
 
 type inboxStruct struct {
   LastSeq int64
-//  Digest string
-//  Signer string
+  Archived bool
 }
 
 func (self *store) AddToInbox(username string, perma_blobref string, seq int64) (err os.Error) {
@@ -351,11 +350,14 @@ func (self *store) AddToInbox(username string, perma_blobref string, seq int64) 
   return err
 }
 
-func (self *store) ListInbox() (inbox []map[string]interface{}, err os.Error) {
+func (self *store) ListInbox(includeArchived bool) (inbox []map[string]interface{}, err os.Error) {
   // TODO: Use query GetAll?
   u := user.Current(self.c)
   parent := datastore.NewKey("user", u.Id, 0, nil)
   query := datastore.NewQuery("inbox").Ancestor(parent)
+  if !includeArchived {
+    query = query.Filter("Archived =", false)
+  }
   for it := query.Run(self.c) ; ; {
     val := &inboxStruct{}
     key, e := it.Next(val)

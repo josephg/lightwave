@@ -66,6 +66,7 @@ store.addOTNode = function(jmsg) {
         if (page) {
             store.getInboxItem(jmsg.perma);
         }
+        book.setPageUnread(jmsg.perma, true);
     }
 };
 
@@ -182,6 +183,7 @@ store.openBook = function(perma) {
         for( var i = 0; i < response.blobs.length; i++ ) {
             store.addOTNode(response.blobs[i]);
         }
+        store.loadUnread();
     };
     store.httpPost("/private/open", JSON.stringify({perma:perma, session:store.sessionID}), f);    
 };
@@ -201,9 +203,24 @@ store.openPage = function(page) {
         pagePermaInfo.onKeep = store.onPageKeep;
         pagePermaInfo.onPermission = store.onPagePermission;
         pagePermaInfo.onMutation = store.onPageMutation;
+        var haskeep = false;
+        var permission;
         // Replay the received blobs
         for( var i = 0; i < response.blobs.length; i++ ) {
-            store.addOTNode(response.blobs[i]);
+            var blob = response.blobs[i];
+            if (blob.type == "keep" && blob.signer == store.userID) {
+                haskeep = true;
+            } else if (!permission && blob.type == "permission" && blob.user == store.userID) {
+                permission = blob.blobref;
+            }
+            store.addOTNode(blob);
+        }
+        // The user wants to see this page. This is the right time to issue a keep (if this did not happen before).
+        // This means the user is now following the file.
+        if (!page.getFollower(store.userID) && !haskeep) {
+            console.log("NO KEEP YET. Sending one");
+            // Send out a keep
+            store.submit({type:"keep", perma:page.pageBlobRef, permission:permission}, null, null, null);
         }
     };
     var pi = store.get(page.pageBlobRef);
@@ -239,6 +256,7 @@ store.createPage = function(page) {
         page.pageBlobRef = response.blobref;
         store.openPage(page);
         store.createPageEntity(page);
+        store.getInboxItem(page.pageBlobRef);
     };
     store.submit({type:"permanode", mimetype:"application/x-lightwave-page", perma:page.pageBlobRef}, f, null);
 };
@@ -365,30 +383,51 @@ store.loadInbox = function() {
     store.httpGet("/private/listinbox", f);
 };
 
-store.storeInboxItem_ = function(msg) {
-    console.log("INBOX: " + msg);
-    var response = JSON.parse(msg);
-    if (!response.ok) {
-        alert(response.error);
-        return;
+store.loadUnread = function() {
+    var f = function(msg) {
+        var response = JSON.parse(msg);
+        if (!response.ok) {
+            alert(response.error);
+            return;
+        }
+        console.log("UNREAD: " + JSON.stringify(response.unread));
+        book.setUnreadInfo(response.unread);
     }
-    var item = response.item;
-    var page = book.inbox.getPageByPageBlobRef(item.perma);
-    if (!page) {
-        return;
-    }
-    page.inbox_authors = item.authors;
-    page.inbox_latestauthors = item.latestauthors;
-    page.inbox_followers = item.followers;
-    book.inbox.redrawInboxItem(page);
+    store.httpGet("/private/listunread", f);
 };
 
-store.storeInboxItem = function(perma, seq) {
-    store.httpGet( "/private/inboxitem?perma=" + perma + "&seq=" + seq.toString(), store.storeInboxItem_ );
+store.markAsRead = function(perma, seq) {
+    var page = book.inbox.getPageByPageBlobRef(perma);
+    if (page) {
+        page.inbox_authors = page.inbox_authors.concat(page.inbox_latestauthors)
+        page.inbox_latestauthors = [];
+        book.inbox.redrawInboxItem(page);
+    }
+    book.setPageUnread(perma, false);
+
+    store.httpGet( "/private/markasread?perma=" + perma + "&seq=" + seq.toString(), null );
 };
 
 store.getInboxItem = function(perma) {
-    store.httpGet( "/private/inboxitem?perma=" + perma, store.storeInboxItem_ );
+    var f = function(msg) {
+        console.log("INBOX: " + msg);
+        var response = JSON.parse(msg);
+        if (!response.ok) {
+            alert(response.error);
+            return;
+        }
+        var item = response.item;
+        var page = book.inbox.getPageByPageBlobRef(item.perma);
+        if (!page) {
+            return;
+        }
+        page.inbox_authors = item.authors;
+        page.inbox_latestauthors = item.latestauthors;
+        page.inbox_followers = item.followers;
+        book.inbox.redrawInboxItem(page);
+    };
+
+    store.httpGet( "/private/inboxitem?perma=" + perma, f );
 };
 
 store.httpPost = function(url, data, f) {
