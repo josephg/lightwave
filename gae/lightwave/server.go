@@ -698,6 +698,7 @@ func fillInboxItem(s *store, perma_blobref string, lastSeq int64, entry map[stri
   entry["authors"] = authors
   entry["latestauthors"] = latestauthors
   entry["digest"] = "Untitled Page" // TODO
+  entry["latestseq"] = perma.SequenceNumber() - 1;
   return nil
 }
 

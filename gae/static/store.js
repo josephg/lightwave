@@ -268,7 +268,6 @@ store.createPage = function(page) {
         page.pageBlobRef = response.blobref;
         store.openPage(page);
         store.createPageEntity(page);
-        // store.getInboxItem(page.pageBlobRef);
     };
     store.submit({type:"permanode", mimetype:"application/x-lightwave-page", perma:page.pageBlobRef}, f, null);
 };
@@ -390,6 +389,7 @@ store.loadInbox = function() {
             page.inbox_authors = item.authors;
             page.inbox_latestauthors = item.latestauthors;
             page.inbox_followers = item.followers;
+            page.inbox_latestseq = item.latestseq;
             book.inbox.addPage(page, false);
             after = page.id;
         }
@@ -438,6 +438,7 @@ store.getInboxItem = function(perma) {
         page.inbox_authors = item.authors;
         page.inbox_latestauthors = item.latestauthors;
         page.inbox_followers = item.followers;
+        page.inbox_latestseq = item.latestseq;
         page.text = item.digest;
         book.inbox.redrawInboxItem(page);
     };

@@ -87,7 +87,7 @@ Registration and use is FREE.
 
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sun Aug 14 00:15:08 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Sun Aug 14 00:24:28 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
 var book = new Book("123456", "MyBook");
@@ -223,7 +223,7 @@ function inboxMarkAsRead() {
   for( var i = 0; i < pages.length; i++) {
     var page = pages[i];
     var pi = store.get(page.pageBlobRef);
-    store.markAsRead(page.pageBlobRef, pi.sequenceNumber() - 1);
+    store.markAsRead(page.pageBlobRef, Math.max(page.inbox_latestseq, pi.sequenceNumber() - 1));
   }
 }
 
