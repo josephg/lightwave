@@ -22,7 +22,7 @@
 </div>
 <div class="stack" id="stack">
   <div class="pagecontainer" id="pagecontainer" style="display:none">
-    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
+    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
   <div class="page" id="page">
    <div class="vtabs" id="vtabs">
       <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
@@ -46,7 +46,7 @@
   </div>
   </div>
   <div id="inbox" class="inbox">
-    <div class="inboxcontrols"><div class="ui-toolbar"><button><input id="inboxui-select-all" onclick="inboxSelectAll(event)" type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button>Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxMarkAsRead">Mark as read</button></div></div>
+    <div class="inboxcontrols"><div class="ui-toolbar"><button><input id="inboxui-select-all" onclick="inboxSelectAll(event)" type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showInboxLabels(event)">Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxMarkAsRead()">Mark as read</button></div></div>
  </div>
 </div>
 
@@ -59,6 +59,13 @@
   </div>
 </div>
 
+<div id="labels-dialog" class="ui-drop-down">
+  <div id="labels-dialog-listbox" class="ui-list-box">
+<!--   <div><input type="checkbox"> Label 1</div>
+   <div><input type="checkbox"> Label 2</div> -->
+ </div>
+</div>
+  
 <div class="ui-dialog" id="invite-dialog" style="z-index:200; position:absolute; visibility:hidden; padding-bottom:10px; left:25%; top:100px; width:500px; font-size:11pt">
   <div class="ui-titlebar"><div onclick="closeInvite()" class="ui-titlebar-close-button">&#x2573;</div>Send an invitation</div>
   <div class="ui-section-blue" style="padding-top:16px; padding-bottom:16px; padding-left:8px; padding-right:8px;">
@@ -80,7 +87,7 @@ Registration and use is FREE.
 
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sun Jul 31 13:54:58 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Sun Aug 14 00:15:08 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
 var book = new Book("123456", "MyBook");
@@ -120,6 +127,14 @@ function newPage() {
   store.createContentEntity(co1);
   store.createContentEntity(co2);
 }
+
+function copyPageToChapter(existingPage, chapter) {
+  var p = new Page(chapter, "tmp-" + Math.random().toString(), existingPage.text, chapter.pages.length > 0 ? chapter.pages[chapter.pages.length - 1].id : null);
+  p.pageBlobRef = existingPage.pageBlobRef;
+  chapter.addPage(p, true);
+  store.createPageEntity(p);
+}
+
 </script>
 
 <script type="text/javascript">
@@ -204,7 +219,12 @@ function showInbox() {
 }
 
 function inboxMarkAsRead() {
-// TODO
+  var pages = book.inbox.getSelectedPages();
+  for( var i = 0; i < pages.length; i++) {
+    var page = pages[i];
+    var pi = store.get(page.pageBlobRef);
+    store.markAsRead(page.pageBlobRef, pi.sequenceNumber() - 1);
+  }
 }
 
 function inboxSelectAll(e) {
@@ -224,6 +244,144 @@ function pageMarkAsRead() {
     var pi = store.get(book.currentChapter.currentPage.pageBlobRef);
     store.markAsRead(book.currentChapter.currentPage.pageBlobRef, pi.sequenceNumber() - 1);
   }
+}
+
+function showInboxLabels(e) {
+  var targ;
+  if (!e) var e = window.event;
+  if (e.target) targ = e.target;
+  else if (e.srcElement) targ = e.srcElement;
+  if (targ.nodeType == 3) // defeat Safari bug
+    targ = targ.parentNode;
+  var dlg = document.getElementById("labels-dialog");
+  if ($(targ).hasClass("dropdown-open")) {
+    $(targ).removeClass("dropdown-open");
+    dlg.style.visibility = "hidden";
+    return;
+  }
+  $(targ).addClass("dropdown-open");
+  var listbox = document.getElementById("labels-dialog-listbox");
+  listbox.innerHTML = "";
+  // Get all selected pages
+  var selpages = book.inbox.getSelectedPages();
+  var pages = book.getPages();
+  var chapters = { };
+  for( var i = 0; i < selpages.length; i++) {
+    var lst = pages[selpages[i].pageBlobRef];
+    for( var k = 0; k < lst.length; k++) {
+      var c = lst[k];
+      chapters[c.id] = chapters[c.id] + 1;
+    }
+ }
+
+  for ( var i = 1; i < book.chapters.length; i++) {
+    var chapter = book.chapters[i];
+    var div = document.createElement("div");
+    div.className = "stack" + chapter.colorScheme.toString();
+    var input = document.createElement("span");
+    if (chapters[chapter.id] == selpages.length) {
+      input.className = "tristate-1";
+      input.innerHTML = "&#x25c9; ";
+    } else if (!chapters[chapter.id]) {
+      input.className = "tristate-2";
+      input.innerHTML = "&#x25ce; ";
+    } else {
+      input.className = "tristate-3";
+      input.innerHTML = "&#x25ac; ";
+    }
+    div.addEventListener("click", function(e) {
+      var span;
+      if (!e) var e = window.event;
+      if (e.target) span = e.target;
+      else if (e.srcElement) span = e.srcElement;
+      span = span.firstChild;
+      if (span.nodeType == 3) // defeat Safari bug
+        span = span.parentNode;
+      if ($(span).hasClass("tristate-1")) {
+        span.innerHTML = "&#x25ce; ";
+        span.className = "tristate-2";
+      } else if ($(span).hasClass("tristate-2")) {
+        span.innerHTML = "&#x25c9; ";
+        span.className = "tristate-1";
+      } else {
+        span.innerHTML = "&#x25c9; ";
+        span.className = "tristate-1";
+      }
+      e.cancelBubble = true;
+      if (e.stopPropagation) e.stopPropagation();
+    });
+    div.appendChild(input);
+    div.appendChild(document.createTextNode(chapter.text));
+    listbox.appendChild(div);
+  }
+  var pos = findPos(targ);
+  dlg.style.visibility = "visible";
+  dlg.style.left = (pos[0] + 2).toString() + "px";
+  dlg.style.top = (pos[1] + 2 + targ.offsetHeight).toString() + "px";
+}
+
+function showPageLabels(e) {
+  var targ;
+  if (!e) var e = window.event;
+  if (e.target) targ = e.target;
+  else if (e.srcElement) targ = e.srcElement;
+  if (targ.nodeType == 3) // defeat Safari bug
+    targ = targ.parentNode;
+  var dlg = document.getElementById("labels-dialog");
+  if ($(targ).hasClass("dropdown-open")) {
+    $(targ).removeClass("dropdown-open");
+    dlg.style.visibility = "hidden";
+    return;
+  }
+  if (!book || !book.currentChapter || !book.currentChapter.currentPage) {
+    return;
+  }
+  var page = book.currentChapter.currentPage;
+  // Find out in which chapter this page is
+  var pages = book.getPages();
+  var chapters = { };
+  for( var i = 0; i < pages[page.pageBlobRef].length; i++) {
+    chapters[pages[page.pageBlobRef][i].id] = true;
+  }
+  $(targ).addClass("dropdown-open");
+  var listbox = document.getElementById("labels-dialog-listbox");
+  listbox.innerHTML = "";
+  for ( var i = 1; i < book.chapters.length; i++) {
+    var chapter = book.chapters[i];
+    var div = document.createElement("div");
+    div.className = "stack" + chapter.colorScheme.toString();
+    var input = document.createElement("input");
+    input.type = "checkbox";
+    if (chapters[chapter.id]) {
+      input.checked = true;
+    }
+    input.addEventListener("click", function(checkbox, ch) { return function() {
+      if (checkbox.checked) {
+        copyPageToChapter(page, ch);
+      } else {
+      // TODO
+      }
+    };}(input, chapter));
+    div.addEventListener("click", function(checkbox, ch) { return function(e) {
+      if (!checkbox.checked) {
+        checkbox.checked = true;
+        copyPageToChapter(page, ch);
+      } else {
+        checkbox.checked = false;
+      // TODO
+      }
+      if (!e) var e = window.event;
+      e.cancelBubble = true;
+      if (e.stopPropagation) e.stopPropagation();
+    };}(input, chapter));
+    div.appendChild(input);
+    div.appendChild(document.createTextNode(chapter.text));
+    listbox.appendChild(div);
+  }
+  var pos = findPos(targ);
+  dlg.style.visibility = "visible";
+  dlg.style.left = (pos[0] + 2).toString() + "px";
+  dlg.style.top = (pos[1] + 2 + targ.offsetHeight).toString() + "px";
 }
 
 function toggleQueue() {

@@ -179,12 +179,6 @@ button:active {
 	padding-left:8px;
 	padding-right:8px;
 	margin:0px;
-/*
-	margin-left:0px;
-	margin-right:-1px;
-	margin-top:-1px;
-	margin-bottom:-1px;
-*/	
 	height:24px;
 	
 	vertical-align:middle;
@@ -206,6 +200,11 @@ button:active {
 	background-color:#C3C3C3;
 	background-image:-moz-linear-gradient(top, #AAAAAA, #DBDBDB);
 	background-image:-webkit-gradient(linear, left top, left bottom, from(#AAAAAA), to(#DBDBDB));
+}
+.ui-toolbar button.dropdown-open {
+    color: white;
+    background-image:-moz-linear-gradient(top, #777777, #979797);
+    background-image:-webkit-gradient(linear, left top, left bottom, from(#777777), to(#979797));
 }
 
 .ui-small-toolbar {
@@ -291,3 +290,30 @@ button:active {
 	border-color:green;
 	outline-color:transparent;
 }
+
+.ui-drop-down {
+  position:absolute;
+  visibility:hidden;
+  z-index:100;
+  border:none;
+  padding:4px;
+  margin:0px;
+  background-color:#f0f0f0;
+  box-shadow:3px 3px 5px #888888;
+}
+.ui-list-box {
+  overflow-y:auto;
+  overflow-x:hidden;
+  max-height:200px;
+  min-height:48px;
+  min-width:150px;
+}
+.ui-list-box div {
+  cursor:pointer;
+  padding-top:2px;
+  padding-bottom:2px;
+  padding-left:2px;
+}
+/*.ui-list-box div:hover {
+  background-color:#bbdafd;
+}*/

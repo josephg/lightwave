@@ -192,6 +192,22 @@ Book.prototype.setActiveChapter = function(chapter) {
     }
 };
 
+Book.prototype.getPages = function() {
+    var result = { };
+    for (var i = 0; i < this.chapters.length; i++) {
+        var chapter = this.chapters[i];
+        for( var k = 0; k < chapter.pages.length; k++) {
+            var page = chapter.pages[k];
+            if (result[page.pageBlobRef]) {
+                result[page.pageBlobRef] = result[page.pageBlobRef].concat(chapter);
+            } else {
+                result[page.pageBlobRef] = [chapter];
+            }
+        }
+    }
+    return result;
+};
+
 Book.prototype.setUnreadInfo = function(unread) {
     for (var i = 0; i < this.chapters.length; i++) {
         var chapter = this.chapters[i];
@@ -424,6 +440,23 @@ Chapter.prototype.renderInboxItem = function(page, div) {
         }
     }
     return div;
+};
+
+Chapter.prototype.getSelectedPages = function() {
+    if (this.id != "inbox") {
+        if (this.currentPage) {
+            return [this.currentPage];
+        }
+        return [];
+    }
+    var result = [];
+    for (var i = 0; i < this.pages.length; i++) {
+        var page = this.pages[i];
+        if (page.inbox_selected) {
+            result.push(page);
+        }
+    }
+    return result;
 };
 
 Chapter.prototype.setUnreadInfo = function(unread) {
