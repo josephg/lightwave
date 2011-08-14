@@ -523,6 +523,28 @@ store.resumeQueues = function() {
     }
 };
 
+// Waits until all outgoing messages for this page are sent and
+// then executes f. All user interactions are block in the meantime.
+store.waitForPageIO = function(f) {
+    if (!book || !book.currentChapter || !book.currentChapter.currentPage) {
+        f();
+        return true;
+    }
+    var page = book.currentChapter.currentPage;
+    var pi = store.get(page.pageBlobRef);
+    if (!pi.inflight) {
+        f();
+        return true;
+    }
+    showWaitScreen();
+    pi.onIdle = function() {
+        hideWaitScreen();
+        delete pi.onIdle;
+        f();
+    }
+    return false;
+};
+
 // ------------------------------------------------
 // PermaInfo
 
@@ -532,6 +554,7 @@ function PermaInfo(blobref) {
     this.queue = { };
     this.outqueue = [];
     this.inflight = null;
+    this.onIdle = null;
 };
 
 PermaInfo.prototype.enqueueOut = function(msg) {
@@ -554,6 +577,9 @@ PermaInfo.prototype.enqueueOut = function(msg) {
 PermaInfo.prototype.dequeueOut = function() {
     this.inflight = null;
     if (this.outqueue.length == 0) {
+        if (this.onIdle) {
+            this.onIdle();
+        }
         return;
     }
     var msg = this.outqueue.shift();

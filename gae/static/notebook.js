@@ -365,8 +365,10 @@ Chapter.prototype.renderTab = function() {
     this.tab.appendChild(document.createTextNode(this.text));
     this.showUnreadPagesCount();
     var chapter = this;
-    this.tab.addEventListener("click", function() { 
-        chapter.book.setActiveChapter(chapter);
+    this.tab.addEventListener("click", function() {
+        store.waitForPageIO( function() {
+            chapter.book.setActiveChapter(chapter);
+        });
     });
 };
 
@@ -604,7 +606,12 @@ Page.prototype.renderTab = function() {
         this.vtab.className = "vtab inactivevtab" + this.chapter.colorScheme.toString();
     }
     this.vtab.appendChild(document.createTextNode(this.text));
-    this.vtab.addEventListener("click", function(p) { return function() { p.chapter.setActivePage(p); }; }(this) );
+    var p = this;
+    this.vtab.addEventListener("click", function(p) {
+        store.waitForPageIO( function() {
+            p.chapter.setActivePage(p);
+        });
+    });
     if (this.unread) {
         var span = document.createElement("span");
         span.className = "authorsunread";

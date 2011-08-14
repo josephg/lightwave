@@ -16,6 +16,7 @@
 </head>
 
 <body>
+<div id="wait_screen"> </div>
 <!-- <button onclick="toggleQueue()">Test composing</button> -->
 <div class="tabs" id="tabs">
   <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
@@ -75,7 +76,7 @@ Registration and use is FREE.
 
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Sun Aug 14 17:12:43 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Mon Aug 15 00:26:31 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
 var book = new Book("123456", "MyBook");
@@ -370,6 +371,14 @@ function showPageLabels(e) {
   dlg.style.visibility = "visible";
   dlg.style.left = (pos[0] + 2).toString() + "px";
   dlg.style.top = (pos[1] + 2 + targ.offsetHeight).toString() + "px";
+}
+
+function showWaitScreen() {
+  document.getElementById("wait_screen").style.display = "block";
+}
+
+function hideWaitScreen() {
+  document.getElementById("wait_screen").style.display = "none";
 }
 
 function toggleQueue() {
