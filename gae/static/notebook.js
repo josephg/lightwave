@@ -607,7 +607,7 @@ Page.prototype.renderTab = function() {
     }
     this.vtab.appendChild(document.createTextNode(this.text));
     var p = this;
-    this.vtab.addEventListener("click", function(p) {
+    this.vtab.addEventListener("click", function() {
         store.waitForPageIO( function() {
             p.chapter.setActivePage(p);
         });
