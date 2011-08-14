@@ -28,6 +28,7 @@ function Page(chapter, id, text, after) {
     this.text = text;
     this.after = after;
     this.vtab = null;
+    this.nextSeq = 0;
     // An array of PageContent objects
     this.contents = [];
     // An array of Follower objects
@@ -594,7 +595,7 @@ Page.prototype.close = function() {
     }
     // Close the current page
     if (this.pageBlobRef && this.pageBlobRef.substr(0,4) != "tmp-") {
-        store.close(this.pageBlobRef);
+        store.closePage(this);
     }
 };
 

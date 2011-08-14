@@ -231,12 +231,18 @@ store.openPage = function(page, markasread) {
     pi.onKeep = store.onPageKeep;
     pi.onPermission = store.onPagePermission;
     pi.onMutation = store.onPageMutation;
-
+    pi.seq = page.nextSeq;
     store.httpPost("/private/open", JSON.stringify({perma:page.pageBlobRef, session:store.sessionID, from: pi.seq, markasread:markasread}), f);
 
     if (markasread) {
         book.setPageUnread(page.pageBlobRef, false);
     }
+};
+
+store.closePage = function(page) {
+    var pi = store.get(page.pageBlobRef);
+    page.nextSeq = pi.seq;
+    store.close(page.pageBlobRef);
 };
 
 store.createChapterEntity = function(chapter) {
