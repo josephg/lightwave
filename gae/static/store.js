@@ -117,7 +117,7 @@ store.submit = function(blob, onsuccess, onerror, beforesend) {
     } else if (blob.type == "mutation") {
         blob.at = pi.seq;
     }
-    store.httpPost("/private/submit?session=" + store.sessionID, JSON.stringify(blob), f);
+    store.httpPost("/private/submit", JSON.stringify(blob), f);
 };
 
 store.close = function(perma) {
@@ -130,7 +130,7 @@ store.close = function(perma) {
         };
         console.log("Closed " + perma);
     };
-    store.httpPost("/private/close", JSON.stringify({perma:perma, session:store.sessionID}), f);
+    store.httpPost("/private/close", JSON.stringify({perma:perma}), f);
 };
 
 store.inviteByMail = function(follower, mail) {
@@ -190,7 +190,7 @@ store.openBook = function(perma) {
     var pi = store.get(perma);
     pi.onEntity = store.onBookEntity;
 
-    store.httpPost("/private/open", JSON.stringify({perma:perma, session:store.sessionID}), f);    
+    store.httpPost("/private/open", JSON.stringify({perma:perma}), f);    
 };
 
 store.openPage = function(page, markasread) {
@@ -232,7 +232,7 @@ store.openPage = function(page, markasread) {
     pi.onPermission = store.onPagePermission;
     pi.onMutation = store.onPageMutation;
     pi.seq = page.nextSeq;
-    store.httpPost("/private/open", JSON.stringify({perma:page.pageBlobRef, session:store.sessionID, from: pi.seq, markasread:markasread}), f);
+    store.httpPost("/private/open", JSON.stringify({perma:page.pageBlobRef, from: pi.seq, markasread:markasread}), f);
 
     if (markasread) {
         book.setPageUnread(page.pageBlobRef, false);

@@ -182,7 +182,6 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 }
 
 type openCloseRequest struct {
-  Session string "session"
   Perma string "perma"
   From int64 "from"
   MarkAsRead bool "markasread"
@@ -195,6 +194,13 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     sendError(w, r, "No user attached to the request")
     return
   }
+  cookie := getSessionCookie(r)
+  if cookie == nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+  sessionid := cookie.Value
+  // Read the request body
   jreq, err := ioutil.ReadAll(r.Body)
   if err != nil {
     http.Error(w, "Error reading request body", http.StatusInternalServerError)
@@ -210,7 +216,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
   }
   // Load the channel infos
   var ch channelStruct
-  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch); err != nil {
+  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch); err != nil {
     sendError(w, r, "Unknown channel")
     return
   }
@@ -230,7 +236,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
   if !is_open {
     // Update channel infos
     ch.OpenPermas = append(ch.OpenPermas, req.Perma)
-    _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
+    _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch)
     if err != nil {
       sendError(w, r, "Internal server error")
     }
@@ -238,7 +244,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     s := newStore(c)
     g := grapher.NewGrapher(u.Email, schema, s, s, nil)
     s.SetGrapher(g)
-    ch := newChannelAPI(c, s, req.Session, true, g)
+    ch := newChannelAPI(c, s, sessionid, true, g)
     perma, err = g.Repeat(req.Perma, req.From)
     if err != nil {
       sendError(w, r, "Failed opening")
@@ -270,6 +276,13 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
     sendError(w, r, "No user attached to the request")
     return
   }
+  cookie := getSessionCookie(r)
+  if cookie == nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+  sessionid := cookie.Value
+  // Parse the request body
   jreq, err := ioutil.ReadAll(r.Body)
   if err != nil {
     http.Error(w, "Error reading request body", http.StatusInternalServerError)
@@ -285,7 +298,7 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
   }
   // Load the channel infos
   var ch channelStruct
-  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch); err != nil {
+  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch); err != nil {
     sendError(w, r, "Unknown channel")
     return
   }
@@ -304,7 +317,7 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
   }
   // Update channel infos
   ch.OpenPermas = permas
-  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + req.Session, 0, nil), &ch)
+  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch)
   if err != nil {
     sendError(w, r, "Internal server error")
   }
@@ -320,8 +333,6 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // HACK: Cookies are broken on AppEngine
-  sessionid := r.FormValue("session")
   /*
   cookie, err := r.Cookie("Session")
   if err != nil {
@@ -329,14 +340,12 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   } */   
 
-  /*
   cookie := getSessionCookie(r)
   if cookie == nil {
     sendError(w, r, "No session cookie")
     return
   }
   sessionid := cookie.Value
-  */
 
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -387,7 +396,6 @@ func sendError(w http.ResponseWriter, r *http.Request, msg string) {
   fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, msg)
 }
 
-/*
 func getSessionCookie(r *http.Request) *http.Cookie {
   for _, c := range r.Cookie {
     if c.Name == "Session" {
@@ -396,7 +404,6 @@ func getSessionCookie(r *http.Request) *http.Cookie {
   }
   return nil
 }
-*/
 
 func handleListPermas(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
