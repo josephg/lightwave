@@ -90,7 +90,7 @@ func Import(g *grapher.Grapher, book *Book) os.Error {
   }
 
   for _, ch := range book.Chapters {
-    ch.Title = strings.TrimSpace(ch.Title)
+    ch.Title = trimSpace(ch.Title)
     color, err := strconv.Atoi(ch.Color)
     if err != nil {
       return err
@@ -104,7 +104,7 @@ func Import(g *grapher.Grapher, book *Book) os.Error {
     
     pageEntities := []grapher.AbstractNode{}
     for pindex, p := range ch.Pages {
-      p.Title = strings.TrimSpace(p.Title)
+      p.Title = trimSpace(p.Title)
       perma, err := g.CreatePermaBlob("application/x-lightwave-page")
       if err != nil {
 	return err
@@ -142,7 +142,7 @@ func Import(g *grapher.Grapher, book *Book) os.Error {
       pageEntities = append(pageEntities, pageEntity)
       
       for _, e := range p.Entities {
-	e.Text = strings.TrimSpace(e.Text)
+	e.Text = trimSpace(e.Text)
 	jscontent := map[string]interface{}{"text": e.Text, "id": e.Id}
 	if e.CssClass != "" {
 	  jscontent["cssclass"] = e.CssClass
@@ -178,6 +178,14 @@ func Parse(content string) (book *Book, err os.Error) {
     return nil, err
   }
   return &b, nil
+}
+
+func trimSpace(text string) string {
+  lines := strings.Split(text, "\n", -1)
+  for i, l := range lines {
+    lines[i] = strings.TrimSpace(l)
+  }
+  return strings.Join(lines, "\n")
 }
 
 /*
