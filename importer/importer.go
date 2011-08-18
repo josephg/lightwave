@@ -185,7 +185,7 @@ func trimSpace(text string) string {
   for i, l := range lines {
     lines[i] = strings.TrimSpace(l)
   }
-  return strings.Join(lines, "\n")
+  return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 /*
