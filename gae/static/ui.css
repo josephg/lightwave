@@ -57,6 +57,8 @@ button:active {
 	padding:0px;
 	
 	position:absolute;
+        top:0px;
+        left:0px;
 	visibility:hidden;
 }
 .ui-panel {
@@ -293,6 +295,8 @@ button:active {
 
 .ui-drop-down {
   position:absolute;
+  top:0px;
+  left:0px;
   visibility:hidden;
   z-index:100;
   border:none;
@@ -317,3 +321,23 @@ button:active {
 /*.ui-list-box div:hover {
   background-color:#bbdafd;
 }*/
+.ui-menu {
+  overflow-y:auto;
+  overflow-x:hidden;
+  max-height:200px;
+  min-height:48px;
+  min-width:150px;
+}
+.ui-menu-item {
+  cursor:pointer;
+  padding-top:2px;
+  padding-bottom:2px;
+  padding-left:2px;
+}
+.ui-menu-item:hover {
+  background-color:#ffffff;
+}
+.ui-menu-item a {
+  text-decoration:none;
+  color:black;
+}

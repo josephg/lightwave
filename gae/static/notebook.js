@@ -223,6 +223,15 @@ Chapter.prototype.close = function() {
     }
 };
 
+Chapter.prototype.currentPageIndex = function() {
+    for( var i = 0; i < this.pages.length; i++) {
+        if (this.pages[i] == this.currentPage) {
+            return i;
+        }
+    }
+    return -1;
+};
+
 Chapter.prototype.getPageByPageBlobRef = function(blobref) {
     for( var i = 0; i < this.pages.length; i++) {
         if (this.pages[i].pageBlobRef == blobref) {
@@ -590,9 +599,21 @@ Page.prototype.close = function() {
         $(this.vtab).removeClass("activevtab");
         $(this.vtab).addClass("inactivevtab" + this.chapter.colorScheme.toString());
     }
+    this.cleanup_();
+    // Close the current page
+    if (this.pageBlobRef && this.pageBlobRef.substr(0,4) != "tmp-") {
+        store.closePage(this);
+    }
+};
+
+Page.prototype.cleanup_ = function() {
     // Cleanup
-    var pagediv = document.getElementById("pagecontent");
+    var pagediv = this.pageContentDiv_();
     var content = document.getElementsByClassName("content");
+    for( ; content.length > 0; ) {
+        pagediv.removeChild(content[0]);
+    }
+    var content = document.getElementsByClassName("movable");
     for( ; content.length > 0; ) {
         pagediv.removeChild(content[0]);
     }
@@ -602,10 +623,29 @@ Page.prototype.close = function() {
     for( ; friends.length > 0; ) {
         sharediv.removeChild(friends[0]);
     }
-    // Close the current page
-    if (this.pageBlobRef && this.pageBlobRef.substr(0,4) != "tmp-") {
-        store.closePage(this);
+};
+
+Page.prototype.enterFullScreen = function() {
+    this.cleanup_();
+    fullscreen = true;
+    this.applyLayout_();
+    this.showContents();
+    this.showFollowers();
+};
+
+Page.prototype.leaveFullScreen = function() {
+    this.cleanup_();
+    fullscreen = false;
+    this.applyLayout_();
+    this.showContents();
+    this.showFollowers();
+};
+
+Page.prototype.pageContentDiv_ = function() {
+    if (fullscreen) {
+        return document.getElementById("pagecontent_fullscreen_scaled");
     }
+    return document.getElementById("pagecontent");
 };
 
 Page.prototype.renderTab = function() {
@@ -645,35 +685,42 @@ Page.prototype.showContents = function() {
 };
 
 Page.prototype.showContent = function(content) {
-    var pagediv = document.getElementById("pagecontent");
+    var pagecontentdiv = this.pageContentDiv_();
+    if (content.cssClass == "image") {
+        var div = document.createElement("div");
+        div.addEventListener("mousedown", LW.movableMouseDown, false);
+        div.className = "movable picture";
+        var img = document.createElement("img");
+        img.src = content.text;
+        div.appendChild(img);
+        var r = document.createElement("div");
+        r.className = "resize resize-nw";
+        r.innerText = " ";
+        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        div.appendChild(r);
+        var r = document.createElement("div");
+        r.className = "resize resize-ne";
+        r.innerText = " ";
+        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        div.appendChild(r);
+        var r = document.createElement("div");
+        r.className = "resize resize-sw";
+        r.innerText = " ";
+        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        div.appendChild(r);
+        var r = document.createElement("div");
+        r.className = "resize resize-se";
+        r.innerText = " ";
+        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        div.appendChild(r);
+        pagecontentdiv.appendChild(div);
+        return;
+    }
     var div = document.createElement("div");
     div.className = "content" + (content.cssClass ? " " + content.cssClass : "");
     div.appendChild(document.createTextNode(content.text));
     div.contentEditable = true;
-    pagediv.appendChild(div);
-/*
-    if (content.layout == "title") {
-        var pagediv = document.getElementById("pagecontent");
-        div = document.createElement("div");
-        div.className = "content title";
-        div.contentEditable = true;
-        div.appendChild(document.createTextNode(content.text));
-        pagediv.appendChild(div);
-        var div2 = document.createElement("div");
-        div2.className = "content date";
-        div2.innerHTML = "Sunday, June 30, 2011<br>23:56";
-        pagediv.appendChild(div2);        
-    } else if (content.layout == "textbox") {
-        var pagediv = document.getElementById("pagecontent");
-        div = document.createElement("div");
-        div.className = "content textbox";
-        div.contentEditable = true;
-        div.appendChild(document.createTextNode(content.text));
-        pagediv.appendChild(div);
-    } else {
-        console.log("UNKNOWN layout")
-        return;
-    } */
+    pagecontentdiv.appendChild(div);
     var editor = new LW.Editor(content, "text", div);
 };
 
@@ -735,6 +782,9 @@ Page.prototype.showFollowers = function() {
 };
 
 Page.prototype.showFollower = function(follower, inviteOnly) {
+    if (fullscreen) {
+        return;
+    }
     var div = document.createElement("div");
     // HACK
     if (!inviteOnly) {
@@ -824,24 +874,40 @@ Page.prototype.setLayout = function(layout) {
 };
 
 Page.prototype.applyLayout_ = function() {
+    if (fullscreen) {
+        var pagediv = document.getElementById("pagecontent_fullscreen");
+        var pagecontentdiv = document.getElementById("pagecontent_fullscreen_scaled");
+        var scale = 1;
+        if (this.layout && this.layout.style && this.layout.style["width"]) {
+            scale = pagediv.offsetWidth / parseInt(this.layout.style["width"]);
+        }
+        pagecontentdiv.style["-webkit-transform"] = "scale(" + scale.toString() + ")";
+        pagecontentdiv.style.width = (pagediv.offsetWidth / scale).toString() + "px";
+        return;
+    }
+
     var pagecontentdiv = document.getElementById("pagecontent");
     var pagediv = document.getElementById("page");
     var scale = 1;
     if (this.layout && this.layout.style && this.layout.style["width"]) {
-        scale = (pagediv.offsetWidth - 220) / parseInt(this.layout.style["width"]);
-    }
-    pagecontentdiv.style["-webkit-transform"] = "scale(" + scale.toString() + ")";
-    pagecontentdiv.style.width = ((pagediv.offsetWidth - 220) / scale).toString() + "px";
-    if (this.layout && this.layout.style && this.layout.style["height"]) {
-        pagecontentdiv.style.height = this.layout.style["height"];
+        scale = (pagediv.offsetWidth - 232) / parseInt(this.layout.style["width"]);
+        pagecontentdiv.style["-webkit-transform"] = "scale(" + scale.toString() + ")";
+        pagecontentdiv.style.width = parseInt(this.layout.style["width"]).toString() + "px";
     } else {
-        delete pagecontentdiv.style.height;
+        pagecontentdiv.style["-webkit-transform"] = "scale(1)";
+        pagecontentdiv.style.width = (pagediv.offsetWidth - 232).toString() + "px";
+    }
+    if (this.layout && this.layout.style && this.layout.style["height"]) {
+        pagecontentdiv.style.height = (parseInt(this.layout.style["height"])).toString() + "px";
+        pagediv.style.height = (pagecontentdiv.offsetTop + 12 + parseInt(this.layout.style["height"]) * scale).toString() + "px";
+    } else {
+        pagecontentdiv.style.height = "auto";
+        pagediv.style.height = "auto";
     }
 };
 
 PageContent.prototype.mutate = function(mutation) {
     if (mutation.field == "text") {
-        console.log(JSON.stringify(mutation.op));
         lightwave.ot.ExecuteOperation(this, mutation.op);
     } else {
         console.log("Err: Unknown mutation field: " + mutation.field)

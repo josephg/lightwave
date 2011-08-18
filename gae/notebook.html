@@ -5,6 +5,7 @@
 <script type="text/javascript" src="/_ah/channel/jsapi"></script>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="notebook.js"></script>
+<script type="text/javascript" src="image.js"></script>
 <script type="text/javascript" src="store.js"></script>
 <script type="text/javascript" src="transform.js"></script>
 <script type="text/javascript" src="compose.js"></script>
@@ -15,15 +16,19 @@
 </style>
 </head>
 
-<body>
+<body id="body">
 <div id="wait_screen"> </div>
+<div id="pagecontent_fullscreen">
+  <div id="pagecontent_fullscreen_scaled">
+  </div>
+</div>
 <!-- <button onclick="toggleQueue()">Test composing</button> -->
 <div class="tabs" id="tabs">
   <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
 </div>
 <div class="stack" id="stack">
   <div class="pagecontainer" id="pagecontainer" style="display:none">
-    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
+    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button>Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button id="page-further-actions-button" onclick="showPageFurtherAtions()">Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
   <div class="page" id="page">
    <div class="vtabs" id="vtabs">
       <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
@@ -50,13 +55,17 @@
   </div>
 </div>
 
+<div id="further-actions-dialog" class="ui-drop-down">
+  <div class="ui-menu">
+    <div class="ui-menu-item"><a href="#" onclick="startPresentation(event)">Start Presentation</a></div>
+  </div>
+</div>
+
 <div id="labels-dialog" class="ui-drop-down">
   <div id="labels-dialog-listbox" class="ui-list-box">
-<!--   <div><input type="checkbox"> Label 1</div>
-   <div><input type="checkbox"> Label 2</div> -->
  </div>
 </div>
-  
+
 <div class="ui-dialog" id="invite-dialog" style="z-index:200; position:absolute; visibility:hidden; padding-bottom:10px; left:25%; top:100px; width:500px; font-size:11pt">
   <div class="ui-titlebar"><div onclick="closeInvite()" class="ui-titlebar-close-button">&#x2573;</div>Send an invitation</div>
   <div class="ui-section-blue" style="padding-top:16px; padding-bottom:16px; padding-left:8px; padding-right:8px;">
@@ -75,10 +84,6 @@ Registration and use is FREE.
     <button style="font-size:11pt" id="ui-send-invite"">Send invitation</button>
   </div>
 </div>
-
-<hr>
-<address></address>
-<!-- hhmts start --> Last modified: Wed Aug 17 23:47:12 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
 var book = new Book("123456", "MyBook");
@@ -237,6 +242,27 @@ function pageMarkAsRead() {
   }
 }
 
+function showPageFurtherAtions(e) {
+  var targ;
+  if (!e) var e = window.event;
+  if (e.target) targ = e.target;
+  else if (e.srcElement) targ = e.srcElement;
+  if (targ.nodeType == 3) // defeat Safari bug
+    targ = targ.parentNode;
+  var dlg = document.getElementById("further-actions-dialog");
+  if ($(targ).hasClass("dropdown-open")) {
+    $(targ).removeClass("dropdown-open");
+    dlg.style.visibility = "hidden";
+    return;
+  }
+  $(targ).addClass("dropdown-open");
+
+  var pos = findPos(targ);
+  dlg.style.visibility = "visible";
+  dlg.style.left = (pos[0] + 2).toString() + "px";
+  dlg.style.top = (pos[1] + 2 + targ.offsetHeight).toString() + "px";
+}
+
 function showInboxLabels(e) {
   var targ;
   if (!e) var e = window.event;
@@ -382,6 +408,71 @@ function showWaitScreen() {
 function hideWaitScreen() {
   document.getElementById("wait_screen").style.display = "none";
 }
+
+var fullscreen = false;
+
+function startPresentation(e) {
+  if ( !book || !book.currentChapter || !book.currentChapter.currentPage ) {
+    return;
+  }
+  var dlg = document.getElementById("further-actions-dialog");
+  var button = document.getElementById("page-further-actions-button");
+  $(button).removeClass("dropdown-open");
+  dlg.style.visibility = "hidden";
+
+  var div = document.getElementById("pagecontent_fullscreen");
+  div.style.display = "block";
+  var div = document.getElementById("tabs");
+  div.style.display = "none";
+  var div = document.getElementById("stack");
+  div.style.display = "none";
+  var body = document.getElementById("body");
+  $(body).addClass("fullscreen");
+  book.currentChapter.currentPage.enterFullScreen();
+
+  if (!e) var e = window.event;
+  if (e.preventDefault) e.preventDefault();
+  return false;
+}
+
+function keydown(e) {
+  if (fullscreen) {
+   if (e.keyCode == 38) { // Up
+      var i = book.currentChapter.currentPageIndex();
+      if (i <= 0) {
+        return;
+      }
+      book.currentChapter.setActivePage( book.currentChapter.pages[i-1] );
+    } else if (e.keyCode == 40) { // Down
+      var i = book.currentChapter.currentPageIndex();
+      if (i >= book.currentChapter.pages.length - 1) {
+        return;
+      }
+      book.currentChapter.setActivePage( book.currentChapter.pages[i+1] );
+    } else if (e.keyCode == 27) { // ESC
+      var body = document.getElementById("body");
+      $(body).removeClass("fullscreen");
+      book.currentChapter.currentPage.leaveFullScreen();
+      var div = document.getElementById("pagecontent_fullscreen");
+      div.style.display = "none";
+      var div = document.getElementById("tabs");
+      div.style.display = "block";
+      var div = document.getElementById("stack");
+      div.style.display = "block";
+   }
+  }
+}
+
+function resize(e) {
+  if (fullscreen) {
+    book.currentChapter.currentPage.applyLayout_();
+  }
+}
+
+document.addEventListener("keydown", keydown);
+document.addEventListener("resize", resize);
+
+LW.registerDnD();
 
 function toggleQueue() {
   if (store.paused) {

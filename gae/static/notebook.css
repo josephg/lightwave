@@ -2,9 +2,15 @@ body {
   font-family:Arial, Helvetica, Sans-serif;
   font-size:10pt;
   background-color:#ccccd0;
-  margin:2px;
+  margin:0px;
+  margin-right:2px;
   padding:0px;
   border:0px;
+}
+body.fullscreen {
+  margin:0px;
+  background-color:#ffffff;
+  overflow:hidden;
 }
 .tabs {
   margin:0px;
@@ -75,6 +81,7 @@ body {
   width:100%;
   top:-1px;
   position:relative;
+  min-height:900px;
 }
 .stack0 {
    background-color: #bbbbff;
@@ -153,7 +160,8 @@ body {
 }
 .page {
   background-color:white;
-  min-height:700px;
+  position:relative;
+  min-height:720px;
   margin:0px;
   padding:0px;
 }
@@ -164,10 +172,8 @@ body {
   padding:0px;
   margin:12px;
   margin-right:162px;
-  position:relative;
   border:1px solid #777777;
-  border-top-left-radius:6px;
-  border-top-right-radius:6px;
+  border-radius:6px;
   background-color: #eaeae6;
 }
 .vtabs {
@@ -281,12 +287,11 @@ body {
   margin-bottom:20px;
 }
 .textbox {
-  position:absolute;
+  position:relative;
   min-heigth:20px;
   min-width:80px;
-  margin:20px;
+  margin-top:20px;
   margin-left:42px;
-  margin-right:250px;
   font-size:12pt;
   padding-left:4px;
   padding-right:4px;
@@ -420,15 +425,6 @@ body {
   margin-left:20px;
   margin-right:20px;
 }
-#wait_screen {
-    position:fixed;
-    width:100%;
-    height:100%;
-    z-index:1000;
-    background-color:#000000; 
-    opacity:0.5;
-    display:none;
-}
 .slide_head {
     padding-left:12px;
     padding-right:12px;
@@ -455,4 +451,66 @@ body {
 }
 .content {
     outline:none;
+}
+#wait_screen {
+    position:fixed;
+    width:100%;
+    height:100%;
+    z-index:1000;
+    background-color:#000000; 
+    opacity:0.5;
+    display:none;
+}
+#pagecontent_fullscreen {
+    position:fixed;
+    width:100%;
+    height:100%;
+    z-index:1000;
+    display:none;
+}
+#pagecontent_fullscreen_scaled {
+  transform-origin: top left;
+  -webkit-transform-origin: top left;
+  -moz-transform-origin: top left;
+}
+.resize {
+  visibility: hidden;
+  position:absolute;
+  width:20px;
+  height:20px;
+  background-color:green;
+  opacity:0.5;
+  cursor:crosshair
+}
+.resize-nw {
+  top:0px;
+  left:0px;
+}
+.resize-ne {
+  top:0px; right:0px;
+}
+.resize-sw {
+  bottom:0px; left:0px;
+}
+.resize-se {
+  bottom:0px; right:0px;
+}
+.selected .resize {
+  visibility: visible;
+}
+.picture {
+  border:1px solid #888888;
+  transform:rotate(0deg);
+  -webkit-transform:rotate(0deg);
+  -moz-transform:rotate(0deg);
+  position:absolute;
+  background:white;
+  padding:12px;
+  padding-bottom:42px;
+  box-shadow:5px 5px 8px #888888;
+}
+.picture img {
+  position:relative;
+  width:100%;
+  height:100%;
 }
