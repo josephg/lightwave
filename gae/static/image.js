@@ -76,8 +76,10 @@ LW.registerDnD = function() {
                 addh += parseInt(window.getComputedStyle(resizetarget, null).marginBottom);
                 resizetarget.style.left = (resizeleft - (w - resizew)/2).toString() + "px";
                 resizetarget.style.top = (resizetop - (h - resizeh)/2).toString() + "px";
-                resizetarget.style.width = (w - addw).toString() + "px";
-                resizetarget.style.height = (h - addh).toString() + "px";
+                //resizetarget.style.width = (w - addw).toString() + "px";
+                //resizetarget.style.height = (h - addh).toString() + "px";
+                resizetarget.firstChild.style.width = (w - addw).toString() + "px";
+                resizetarget.firstChild.style.height = (h - addh).toString() + "px";
                 var alpha = Math.asin(ry / r) / Math.PI * 180;
                 if (rx < 0) alpha = 180 - alpha;
                 if ($(resizehandle).hasClass("resize-se")) {
