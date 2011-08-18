@@ -21,7 +21,14 @@ LW.registerDnD = function() {
         e.stopPropagation(); // Stops some browsers from redirecting.
         e.preventDefault();
         console.log(e);
-        
+
+        if (e.dataTransfer.files.length == 0) {
+            var url = e.dataTransfer.getData('url');
+            var img = new PageContent(page, "tmp-img-" + Math.random().toString(), url, "image", {});
+            page.addContent(img);
+            return;
+        }
+
         for( var i = 0; i < e.dataTransfer.files.length; i++ ) {
             var reader = new FileReader();
             reader.onload = function(evt) {
