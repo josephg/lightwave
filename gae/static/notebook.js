@@ -29,6 +29,7 @@ function Page(chapter, id, text, after) {
     this.after = after;
     this.vtab = null;
     this.nextSeq = 0;
+    this.layout = null;
     // An array of PageContent objects
     this.contents = [];
     // An array of Follower objects
@@ -37,14 +38,21 @@ function Page(chapter, id, text, after) {
     this.invitations = [];
 }
 
-function PageContent(page, id, text, layout) {
+function PageContent(page, id, text, cssClass, style) {
     this.page = page;
     this.id = id;
     this.text = text;
-    this.layout = layout;
+    this.cssClass = cssClass;
+    this.style = style;
     this.paragraphs = [];
     this.tombs = [text.length];
     this.buildParagraphs();
+}
+
+function PageLayout(page, id, style) {
+    this.page = page;
+    this.id = id;
+    this.style = style;
 }
 
 function Follower(page, userid, username) {
@@ -567,6 +575,7 @@ Page.prototype.open = function() {
         $(this.vtab).removeClass("inactivevtab" + this.chapter.colorScheme.toString());
         $(this.vtab).addClass("activevtab");
     }
+    this.applyLayout_();
     this.showContents();
     this.showFollowers();
     // If the page blobref is marked with "tmp-" then the page has just been created and there is no need to open it.
@@ -582,7 +591,7 @@ Page.prototype.close = function() {
         $(this.vtab).addClass("inactivevtab" + this.chapter.colorScheme.toString());
     }
     // Cleanup
-    var pagediv = document.getElementById("page");
+    var pagediv = document.getElementById("pagecontent");
     var content = document.getElementsByClassName("content");
     for( ; content.length > 0; ) {
         pagediv.removeChild(content[0]);
@@ -636,9 +645,15 @@ Page.prototype.showContents = function() {
 };
 
 Page.prototype.showContent = function(content) {
-    var div;
+    var pagediv = document.getElementById("pagecontent");
+    var div = document.createElement("div");
+    div.className = "content" + (content.cssClass ? " " + content.cssClass : "");
+    div.appendChild(document.createTextNode(content.text));
+    div.contentEditable = true;
+    pagediv.appendChild(div);
+/*
     if (content.layout == "title") {
-        var pagediv = document.getElementById("page");
+        var pagediv = document.getElementById("pagecontent");
         div = document.createElement("div");
         div.className = "content title";
         div.contentEditable = true;
@@ -649,7 +664,7 @@ Page.prototype.showContent = function(content) {
         div2.innerHTML = "Sunday, June 30, 2011<br>23:56";
         pagediv.appendChild(div2);        
     } else if (content.layout == "textbox") {
-        var pagediv = document.getElementById("page");
+        var pagediv = document.getElementById("pagecontent");
         div = document.createElement("div");
         div.className = "content textbox";
         div.contentEditable = true;
@@ -658,7 +673,7 @@ Page.prototype.showContent = function(content) {
     } else {
         console.log("UNKNOWN layout")
         return;
-    }
+    } */
     var editor = new LW.Editor(content, "text", div);
 };
 
@@ -803,8 +818,30 @@ Page.prototype.setUnread = function(unread) {
     }
 };
 
+Page.prototype.setLayout = function(layout) {
+    this.layout = layout;
+    this.applyLayout_();
+};
+
+Page.prototype.applyLayout_ = function() {
+    var pagecontentdiv = document.getElementById("pagecontent");
+    var pagediv = document.getElementById("page");
+    var scale = 1;
+    if (this.layout && this.layout.style && this.layout.style["width"]) {
+        scale = (pagediv.offsetWidth - 220) / parseInt(this.layout.style["width"]);
+    }
+    pagecontentdiv.style["-webkit-transform"] = "scale(" + scale.toString() + ")";
+    pagecontentdiv.style.width = ((pagediv.offsetWidth - 220) / scale).toString() + "px";
+    if (this.layout && this.layout.style && this.layout.style["height"]) {
+        pagecontentdiv.style.height = this.layout.style["height"];
+    } else {
+        delete pagecontentdiv.style.height;
+    }
+};
+
 PageContent.prototype.mutate = function(mutation) {
     if (mutation.field == "text") {
+        console.log(JSON.stringify(mutation.op));
         lightwave.ot.ExecuteOperation(this, mutation.op);
     } else {
         console.log("Err: Unknown mutation field: " + mutation.field)

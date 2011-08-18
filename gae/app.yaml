@@ -15,6 +15,10 @@ handlers:
   static_files: static/\1.png
   upload: static/(.*).png
 
+- url: /(.+).jpg
+  static_files: static/\1.jpg
+  upload: static/(.*).jpg
+
 - url: /(.+).js
   static_files: static/\1.js
   upload: static/(.*).js

@@ -32,6 +32,8 @@
       <div class="sharebutton" onclick="showShare(event)">Share this page &#x25be;</span></div>
      <div class="invitations" id="invitations">Invitations sent</div>
    </div>
+   <div id="pagecontent" class="pagecontent">
+   </div>
  </div>
   </div>
   <div id="inbox" class="inbox">
@@ -76,7 +78,7 @@ Registration and use is FREE.
 
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Mon Aug 15 00:26:31 CEST 2011 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Wed Aug 17 23:47:12 CEST 2011 <!-- hhmts end -->
 
 <script type="text/javascript">
 var book = new Book("123456", "MyBook");
@@ -86,9 +88,9 @@ function newChapter() {
   var p = new Page(c, "tmp-" + Math.random().toString(), "Untitled Page", null)
   p.pageBlobRef = "tmp-page" + Math.random().toString();
   c.addPage(p);
-  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "Page title", "title");
+  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "Page title", "title", {});
   p.addContent(co1);
-  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text", "textbox");
+  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text", "textbox", {});
   p.addContent(co2);
   p.addFollower(new Follower(p, store.userID));
   book.addChapter(c, true);
@@ -107,9 +109,9 @@ function newPage() {
   }
   p.pageBlobRef = "tmp-page" + Math.random().toString();
   book.currentChapter.addPage(p, true);
-  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "Page title", "title");
+  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "Page title", "title", {});
   p.addContent(co1);
-  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text " + Math.random().toString(), "textbox");
+  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text " + Math.random().toString(), "textbox", {});
   p.addContent(co2);
   p.addFollower(new Follower(p, store.userID));
   store.createPage(p);

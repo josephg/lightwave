@@ -22,6 +22,7 @@ import (
   "crypto/sha256"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
+  importer "lightwaveimporter"
 )
 
 var (
@@ -81,6 +82,8 @@ func init() {
 
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
+
+  http.HandleFunc("/import", handleImport)
 }
 
 func handleFrontPage(w http.ResponseWriter, r *http.Request) {
@@ -793,4 +796,61 @@ func hasUserName(c appengine.Context, username string) (userid string, err os.Er
     return "", err
   }
   return key.StringID(), nil
+}
+
+
+// ====================================================================================
+
+func handleImport(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  // User logged in?
+  if u == nil {
+    url, _ := user.LoginURL(c, "/")
+    fmt.Fprintf(w, `<a href="%s">Sign in or register</a>`, url)
+    return
+  }
+
+  // TODO: This does not allow for multiple sessions
+  sessionid := fmt.Sprintf("s%v", rand.Int31())
+
+  s := newStore(c)
+  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
+  s.SetGrapher(g)
+  _ = newChannelAPI(c, s, sessionid, true, g)
+
+  // New User?
+  usr, err := hasUser(c, u.Id)
+  if err != nil {
+    http.Error(w, "Couldn't search for user", http.StatusInternalServerError)
+    c.Errorf("HasUser: %v", err)
+    return
+  }
+  if usr != nil {
+    http.Error(w, "User must not yet exist", http.StatusInternalServerError)
+    return
+  }
+
+  usr, err = s.CreateUser()
+  if err != nil {
+    http.Error(w, "Couldn't create user", http.StatusInternalServerError)
+    c.Errorf("CreateUser: %v", err)
+    return
+  }
+
+  book, err := importer.Parse(r.FormValue("content"))
+  if err != nil {
+    http.Error(w, "Could not parse content", http.StatusInternalServerError)
+    c.Errorf("Parse: %v", err)
+    return
+  }
+  
+  err = importer.Import(g, book)
+  if err != nil {
+    http.Error(w, "Could not import", http.StatusInternalServerError)
+    c.Errorf("Import: %v", err)
+    return
+  }
+  
+  fmt.Fprintf(w, "Ok, imported")
 }

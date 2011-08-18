@@ -283,7 +283,7 @@ store.createContentEntity = function(pageContent) {
         console.log("REWRITING content " + pageContent.layout);
         pageContent.id = response.blobref;
     };
-    var content = {layout: pageContent.layout, text: pageContent.text};
+    var content = {layout: pageContent.layout, text: pageContent.text, cssclass: pageContent.cssClass, style: pageContent.style};
     var msg = {perma: pageContent.page.pageBlobRef, content: content, mimetype:"application/x-lightwave-entity-content", type: "entity"};
 //    store.submit(msg, f, null, function(m) { m.perma = pageContent.page.pageBlobRef; console.log("REWRITING " + m.perma); } );
     store.submit(msg, f, null, null );
@@ -318,8 +318,10 @@ store.onPageEntity = function(permaInfo, entity) {
         return
     }
     if (entity.mimetype == "application/x-lightwave-entity-content") {
-        var c = new PageContent(page, entity.blobref, entity.content.text, entity.content.layout);
+        var c = new PageContent(page, entity.blobref, entity.content.text, entity.content.cssclass, entity.content.style);
         page.addContent(c);
+    } else if (entity.mimetype == "application/x-lightwave-entity-page-layout") {
+        page.setLayout( new PageLayout(page, entity.blobref, entity.content.style));
     } else {
         console.log("Unknown entity type");
     }
