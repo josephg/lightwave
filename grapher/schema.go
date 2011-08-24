@@ -10,14 +10,14 @@ const (
   TypeEntityBlobRef
   TypePermaBlobRef
   TypeArray
+  TypeMap
 )
 
 const (
   TransformationNone = iota
-  TransformationString
-  TransformationArray
+  TransformationMerge
   TransformationMax
-  TransformationLatest
+  TransformationMin
 )
 
 type Schema struct {

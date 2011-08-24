@@ -43,7 +43,8 @@ function PageContent(page, id, text, cssClass, style) {
     this.id = id;
     this.text = text;
     this.cssClass = cssClass;
-    this.style = style;
+    this.style = {};
+    this.applyStyle_(style);
     this.paragraphs = [];
     this.tombs = [text.length];
     this.buildParagraphs();
@@ -609,13 +610,10 @@ Page.prototype.close = function() {
 Page.prototype.cleanup_ = function() {
     // Cleanup
     var pagediv = this.pageContentDiv_();
-    var content = document.getElementsByClassName("content");
-    for( ; content.length > 0; ) {
-        pagediv.removeChild(content[0]);
-    }
-    var content = document.getElementsByClassName("movable");
-    for( ; content.length > 0; ) {
-        pagediv.removeChild(content[0]);
+    for (var i = 0; i < this.contents.length; i++) {
+        var content = this.contents[i];
+        pagediv.removeChild(content.div);
+        delete content.div;
     }
     // Cleanup
     var sharediv = document.getElementById("share");
@@ -687,8 +685,15 @@ Page.prototype.showContents = function() {
 Page.prototype.showContent = function(content) {
     var pagecontentdiv = this.pageContentDiv_();
     if (content.cssClass == "image") {
+        var f_move = function(e) {
+            return LW.movableMouseDown(e, content);
+        };
+        var f_resize = function(e) {
+            return LW.resizeMouseDown(e, content);
+        };
         var div = document.createElement("div");
-        div.addEventListener("mousedown", LW.movableMouseDown, false);
+        content.div = div;
+        div.addEventListener("mousedown", f_move, false);
         div.className = "movable picture";
         var img = document.createElement("img");
         img.src = content.text;
@@ -696,27 +701,28 @@ Page.prototype.showContent = function(content) {
         var r = document.createElement("div");
         r.className = "resize resize-nw";
         r.innerText = " ";
-        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        r.addEventListener("mousedown", f_resize, false);
         div.appendChild(r);
         var r = document.createElement("div");
         r.className = "resize resize-ne";
         r.innerText = " ";
-        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        r.addEventListener("mousedown", f_resize, false);
         div.appendChild(r);
         var r = document.createElement("div");
         r.className = "resize resize-sw";
         r.innerText = " ";
-        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        r.addEventListener("mousedown", f_resize, false);
         div.appendChild(r);
         var r = document.createElement("div");
         r.className = "resize resize-se";
         r.innerText = " ";
-        r.addEventListener("mousedown", LW.resizeMouseDown, false);
+        r.addEventListener("mousedown", f_resize, false);
         div.appendChild(r);
         pagecontentdiv.appendChild(div);
         return;
     }
     var div = document.createElement("div");
+    content.div = div;
     div.className = "content" + (content.cssClass ? " " + content.cssClass : "");
     div.appendChild(document.createTextNode(content.text));
     div.contentEditable = true;
@@ -906,9 +912,94 @@ Page.prototype.applyLayout_ = function() {
     }
 };
 
+PageContent.prototype.rotate = function(rotation) {
+    this.style.rotation = rotation;
+    this.div.style["-webkit-transform"] = "rotate(" + rotation.toString() + "deg)";
+};
+
+PageContent.prototype.submitRotate = function(x, y, w, h, rotation) {
+    this.rotate(rotation);
+    var op = {"rotate": Math.round(rotation).toString(), "left": Math.round(x).toString(), "top": Math.round(y).toString(), "width": Math.round(w).toString(), "height": Math.round(h).toString()};
+    var msg = {perma: this.page.pageBlobRef, op: op, type: "mutation", entity: this.id, field: "style"};
+    var pageContent = this;
+    store.submit(msg, null, null, function(m) { m.entity = pageContent.id });
+};
+
+PageContent.prototype.move = function(x, y) {
+    this.style.left = x;
+    this.style.top = y;
+    this.div.style.left = x.toString() + "px";
+    this.div.style.top = y.toString() + "px";
+};
+
+PageContent.prototype.submitMove = function(x, y) {
+    this.move(x, y);
+    var op = {"left": x.toString(), "top": y.toString()};
+    var msg = {perma: this.page.pageBlobRef, op: op, type: "mutation", entity: this.id, field: "style"};
+    var pageContent = this;
+    store.submit(msg, null, null, function(m) { m.entity = pageContent.id });
+};
+
+PageContent.prototype.resize = function(w, h) {
+    this.style.width = w;
+    this.style.height = h;
+    this.div.firstChild.style.width = w.toString() + "px";
+    this.div.firstChild.style.height = h.toString() + "px";
+};
+
+PageContent.prototype.submitResize = function(w, h) {
+    this.resize(w, h);
+    var op = {"width": w.toString(), "height": h.toString()};
+    var msg = {perma: this.page.pageBlobRef, op: op, type: "mutation", entity: this.id, field: "style"};
+    var pageContent = this;
+    store.submit(msg, null, null, function(m) { m.entity = pageContent.id });
+};
+
+PageContent.prototype.applyStyle_ = function(style) {
+    var resize = false;
+    var move = false;
+    var rotate = false;
+    var newstyle = { }
+    for (var key in this.style) {
+        newstyle[key] = this.style[key]
+    }
+    for (var key in style) {
+        try {
+            if (key == "width" || key == "height") {
+                newstyle[key] = parseInt(style[key]);
+                resize = true;
+            } else if (key =="left" || key == "top") {
+                newstyle[key] = parseInt(style[key]);
+                move = true;
+            } else if (key == "rotate") {
+                newstyle[key] = parseInt(style[key]);
+                rotate = true;
+            } else {
+                console.log("Unsupported property: " + key);
+            }
+        } catch(e) {
+            console.log("Type mismatch in property");
+        }
+    }
+        
+    if (this.div) {
+        if (resize) {
+            this.resize(newstyle["width"], newstyle["height"]);
+        }
+        if (move) {
+            this.move(newstyle["left"], newstyle["top"]);
+        }
+        if (rotate) {
+            this.rotate(newstyle["rotate"]);
+        }
+    }
+};
+
 PageContent.prototype.mutate = function(mutation) {
     if (mutation.field == "text") {
         lightwave.ot.ExecuteOperation(this, mutation.op);
+    } else if (mutation.field == "style") {
+        this.applyStyle_(mutation.op);
     } else {
         console.log("Err: Unknown mutation field: " + mutation.field)
     }

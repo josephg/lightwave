@@ -58,7 +58,8 @@ func init() {
       "application/x-lightwave-page": &grapher.FileSchema{ EntitySchemas: map[string]*grapher.EntitySchema {
 	  "application/x-lightwave-entity-content": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
 	      "layout": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
-	      "text": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationString } } } } } } }
+	      "style": &grapher.FieldSchema{ Type: grapher.TypeMap, ElementType: grapher.TypeNone, Transformation: grapher.TransformationMerge },
+	      "text": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationMerge } } } } } } }
 
   frontPageTmpl = template.New(nil)
   frontPageTmpl.SetDelims("{{", "}}")
@@ -361,6 +362,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   g := grapher.NewGrapher(u.Email, schema, s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
+  tf.NewMapTransformer(g)
   newChannelAPI(c, s, sessionid, false, g)
   
 //  log.Printf("Received: %v", string(blob))

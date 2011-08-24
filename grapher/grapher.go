@@ -9,6 +9,7 @@ import (
   "rand"
   "fmt"
   "strings"
+  "strconv"
   "crypto/sha256"
   "encoding/hex"
 )
@@ -71,6 +72,7 @@ type Transformer interface {
   TransformMutation(mutation MutationNode, rollback <-chan MutationNode, concurrent []string) os.Error
   TransformClientMutation(mutation_input MutationNode, rollback <-chan MutationNode) os.Error
   Kind() int
+  DataType() int
 }
 
 // The API layer as seen by the Grapher
@@ -119,7 +121,7 @@ type Grapher struct {
   fed Federation
   // 'user@domain' of the local user.
   userID string 
-  transformers map[int]Transformer
+  transformers map[string]Transformer
   api API
   schema *Schema
 }
@@ -128,7 +130,7 @@ type Grapher struct {
 // The indexer calls the federation object to send messages to other users.
 // Federation may be nil as well.
 func NewGrapher(userid string, schema *Schema, store BlobStore, gstore GraphStore, fed Federation) *Grapher {
-  idx := &Grapher{userID: userid, store: store, gstore: gstore, fed: fed, schema: schema, transformers: make(map[int]Transformer)}
+  idx := &Grapher{userID: userid, store: store, gstore: gstore, fed: fed, schema: schema, transformers: make(map[string]Transformer)}
   if fed != nil {
     fed.SetGrapher(idx)
   }
@@ -136,7 +138,7 @@ func NewGrapher(userid string, schema *Schema, store BlobStore, gstore GraphStor
 }
 
 func (self *Grapher) AddTransformer(transformer Transformer) {
-  self.transformers[transformer.Kind()] = transformer
+  self.transformers[strconv.Itoa(transformer.Kind()) + "/" + strconv.Itoa(transformer.DataType())] = transformer
 }
 
 func (self *Grapher) SetAPI(api API) {
@@ -191,7 +193,7 @@ func (self *Grapher) transformer(perma PermaNode, entity EntityNode, field strin
   if fieldSchema.Transformation == TransformationNone {
     return nil, nil
   }
-  t, ok = self.transformers[fieldSchema.Transformation]
+  t, ok = self.transformers[strconv.Itoa(fieldSchema.Transformation) + "/" + strconv.Itoa(fieldSchema.Type)]
   if !ok {
     err = os.NewError("Unknown transformer")
     return

@@ -35,7 +35,11 @@ func decodeMutation(mutation grapher.MutationNode) (mut ot.Mutation, err os.Erro
 }
 
 func (self *transformer) Kind() int {
-  return grapher.TransformationString
+  return grapher.TransformationMerge
+}
+
+func (self *transformer) DataType() int {
+  return grapher.TypeString
 }
 
 // Interface towards the Grapher
