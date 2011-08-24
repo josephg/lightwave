@@ -435,6 +435,10 @@ Chapter.prototype.renderInboxItem_ = function(page, div) {
     var input = document.createElement("input");
     input.className = "inboxcheckbox";
     input.type = "checkbox";
+    if (page.inbox_selected) {
+        input.checked = true;
+        $(div).addClass("inboxitemselected");
+    }
     input.addEventListener("click", function(e) {
         if (!e) var e = window.event;
  	e.cancelBubble = true;
