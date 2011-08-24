@@ -228,11 +228,24 @@ function inboxSelectAll(e) {
   e.cancelBubble = true;
   if (e.stopPropagation) e.stopPropagation();
   var input = document.getElementById("inboxui-select-all");
+  var pages = book.inbox.pages;
   if (input.checked) {
-    console.log("IS CHECKED");
+    for( var i = 0; i < pages.length; i++) {
+      var page = pages[i];
+      page.inbox_selected = true;
+      var div = document.getElementById("inboxitem-" + page.pageBlobRef);
+      $(div).addClass("inboxitemselected");
+      div.firstChild.checked = true;
+    }
   } else {
-    console.log("IS NOT CHECKED");
-  }
+    for( var i = 0; i < pages.length; i++) {
+      var page = pages[i];
+      page.inbox_selected = false;
+      var div = document.getElementById("inboxitem-" + page.pageBlobRef);
+      $(div).removeClass("inboxitemselected");
+      div.firstChild.checked = false;
+    }
+ }
 };
 
 function pageMarkAsRead() {
