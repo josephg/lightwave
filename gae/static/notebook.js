@@ -719,6 +719,7 @@ Page.prototype.showContent = function(content) {
         r.addEventListener("mousedown", f_resize, false);
         div.appendChild(r);
         pagecontentdiv.appendChild(div);
+        content.applyStyle_(content.style);
         return;
     }
     var div = document.createElement("div");
@@ -727,6 +728,7 @@ Page.prototype.showContent = function(content) {
     div.appendChild(document.createTextNode(content.text));
     div.contentEditable = true;
     pagecontentdiv.appendChild(div);
+    content.applyStyle_(content.style);
     var editor = new LW.Editor(content, "text", div);
 };
 
@@ -913,7 +915,7 @@ Page.prototype.applyLayout_ = function() {
 };
 
 PageContent.prototype.rotate = function(rotation) {
-    this.style.rotation = rotation;
+    this.style.rotate = rotation;
     this.div.style["-webkit-transform"] = "rotate(" + rotation.toString() + "deg)";
 };
 
@@ -990,6 +992,7 @@ PageContent.prototype.applyStyle_ = function(style) {
             this.move(newstyle["left"], newstyle["top"]);
         }
         if (rotate) {
+            console.log("ROTATE");
             this.rotate(newstyle["rotate"]);
         }
     }
