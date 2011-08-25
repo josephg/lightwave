@@ -23,27 +23,28 @@
   </div>
 </div>
 <!-- <button onclick="toggleQueue()">Test composing</button> -->
-<div class="tabs" id="tabs">
-  <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
-</div>
-<div class="stack" id="stack">
-  <div class="pagecontainer" id="pagecontainer" style="display:none">
-    <div class="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button onclick="pageArchive()">Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button id="page-further-actions-button" onclick="showPageFurtherAtions()">Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
-  <div class="page" id="page">
-   <div class="vtabs" id="vtabs">
-      <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
-    </div>
-    <div class="share" id="share">
-      <div class="sharebutton" onclick="showShare(event)">Share this page &#x25be;</span></div>
-     <div class="invitations" id="invitations">Invitations sent</div>
-   </div>
-   <div id="pagecontent" class="pagecontent">
-   </div>
- </div>
+<div id="screen">
+  <div id="tabs">
+    <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
   </div>
-  <div id="inbox" class="inbox">
+  <div id="tabsborder">&nbsp;</div>
+  <div id="pagecontainer" style="display:none">
+    <div id="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button onclick="pageArchive()">Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button id="page-further-actions-button" onclick="showPageFurtherAtions()">Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
+    <div id="page">
+      <div id="vtabs">
+        <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
+      </div>
+      <div id="share">
+        <div class="sharebutton" onclick="showShare(event)">Share this page &#x25be;</div>
+        <div class="invitations" id="invitations">Invitations sent</div>
+      </div>
+      <div id="pagecontent"></div>
+    </div>
+  </div>
+  <div id="inbox">
     <div class="inboxcontrols"><div class="ui-toolbar"><button><input id="inboxui-select-all" onclick="inboxSelectAll(event)" type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxArchive()">Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showInboxLabels(event)">Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxMarkAsRead()">Mark as read</button></div></div>
- </div>
+    </div>
+  </div>
 </div>
 
 <div class="ui-dialog" id="share-dialog" style="z-index:200; position:absolute; visibility:hidden; padding-bottom:10px; left:0px; top:0px;">

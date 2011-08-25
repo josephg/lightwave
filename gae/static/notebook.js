@@ -191,8 +191,8 @@ Chapter.prototype.open = function() {
     $(this.tab).removeClass("inactivetab");
     $(this.tab).addClass("activetab");
     this.tab.style.zIndex = 100;
-    var stack = document.getElementById("stack");
-    stack.style.backgroundColor = colorSchemes[this.colorScheme].color;
+    var screen = document.getElementById("screen");
+    screen.style.backgroundColor = colorSchemes[this.colorScheme].color;
     // Show a certain page in the inbox?
     if (this.id == "inbox") {
         if (!this.currentPage) {
@@ -218,7 +218,6 @@ Chapter.prototype.open = function() {
 };
 
 Chapter.prototype.close = function() {
-    var stack = document.getElementById("stack");
     $(this.tab).removeClass("activetab");
     $(this.tab).addClass("inactivetab");
     if (this.id == "inbox") {
@@ -800,7 +799,7 @@ Page.prototype.renderTab = function() {
     });
     if (this.unread) {
         var span = document.createElement("span");
-        span.className = "authorsunread";
+        span.className = "pageunread";
         span.innerHTML = "&nbsp";
         this.vtab.appendChild(span);
     }
@@ -997,13 +996,13 @@ Page.prototype.setUnread = function(unread) {
         return;
     }
     var span = this.vtab.lastChild;
-    if (!$(span).hasClass("authorsunread")) {
+    if (!$(span).hasClass("pageunread")) {
         span = null;
     }
     if (this.unread) {
         if (!span) {
             span = document.createElement("span");
-            span.className = "authorsunread";
+            span.className = "pageunread";
             this.vtab.appendChild(span);
         }
         span.innerHTML = "&nbsp";
