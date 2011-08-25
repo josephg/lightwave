@@ -5,7 +5,7 @@ import (
   "json"
   "log"
   "os"
-//  "time"
+  "time"
   "rand"
   "fmt"
   "strings"
@@ -20,7 +20,7 @@ import (
 type superSchema struct {
   // Allowed value are "permanode", "mutation", "permission", "keep"
   Type    string "type"
-//  Time    string "t"
+  Time    int64 "t"
   Signer string "signer"
   
   Permission string "permission"
@@ -139,6 +139,7 @@ func NewGrapher(userid string, schema *Schema, store BlobStore, gstore GraphStor
 
 func (self *Grapher) AddTransformer(transformer Transformer) {
   self.transformers[strconv.Itoa(transformer.Kind()) + "/" + strconv.Itoa(transformer.DataType())] = transformer
+  log.Printf("REGISTERED %v", strconv.Itoa(transformer.Kind()) + "/" + strconv.Itoa(transformer.DataType()));
 }
 
 func (self *Grapher) SetAPI(api API) {
@@ -195,7 +196,7 @@ func (self *Grapher) transformer(perma PermaNode, entity EntityNode, field strin
   }
   t, ok = self.transformers[strconv.Itoa(fieldSchema.Transformation) + "/" + strconv.Itoa(fieldSchema.Type)]
   if !ok {
-    err = os.NewError("Unknown transformer")
+    err = os.NewError("Unknown transformer " + strconv.Itoa(fieldSchema.Transformation) + "/" + strconv.Itoa(fieldSchema.Type))
     return
   }
   return
@@ -239,14 +240,6 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
   if schema.Signer == "" {
     return nil, os.NewError("Missing signer")
   }
-  /*
-  var tstruct *time.Time
-  tstruct, err = time.Parse(time.RFC3339, schema.Time)
-  if err != nil || tstruct == nil {
-    return
-  }
-  t := tstruct.Seconds()
-   */
   switch schema.Type {
   case "keep":
     if schema.PermaNode == "" {
@@ -284,7 +277,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     if schema.PermaNode == "" {
       return nil, os.NewError("Missing perma in mutation")
     }
-    n := &mutationNode{mutationSigner: schema.Signer, permaBlobRef: schema.PermaNode, mutationBlobRef: blobref, dependencies: schema.Dependencies, operation: []byte(*schema.Operation), entityBlobRef: schema.Entity, field: schema.Field}
+    n := &mutationNode{mutationSigner: schema.Signer, permaBlobRef: schema.PermaNode, mutationBlobRef: blobref, dependencies: schema.Dependencies, operation: []byte(*schema.Operation), entityBlobRef: schema.Entity, field: schema.Field, time: schema.Time}
     return n, nil
   case "permission":
     if schema.User == "" {
@@ -905,6 +898,7 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref str
   m.entityBlobRef = entity_blobref
   m.field = field
   m.operation = operation
+  m.time = time.Seconds()
   if transformer != nil {
     ch, e := self.getMutationsAscending(perma.BlobRef(), entity_blobref, field, applyAtSeqNumber, perma.SequenceNumber())
     if e != nil {

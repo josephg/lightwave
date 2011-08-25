@@ -113,7 +113,7 @@ func (self *channelAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.Enti
 }
 
 func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
-  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": mutation.SequenceNumber(), "type":"mutation", "signer":mutation.Signer(), "entity": mutation.EntityBlobRef(), "field": mutation.Field()}
+  mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": mutation.SequenceNumber(), "type":"mutation", "signer":mutation.Signer(), "entity": mutation.EntityBlobRef(), "field": mutation.Field(), "time": mutation.Time()}
   switch mutation.Operation().(type) {
   case ot.Operation:
     op := mutation.Operation().(ot.Operation) // The following two lines work around a problem in GO/JSON

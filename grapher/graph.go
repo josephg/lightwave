@@ -25,7 +25,8 @@ type AbstractNode interface {
   PermaBlobRef() string
   ToMap() map[string]interface{}
   FromMap(perma_blobref string, data map[string]interface{})
-//  Timestamp() int64
+  // Returns 0 if no time has been specified
+  Time() int64
 }
 
 // All nodes participating in Operational Transformation must implement this interface
@@ -80,6 +81,10 @@ func (self *entityNode) SetSequenceNumber(seq int64) {
 
 func (self *entityNode) SequenceNumber() int64 {
   return self.seqNumber
+}
+
+func (self *entityNode) Time() int64 {
+  return 0
 }
 
 func (self *entityNode) Content() []byte {
@@ -152,6 +157,10 @@ func (self *permissionNode) SetSequenceNumber(seq int64) {
 
 func (self *permissionNode) SequenceNumber() int64 {
   return self.seqNumber
+}
+
+func (self *permissionNode) Time() int64 {
+  return 0
 }
 
 func (self *permissionNode) UserName() string {
@@ -239,6 +248,7 @@ type mutationNode struct {
   dependencies []string
   seqNumber int64
   field string
+  time int64
 }
 
 func (self *mutationNode) BlobRef() string {
@@ -273,6 +283,10 @@ func (self *mutationNode) SequenceNumber() int64 {
   return self.seqNumber
 }
 
+func (self *mutationNode) Time() int64 {
+  return self.time
+}
+
 func (self *mutationNode) EntityBlobRef() string {
   return self.entityBlobRef
 }
@@ -302,6 +316,9 @@ func (self *mutationNode) ToMap() map[string]interface{} {
   m["dep"] = self.dependencies
   m["seq"] = self.seqNumber
   m["f"] = self.field
+  if self.time != 0 {
+    m["tm"] = self.time;
+  }
   return m
 }
 
@@ -316,6 +333,9 @@ func (self *mutationNode) FromMap(permaBlobRef string, m map[string]interface{})
   self.entityBlobRef = m["e"].(string)
   self.seqNumber = m["seq"].(int64)
   self.field = m["f"].(string)
+  if d, ok := m["tm"]; ok {
+    self.time = d.(int64)
+  }
 }
 
 type KeepNode interface {
@@ -353,6 +373,10 @@ func (self *keepNode) SetSequenceNumber(seq int64) {
 
 func (self *keepNode) SequenceNumber() int64 {
   return self.seqNumber
+}
+
+func (self *keepNode) Time() int64 {
+  return 0
 }
 
 func (self *keepNode) ToMap() map[string]interface{} {
@@ -480,6 +504,10 @@ func (self *permaNode) Updates() map[string]int64 {
 
 func (self *permaNode) SequenceNumber() int64 {
   return self.seqNumber
+}
+
+func (self *permaNode) Time() int64 {
+  return 0
 }
 
 func (self *permaNode) followersWithPermission(bits int) (users []string) {

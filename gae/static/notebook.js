@@ -138,6 +138,7 @@ Book.prototype.setActiveChapter = function(chapter) {
     }
 };
 
+// Get a map of all pages. The key is the page blobref.
 Book.prototype.getPages = function() {
     var result = { };
     for (var i = 0; i < this.chapters.length; i++) {
@@ -152,6 +153,20 @@ Book.prototype.getPages = function() {
         }
     }
     return result;
+};
+
+// Find a page by its page-entity ID
+Book.prototype.getPage = function(id) {
+   for (var i = 0; i < this.chapters.length; i++) {
+        var chapter = this.chapters[i];
+        for( var k = 0; k < chapter.pages.length; k++) {
+            var page = chapter.pages[k];
+            if (page.id == id) {
+                return page;
+            }
+        }
+    }
+    return null;
 };
 
 Book.prototype.setUnreadInfo = function(unread) {
@@ -177,7 +192,7 @@ Chapter.prototype.open = function() {
     $(this.tab).addClass("activetab");
     this.tab.style.zIndex = 100;
     var stack = document.getElementById("stack");
-    $(stack).addClass("stack" + this.colorScheme.toString());
+    stack.style.backgroundColor = colorSchemes[this.colorScheme].color;
     // Show a certain page in the inbox?
     if (this.id == "inbox") {
         if (!this.currentPage) {
@@ -206,7 +221,6 @@ Chapter.prototype.close = function() {
     var stack = document.getElementById("stack");
     $(this.tab).removeClass("activetab");
     $(this.tab).addClass("inactivetab");
-    $(stack).removeClass("stack" + this.colorScheme.toString());
     if (this.id == "inbox") {
         this.closeInbox_();
     } else {
@@ -241,6 +255,38 @@ Chapter.prototype.getPageByPageBlobRef = function(blobref) {
     }
     return null;
 };
+
+/*
+Chapter.prototype.removePage = function(page) {
+    var index = -1
+    for( var i = 0; i < this.pages.length; i++) {
+        if (this.pages[i] == page) {
+            index = i
+            break;
+        }
+    }
+    if (this.currentPage == page) {
+        if (this.pages.length == 0) {
+            this.setActivePage(null);
+        } else if (index == this.pages.length - 1) {
+            this.setActivePage(this.pages[index - 1]);
+        } else {
+            this.setActivePage(this.pages[index + 1]);
+        }
+        this.pages = this.pages.splice(i, 1);
+    }
+    if (this.id == "inbox") {
+        // Remove from inbox item
+        var div = document.getElementById("inboxitem-" + page.pageBlobRef);
+        if (div) {
+            div.parentNode.removeChild(div);
+        }
+    } else {
+        page.vtab.parentNode.removeChild(page.vtab);
+        this.positionTabs_();
+    }
+};
+*/
 
 Chapter.prototype.addPage = function(p, make_active) {
     // Determine where to insert the chapter
@@ -372,6 +418,19 @@ Chapter.prototype.setActivePage = function(page) {
     }
 };
 
+Chapter.prototype.setText = function(text) {
+    this.text = text;
+    if (this.book != book || !this.tab) {
+        return;
+    }
+    var child = this.tab.firstChild;
+    // The name is currently being edited?
+    if (child.nodeName == "INPUT") {
+        return;
+    }
+    child.replaceData(0, child.nodeValue.length, this.text);
+};
+    
 // Creates the horizontal tab for the chapter.
 Chapter.prototype.renderTab = function() {
     // Insert tab
@@ -384,11 +443,42 @@ Chapter.prototype.renderTab = function() {
     this.tab.appendChild(document.createTextNode(this.text));
     this.showUnreadPagesCount();
     var chapter = this;
-    this.tab.addEventListener("click", function() {
+    this.tab.addEventListener("click", function(e) {
         store.waitForPageIO( function() {
             chapter.book.setActiveChapter(chapter);
         });
+        return false;
     });
+    this.tab.addEventListener("dblclick", function(e) {
+        chapter.enableTabEditing_();
+        return false;
+    });
+};
+
+Chapter.prototype.enableTabEditing_ = function() {
+    this.tab.removeChild(this.tab.firstChild);
+    var input = document.createElement("input");
+    input.type = "text";
+    input.value = this.text;
+    this.tab.insertBefore(input, this.tab.firstChild);
+    input.focus();
+    var chapter = this;
+    var fixeventhandler = {done: false};
+    var f = function() {
+        if (fixeventhandler.done) {
+            return;
+        }
+        fixeventhandler.done = true;
+        if (chapter.text != input.value) {
+            chapter.text = input.value;
+            var msg = {perma: chapter.book.id, op: chapter.text, type: "mutation", entity: chapter.id, field: "title"};
+            store.submit(msg, null, null, function(m) { m.entity = chapter.id });
+        }
+        chapter.tab.removeChild(input);
+        chapter.tab.insertBefore(document.createTextNode(chapter.text), chapter.tab.firstChild);
+    };
+    input.addEventListener("change", f);
+    input.addEventListener("blur", f);
 };
 
 Chapter.prototype.closeInbox_ = function(page) {
@@ -396,6 +486,15 @@ Chapter.prototype.closeInbox_ = function(page) {
     var items = document.getElementsByClassName("inboxitem");
     for( ; items.length > 0; ) {
         inboxdiv.removeChild(items[0]);
+    }
+};
+
+Chapter.prototype.redrawInbox = function(page) {
+    if (this.book.currentChapter != this || this.currentPage) {
+        return;
+    }
+    for (var i = 0; i < this.pages.length; i++) {
+        this.redrawInboxItem(this.pages[i]);
     }
 };
 
@@ -476,6 +575,18 @@ Chapter.prototype.renderInboxItem_ = function(page, div) {
     span.className = "inboxtime";
     span.innerText = "18:13";
     div.appendChild(span);
+    var chapters = page.getChapters();
+    for (var i = 0; i < chapters.length; i++) {
+        var c = chapters[i];
+        if (c.id == "inbox") {
+            continue;
+        }
+        var label = document.createElement("div");
+        label.className = "inboxlabel";
+        label.innerText = c.text;
+        label.style.backgroundColor = colorSchemes[c.colorScheme].color;
+        div.appendChild(label);
+    }
     div.appendChild(document.createTextNode(page.text));
     var chapter = this;
     if (isnew) {
@@ -648,6 +759,29 @@ Page.prototype.pageContentDiv_ = function() {
         return document.getElementById("pagecontent_fullscreen_scaled");
     }
     return document.getElementById("pagecontent");
+};
+
+Page.prototype.submitText = function(text) {
+    this.setText(text);
+    if (this.submitTimer) {
+        return;
+    }
+    var page = this;
+    var f = function() {
+        delete page.submitTimer;
+        var msg = {perma: page.chapter.book.id, op: page.text, type: "mutation", entity: page.id, field: "title"};
+        store.submit(msg, null, null, function(m) { m.entity = page.id });
+    };
+    this.submitTimer = setTimeout( f, 2000 );
+};
+
+Page.prototype.setText = function(text) {
+    this.text = text;
+    if (this.chapter != book.currentChapter || !this.vtab) {
+        return;
+    }
+    var child = this.vtab.firstChild;
+    child.replaceData(0, child.nodeValue.length, this.text);
 };
 
 Page.prototype.renderTab = function() {
@@ -918,6 +1052,16 @@ Page.prototype.applyLayout_ = function() {
     }
 };
 
+// Returns a list of chapters which contain the same permanode as this page
+Page.prototype.getChapters = function() {
+  // Find out in which chapter this page is
+  return this.chapter.book.getPages()[this.pageBlobRef];
+};
+
+// =================================================================
+// PageContent
+// =================================================================
+
 PageContent.prototype.rotate = function(rotation) {
     this.style.rotate = rotation;
     this.div.style["-webkit-transform"] = "rotate(" + rotation.toString() + "deg)";
@@ -996,20 +1140,34 @@ PageContent.prototype.applyStyle_ = function(style) {
             this.move(newstyle["left"], newstyle["top"]);
         }
         if (rotate) {
-            console.log("ROTATE");
             this.rotate(newstyle["rotate"]);
         }
     }
 };
 
-PageContent.prototype.mutate = function(mutation) {
+PageContent.prototype.mutate = function(mutation, islocal) {
     if (mutation.field == "text") {
         lightwave.ot.ExecuteOperation(this, mutation.op);
+        if (this.cssClass == "title") {
+            if ( islocal ) {
+                this.page.submitText(this.firstTextLine());
+            } else {
+                this.page.setText(this.firstTextLine());
+            }
+        }
     } else if (mutation.field == "style") {
         this.applyStyle_(mutation.op);
     } else {
         console.log("Err: Unknown mutation field: " + mutation.field)
     }
+};
+
+PageContent.prototype.firstTextLine = function() {
+    if ( !this.paragraphs) {
+        var parags = this.text.split("\n");
+        return parags[0];
+    }
+    return this.paragraphs[0].text;
 };
 
 PageContent.prototype.buildParagraphs = function() {
@@ -1125,4 +1283,15 @@ PageContent.prototype.End = function() {
         this.listener.viewRenderParagraph(this.mut_paragIndex);
     }
     delete this.tombStream;
-}
+};
+
+// ===============================================
+// Colors
+// ===============================================
+
+var colorSchemes = [
+    {"color":"#bbbbff"},
+    {"color":"#ff8888"},
+    {"color":"#99ff99"},
+    {"color":"#ffda70"}
+];

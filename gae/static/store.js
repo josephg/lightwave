@@ -183,13 +183,14 @@ store.openBook = function(perma) {
         for( var i = 0; i < response.blobs.length; i++ ) {
             store.addOTNode(response.blobs[i]);
         }
+        book.inbox.redrawInbox();
         store.loadUnread();
     };
 
     // Install event handlers
     var pi = store.get(perma);
     pi.onEntity = store.onBookEntity;
-
+    pi.onMutation = store.onBookMutation;
     store.httpPost("/private/open", JSON.stringify({perma:perma}), f);    
 };
 
@@ -306,6 +307,24 @@ store.onBookEntity = function(permaInfo, entity) {
         p.pageBlobRef = entity.content.page;
         c.addPage(p, false);
     }
+};
+
+store.onBookMutation = function(permaInfo, mutation) {
+    // This book is currently not open? -> do nothing
+    if (permaInfo.blobref != book.id) {
+        return
+    }
+    var chapter = book.getChapter(mutation.entity);
+    if (chapter) {
+        chapter.setText(mutation.op);
+        return;
+    }
+    var page = book.getPage(mutation.entity);
+    if ( page ) {
+        page.setText(mutation.op);
+        return;
+    }
+    console.log("ERR: Book entity could not be found");
 };
 
 store.onPageEntity = function(permaInfo, entity) {
@@ -428,6 +447,11 @@ store.markAsRead = function(perma, seq) {
     book.setPageUnread(perma, false);
 
     store.httpGet( "/private/markasread?perma=" + perma + "&seq=" + seq.toString(), null );
+};
+
+store.markAsArchived = function(page) {
+    page.chapter.removePage(page);
+    store.httpGet( "/private/markasarchived?perma=" + page.pageBlobRef, null );
 };
 
 store.getInboxItem = function(perma) {

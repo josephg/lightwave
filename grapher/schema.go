@@ -16,6 +16,7 @@ const (
 const (
   TransformationNone = iota
   TransformationMerge
+  TransformationLatest
   TransformationMax
   TransformationMin
 )

@@ -48,17 +48,18 @@ func init() {
       "application/x-lightwave-book": &grapher.FileSchema{ EntitySchemas: map[string]*grapher.EntitySchema {
 	  "application/x-lightwave-entity-chapter": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
 	      "after": &grapher.FieldSchema{ Type: grapher.TypeEntityBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
-	      "title": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
-	      "color": &grapher.FieldSchema{ Type: grapher.TypeInt64, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone } } },
+	      "title": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationLatest },
+	      "color": &grapher.FieldSchema{ Type: grapher.TypeInt64, ElementType: grapher.TypeNone, Transformation: grapher.TransformationLatest } } },
 	  "application/x-lightwave-entity-page": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
 	      "after": &grapher.FieldSchema{ Type: grapher.TypeEntityBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
-	      "title": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
+	      "title": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationLatest },
 	      "chapter": &grapher.FieldSchema{ Type: grapher.TypeEntityBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
 	      "page": &grapher.FieldSchema{ Type: grapher.TypePermaBlobRef, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone } } } } },
       "application/x-lightwave-page": &grapher.FileSchema{ EntitySchemas: map[string]*grapher.EntitySchema {
 	  "application/x-lightwave-entity-content": &grapher.EntitySchema { FieldSchemas: map[string]*grapher.FieldSchema {
 	      "layout": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationNone },
 	      "style": &grapher.FieldSchema{ Type: grapher.TypeMap, ElementType: grapher.TypeNone, Transformation: grapher.TransformationMerge },
+	      "cssclass": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationLatest },
 	      "text": &grapher.FieldSchema{ Type: grapher.TypeString, ElementType: grapher.TypeNone, Transformation: grapher.TransformationMerge } } } } } } }
 
   frontPageTmpl = template.New(nil)
@@ -78,6 +79,7 @@ func init() {
   http.HandleFunc("/private/invitebymail", handleInviteByMail)
   http.HandleFunc("/private/inboxitem", handleInboxItem)
   http.HandleFunc("/private/markasread", handleMarkAsRead)
+  http.HandleFunc("/private/markasarchived", handleMarkAsArchived)
 
   http.HandleFunc("/internal/notify", handleDelayedNotify)
 
@@ -337,13 +339,6 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  /*
-  cookie, err := r.Cookie("Session")
-  if err != nil {
-    sendError(w, r, "No session cookie")
-    return
-  } */   
-
   cookie := getSessionCookie(r)
   if cookie == nil {
     sendError(w, r, "No session cookie")
@@ -363,6 +358,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   s.SetGrapher(g)
   tf.NewTransformer(g)
   tf.NewMapTransformer(g)
+  tf.NewLatestTransformer(g)
   newChannelAPI(c, s, sessionid, false, g)
   
 //  log.Printf("Received: %v", string(blob))
@@ -384,7 +380,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
     }
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v, "knownuser":%v}`, perm.BlobRef(), perm.SequenceNumber(), knownuser )
   } else if otnode, ok := node.(grapher.OTNode); ok {
-    fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v}`, otnode.BlobRef(), otnode.SequenceNumber())
+    fmt.Fprintf(w, `{"ok":true, "blobref":"%v", "seq":%v, "time":%v}`, otnode.BlobRef(), otnode.SequenceNumber(), otnode.Time())
   } else if perma, ok := node.(grapher.PermaNode); ok {
     // Add to the inbox of the user who created the permanode
     b := inboxStruct{LastSeq: 0, Archived: true}
@@ -606,6 +602,19 @@ func markAsRead(c appengine.Context, perma_blobref string, seq int64) os.Error {
   return s.MarkInboxItemAsRead(perma_blobref, seq)
 }
 
+func handleMarkAsArchived(w http.ResponseWriter, r *http.Request) {
+  // TODO: In a transaction first read it, build max, then write it back
+  c := appengine.NewContext(r)
+  s := newStore(c)
+  perma_blobref := r.FormValue("perma")
+  err := s.MarkInboxItemAsArchived(perma_blobref)
+  if err != nil {
+    fmt.Fprintf(w, `{"ok":false, "error":"Failed accessing database"}`)
+  } else {
+    fmt.Fprintf(w, `{"ok":true}`)
+  }
+}
+
 type UnreadStruct struct {
   BloomFilter []byte
 }
@@ -759,8 +768,6 @@ func addToInbox(c appengine.Context, username string, perma_blobref string, seq 
   if err != nil || userid == "" {
     return err
   }
-  
-  log.Printf("INBOX for user %v", username)
   
   // Store it
   b := inboxStruct{LastSeq: seq}

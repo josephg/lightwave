@@ -587,10 +587,11 @@ LW.Editor.prototype.otCharCountFromTo_ = function(pos1, pos2) {
 LW.Editor.prototype.submitMutation = function(mut) {
     console.log("OP: " + JSON.stringify(mut));
     op = {"$t": mut};
-    // Apply locally
-    lightwave.ot.ExecuteOperation(this.entity, op);
+//    lightwave.ot.ExecuteOperation(this.entity, op);
     // Send mutation to the server
     var msg = {perma: this.entity.page.pageBlobRef, op: op, type: "mutation", entity: this.entity.id, field: this.entityField};
+    // Apply locally
+    this.entity.mutate(msg, true);
     var pageContent = this.entity;
     store.submit(msg, null, null, function(m) { m.entity = pageContent.id });
 };

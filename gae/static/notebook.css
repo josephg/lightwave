@@ -83,18 +83,6 @@ body.fullscreen {
   position:relative;
   min-height:900px;
 }
-.stack0 {
-   background-color: #bbbbff;
-}
-.stack1 {
-   background-color: #ff8888;
-}
-.stack2 {
-   background-color: #99ff99;
-}
-.stack3 {
-   background-color: #ffda70;
-}
 .pagecontrols {
   padding-top:8px;
   padding-bottom:6px;
@@ -157,6 +145,16 @@ body.fullscreen {
   min-width:40px;
   margin-left:16px;
   margin-right:6px;
+}
+.inboxlabel {
+    display:inline-block;
+    border-radius:2px;
+    border:0px solid black;
+    padding-right:2px;
+    padding-left:2px;
+    margin-right:3px;
+    font-size:12px;
+    color:black;
 }
 .page {
   background-color:white;
