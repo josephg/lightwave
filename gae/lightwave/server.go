@@ -245,6 +245,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch)
     if err != nil {
       sendError(w, r, "Internal server error")
+      return
     }
     // Repeat all blobs from this document.  
     s := newStore(c)
@@ -254,6 +255,7 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
     perma, err = g.Repeat(req.Perma, req.From)
     if err != nil {
       sendError(w, r, "Failed opening")
+      return
     }
     fmt.Fprintf(w, `{"ok":true, "blobs":[%v]}`, strings.Join(ch.messageBuffer, ","))
   } else {
@@ -326,6 +328,7 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
   _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch)
   if err != nil {
     sendError(w, r, "Internal server error")
+    return
   }
   // Done
   fmt.Fprint(w, `{"ok":true}`)

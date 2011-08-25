@@ -90,6 +90,7 @@ type API interface {
   // The permission passed in the parameter is already transformed
   Blob_Permission(perma PermaNode, permission PermissionNode)
   Blob_Entity(perma PermaNode, entity EntityNode)
+  Blob_DeleteEntity(perma PermaNode, entity DelEntityNode)
 }
 
 // The blob store as seen by the Grapher
@@ -264,6 +265,15 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     }
     n := &entityNode{entityBlobRef: blobref, entitySigner: schema.Signer, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies, mimeType: schema.MimeType, content: []byte(*schema.Content)}
     return n, nil
+  case "delentity":
+    if schema.PermaNode == "" {
+      return nil, os.NewError("Missing perma in entity")
+    }
+    if schema.Entity == "" {
+      return nil, os.NewError("Mutation is lacking an entity")
+    }
+    n := &delEntityNode{delBlobRef: blobref, delSigner: schema.Signer, entityBlobRef: schema.Entity, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies}
+    return n, nil
   case "mutation":
     if schema.Operation == nil {
       return nil, os.NewError("Mutation is lacking an operation")
@@ -419,6 +429,8 @@ func (self *Grapher) handleSchemaBlob(schema *superSchema, blobref string) (perm
       processed = self.handleMutation(perma, newnode.(*mutationNode))
     } else if _, ok := newnode.(*entityNode); ok {
       processed = self.handleEntity(perma, newnode.(*entityNode))
+    } else if _, ok := newnode.(*delEntityNode); ok {
+      processed = self.handleDelEntity(perma, newnode.(*delEntityNode))
     }
     
     // Store to persistent storage
@@ -462,6 +474,13 @@ func (self *Grapher) handleMutation(perma *permaNode, mut *mutationNode) bool {
 func (self *Grapher) handleEntity(perma *permaNode, entity *entityNode) bool {
   if self.api != nil {
     self.api.Blob_Entity(perma, entity)
+  }
+  return true
+}
+
+func (self *Grapher) handleDelEntity(perma *permaNode, delentity *delEntityNode) bool {
+  if self.api != nil {
+    self.api.Blob_DeleteEntity(perma, delentity)
   }
   return true
 }
@@ -686,6 +705,10 @@ func (self *Grapher) otNodeFromMap(perma_blobref string, data map[string]interfa
     e := &entityNode{}
     e.FromMap(perma_blobref, data)
     return e
+  case OTNode_DelEntity:
+    e := &delEntityNode{}
+    e.FromMap(perma_blobref, data)
+    return e
   default:
     panic("Malformed data")
   }
@@ -737,6 +760,9 @@ func (self *Grapher) Repeat(perma_blobref string, startWithSeqNumber int64) (per
     case *entityNode:
       e := n.(*entityNode)
       self.api.Blob_Entity(perma, e)
+    case *delEntityNode:
+      e := n.(*delEntityNode)
+      self.api.Blob_DeleteEntity(perma, e)
     default:
       panic("Unknown blob type")
     }
@@ -816,6 +842,36 @@ func (self *Grapher) CreateEntityBlob(perma_blobref string, mimeType string, con
   schema.Content = &c
   schema.MimeType = mimeType
   schema.Dependencies = deps
+  _, node, err = self.handleSchemaBlob(&schema, entityBlobRef)
+  return
+}
+
+func (self *Grapher) CreateDeleteEntityBlob(perma_blobref string, entity_blobref string) (node AbstractNode, err os.Error) {
+  perma, e := self.permaNode(perma_blobref)
+  if e != nil {
+    err = e
+    return
+  }  
+  _, e = self.entity(perma.BlobRef(), entity_blobref)
+  if e != nil {
+    err = e
+    return
+  }
+  deps := perma.frontier.IDs()
+  entityJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "entity": entity_blobref, "dep": deps}
+  entityBlob, err := json.Marshal(entityJson)
+  if err != nil {
+    panic(err.String())
+  }
+  entityBlob = append([]byte(`{"type":"delentity",`), entityBlob[1:]...)
+  log.Printf("Storing entity %v\n", string(entityBlob))
+  entityBlobRef := newBlobRef(entityBlob)
+  // Process it
+  var schema superSchema
+  schema.Type = "delentity"
+  schema.Signer = self.userID
+  schema.PermaNode = perma_blobref
+  schema.Entity = entity_blobref
   _, node, err = self.handleSchemaBlob(&schema, entityBlobRef)
   return
 }
@@ -1021,7 +1077,16 @@ func (self *Grapher) HandleClientBlob(blob []byte) (node AbstractNode, err os.Er
     }
     node, err = self.CreateMutationBlob(schema.PermaNode, schema.Entity, schema.Field, []byte(*schema.Operation), schema.ApplyAt)
     return
+  case "delentity":
+    if schema.Entity == "" {
+      return nil, os.NewError("Mutation is lacking an entity")
+    }
+    node, err = self.CreateDeleteEntityBlob(schema.PermaNode, schema.Entity)
+    return
   case "entity":
+    if schema.MimeType == "" {
+      return nil, os.NewError("Entity is lacking a mimetype")
+    }
     node, err = self.CreateEntityBlob(schema.PermaNode, schema.MimeType, []byte(*schema.Content))
     return
   case "permission":

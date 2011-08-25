@@ -112,6 +112,22 @@ func (self *channelAPI) Blob_Entity(perma grapher.PermaNode, entity grapher.Enti
   }
 }
 
+func (self *channelAPI) Blob_DeleteEntity(perma grapher.PermaNode, entity grapher.DelEntityNode) {
+  entityJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": entity.SequenceNumber(), "type":"delentity", "signer":entity.Signer(), "blobref": entity.BlobRef(), "entity": entity.EntityBlobRef()}
+  schema, err := json.Marshal(entityJson)
+  if err != nil {
+    panic(err.String())
+  }
+  if self.bufferOnly {
+    self.messageBuffer = append(self.messageBuffer, string(schema));
+  } else {
+    err = self.forwardToFollowers(perma.BlobRef(), string(schema))
+  }
+  if err != nil {
+    log.Printf("Err Forward: %v", err)
+  }
+}
+
 func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
   mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": mutation.SequenceNumber(), "type":"mutation", "signer":mutation.Signer(), "entity": mutation.EntityBlobRef(), "field": mutation.Field(), "time": mutation.Time()}
   switch mutation.Operation().(type) {

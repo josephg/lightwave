@@ -47,6 +47,8 @@ store.addOTNode = function(jmsg) {
         store.get(jmsg.perma).addMutation(jmsg);
     } else if (jmsg.type == "entity") {
         store.get(jmsg.perma).addEntity(jmsg);
+    } else if (jmsg.type == "delentity") {
+        store.get(jmsg.perma).addDeleteEntity(jmsg);
     } else if (jmsg.type == "keep") {
         store.get(jmsg.perma).addKeep(jmsg);
     } else if (jmsg.type == "permission") {
@@ -190,6 +192,7 @@ store.openBook = function(perma) {
     // Install event handlers
     var pi = store.get(perma);
     pi.onEntity = store.onBookEntity;
+    pi.onDeleteEntity = store.onBookDeleteEntity;
     pi.onMutation = store.onBookMutation;
     store.httpPost("/private/open", JSON.stringify({perma:perma}), f);    
 };
@@ -327,6 +330,20 @@ store.onBookMutation = function(permaInfo, mutation) {
     console.log("ERR: Book entity could not be found");
 };
 
+store.onBookDeleteEntity = function(permaInfo, del) {
+    console.log(JSON.stringify(del));
+    // This book is currently not open? -> do nothing
+    if (permaInfo.blobref != book.id) {
+        return
+    }
+    var page = book.getPage(del.entity);
+    if ( !page ) {
+        console.log("ERR: Book entity could not be found");
+        return;
+    }
+    page.chapter.removePage(page);
+};
+
 store.onPageEntity = function(permaInfo, entity) {
     // This book is currently not open? -> do nothing
     if ( !book || !book.currentChapter || !book.currentChapter.currentPage) {
@@ -450,7 +467,12 @@ store.markAsRead = function(perma, seq) {
 };
 
 store.markAsArchived = function(page) {
+    // Remove from the UI
     page.chapter.removePage(page);
+    // Remove from the book
+    var msg = {perma: page.chapter.book.id, type: "delentity", entity: page.id}
+    store.submit(msg, null, null, function(m) { m.entity = page.id });
+    // Archive
     store.httpGet( "/private/markasarchived?perma=" + page.pageBlobRef, null );
 };
 
@@ -667,6 +689,16 @@ PermaInfo.prototype.addEntity = function(entity) {
     }
     if (this.onEntity) {
         this.onEntity(this, entity);
+    }
+    this.dequeue_();
+};
+
+PermaInfo.prototype.addDeleteEntity = function(entity) {
+    if (!this.addOTNode_(entity)) {
+        return;
+    }
+    if (this.onDeleteEntity) {
+        this.onDeleteEntity(this, entity);
     }
     this.dequeue_();
 };

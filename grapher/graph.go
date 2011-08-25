@@ -14,6 +14,7 @@ const (
   OTNode_Keep = 1 + iota
   OTNode_Permission
   OTNode_Entity
+  OTNode_DelEntity
   OTNode_Mutation
   OTNode_Perma
 )
@@ -117,6 +118,74 @@ func (self *entityNode) FromMap(permaBlobRef string, m map[string]interface{}) {
   self.content = m["c"].([]byte)
   self.seqNumber = m["seq"].(int64)
   self.mimeType = m["mt"].(string)
+}
+
+type DelEntityNode interface {
+  OTNode
+  EntityBlobRef() string
+}
+
+type delEntityNode struct {
+  permaBlobRef string
+  delBlobRef string
+  entityBlobRef string
+  delSigner string
+  dependencies []string
+  seqNumber int64
+}
+
+func (self *delEntityNode) BlobRef() string {
+  return self.delBlobRef
+}
+
+func (self *delEntityNode) Signer() string {
+  return self.delSigner
+}
+
+func (self *delEntityNode) EntityBlobRef() string {
+  return self.entityBlobRef
+}
+
+func (self *delEntityNode) PermaBlobRef() string {
+  return self.permaBlobRef
+}
+
+func (self *delEntityNode) Dependencies() []string {
+  return self.dependencies
+}
+
+func (self *delEntityNode) SetSequenceNumber(seq int64) {
+  self.seqNumber = seq
+}
+
+func (self *delEntityNode) SequenceNumber() int64 {
+  return self.seqNumber
+}
+
+func (self *delEntityNode) Time() int64 {
+  return 0
+}
+
+func (self *delEntityNode) ToMap() map[string]interface{} {
+  m := make(map[string]interface{})
+  m["k"] = int64(OTNode_DelEntity)
+  m["b"] = self.delBlobRef
+  m["s"] = self.delSigner
+  m["e"] = self.entityBlobRef
+  m["dep"] = self.dependencies
+  m["seq"] = self.seqNumber
+  return m
+}
+
+func (self *delEntityNode) FromMap(permaBlobRef string, m map[string]interface{}) {
+  self.permaBlobRef = permaBlobRef
+  self.delBlobRef = m["b"].(string)
+  self.delSigner = m["s"].(string)
+  self.entityBlobRef = m["e"].(string)
+  if d, ok := m["dep"]; ok {
+    self.dependencies = d.([]string)
+  }
+  self.seqNumber = m["seq"].(int64)
 }
 
 type PermissionNode interface {
