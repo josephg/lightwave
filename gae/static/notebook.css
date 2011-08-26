@@ -78,16 +78,6 @@ body.fullscreen {
   padding-top:4px;
   padding-bottom:4px;
 }
-#pagecontrols {
-    padding-top:8px;
-    padding-bottom:6px;
-    padding-left:20px;
-    border:1px solid #777777;
-    border-top-left-radius:6px;
-    border-top-right-radius:6px;
-    background-color: #eaeae6;
-    border-bottom:1px solid #dedede;
-}
 #inbox {
     font-size:10.5pt;
     position:relative;
@@ -156,7 +146,19 @@ body.fullscreen {
     font-size:12px;
     color:black;
 }
+#pagecontrols {
+    overflow-x: hidden;
+    padding-top:8px;
+    padding-bottom:6px;
+    padding-left:20px;
+    border:1px solid #777777;
+    border-top-left-radius:6px;
+    border-top-right-radius:6px;
+    background-color: #eaeae6;
+    border-bottom:1px solid #dedede;
+}
 #page {
+    overflow-x: hidden;
     background-color:white;
     position:relative;
     min-height:720px;
@@ -175,17 +177,15 @@ body.fullscreen {
   padding:0px;
   margin:12px;
   margin-top:0px;
-  margin-right:162px;
 }
 #vtabs {
   position:relative;
   float:right;
-  left:161px;
   width:160px;
   margin:0px;
   padding:0px;
-  border:0px;
-  padding-top:8px;
+  padding-top:42px;
+  z-index:2;
 }
 .newvtab {
   position:relative;
@@ -324,6 +324,7 @@ body.fullscreen {
 }
 #share {
   position:relative;
+  background-color:white;
   float: right;
   border-left:1px solid #888888;
   margin-top:20px;
@@ -331,7 +332,7 @@ body.fullscreen {
   padding-left:2px;
   width:200px;
   min-height:300px;
-  left:161px;
+  z-index:2;
 }
 .friend {
   position:relative;
