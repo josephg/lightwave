@@ -450,9 +450,7 @@ function startPresentation(e) {
 
   var div = document.getElementById("pagecontent_fullscreen");
   div.style.display = "block";
-  var div = document.getElementById("tabs");
-  div.style.display = "none";
-  var div = document.getElementById("stack");
+ var div = document.getElementById("screen");
   div.style.display = "none";
   var body = document.getElementById("body");
   $(body).addClass("fullscreen");
@@ -483,9 +481,7 @@ function keydown(e) {
       book.currentChapter.currentPage.leaveFullScreen();
       var div = document.getElementById("pagecontent_fullscreen");
       div.style.display = "none";
-      var div = document.getElementById("tabs");
-      div.style.display = "block";
-      var div = document.getElementById("stack");
+     var div = document.getElementById("screen");
       div.style.display = "block";
    }
   }
