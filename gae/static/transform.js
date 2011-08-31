@@ -28,9 +28,6 @@ lightwave.ot.Stream.prototype.IsEOF = function() {
 }
 
 lightwave.ot.cloneOp = function(op) {
-    if (typeof(op) === "string") {
-        return op;
-    }
     var result = {};
     for(var key in op) {
         result[key] = op[key];
@@ -39,17 +36,17 @@ lightwave.ot.cloneOp = function(op) {
 };
 
 lightwave.ot.opLen = function(op) {
-    if (typeof(op) === "string") {
-        return op.length;
+    if (op["i"]) {
+        return op["i"].length;
     }
-    if (op["$d"]) {
-        return op["$d"];
+    if (op["d"]) {
+        return op["d"];
     }
-    if (op["$s"]) {
-        return op["$s"];
+    if (op["s"]) {
+        return op["s"];
     }
-    if (op["$t"]) {
-        return op["$t"];
+    if (op["t"]) {
+        return op["t"];
     }
     return 0;
 };
@@ -62,7 +59,7 @@ lightwave.ot.Stream.prototype.Read = function(len) {
     if (len == -1) {
         len = op_len - this.inside;
     }
-    if (typeof(op) == "string") {
+    if (typeof(op["i"]) != "undefined") {
         if (this.inside == 0 && len == op_len) {
             // Do nothing by intention
         } else {
@@ -78,12 +75,12 @@ lightwave.ot.Stream.prototype.Read = function(len) {
         this.inside = 0;
         this.pos++;
     }
-    if (op["$d"]) {
-        op["$d"] = len;
-    } else if (op["$s"]) {
-        op["$s"] = len;
-    } else if (op["$t"]) {
-        op["$t"] = len;
+    if (op["d"]) {
+        op["d"] = len;
+    } else if (op["s"]) {
+        op["s"] = len;
+    } else if (op["t"]) {
+        op["t"] = len;
     }
     return op;
 };
@@ -110,7 +107,7 @@ lightwave.ot.Reader.prototype.Read = function() {
     }
     // EOF Stream1?
     if (this.stream1.IsEOF()) {
-        if (typeof(this.stream2.ops[this.stream2.pos]) == "string" || this.stream2.ops[this.stream2.pos]["$t"]) {
+        if (this.stream2.ops[this.stream2.pos]["i"] || this.stream2.ops[this.stream2.pos]["t"]) {
             op2 = this.stream2.Read(-1);
             return [op1, op2, null];
         }
@@ -118,19 +115,19 @@ lightwave.ot.Reader.prototype.Read = function() {
     }
     // EOF Stream2?
     if (this.stream2.IsEOF()) {
-        if (typeof(this.stream1.ops[this.stream1.pos]) != "string" || this.stream1.ops[this.stream1.pos]["$t"]) {
+        if (this.stream1.ops[this.stream1.pos]["i"] || this.stream1.ops[this.stream1.pos]["t"]) {
             op1 = this.stream1.Read(-1);
             return [op1, op2, null];
         }            
         return [null, null, lightwave.NewError("Streams have different len")];
     }
     // Insert of stream1 goes first
-    if (typeof(this.stream1.ops[this.stream1.pos]) == "string" || this.stream2.ops[this.stream2.pos]["$t"]) {
+    if (this.stream1.ops[this.stream1.pos]["i"] || this.stream2.ops[this.stream2.pos]["t"]) {
         op1 = this.stream1.Read(-1);
         return [op1, op2, null];
     }
     // Insert of stream2 goes next
-    if (typeof(this.stream2.ops[this.stream2.pos]) == "string" || this.stream1.ops[this.stream1.pos]["$t"]) {
+    if (this.stream2.ops[this.stream2.pos]["i"] || this.stream1.ops[this.stream1.pos]["t"]) {
         op2 = this.stream2.Read(-1);
         return [op1, op2, null]
     }
@@ -146,70 +143,8 @@ lightwave.ot.Reader.prototype.Read = function() {
 // -------------------------------------------------------------------------
 // Transformation of mutations
 
-/*
-// Transforms one mutation against a sequence of mutations.
-lightwave.ot.TransformSeq = function(muts, mut) {
-    var tmuts, tmut, err;
-    tmut = mut.Clone();
-    for (var i = 0; i < muts.length; i++) {
-        var m = muts[i];
-        var result = lightwave.ot.Transform(m, tmut);
-        m = result[0];
-        tmut = result[1];
-        var err = result[2];
-        if (err) {
-            return [null, null, err];
-        }
-        tmuts = tmuts.concat(m);
-    }
-    return [tmuts, tmut, null];
-};
-
-// Transform two mutations
-lightwave.ot.Transform = function(m1, m2) {
-    var tm1 = m1.Clone();
-    var tm2 = m2.Clone();
-    var err;
-    if (m1.Site == m2.Site && m1.ID == m2.ID) {
-        // If the IDs are equal, return empty mutations
-    } else if (m1.Site < m2.Site || (m1.Site == m2.Site && m1.ID < m2.ID)) {
-        var result = lightwave.ot.transformOp(m1.Operation, m2.Operation);
-        tm1.Operation = result[0];
-        tm2.Operation = result[1];
-        err = result[2];
-    } else {
-        var result = lightwave.ot.transformOp(m2.Operation, m1.Operation);
-        tm2.Operation = result[0];
-        tm1.Operation = result[1];
-        err = result[2];
-    }
-    return [tm1, tm2, err];
-};
-*/
-
-lightwave.ot.TransformOperation = function(op1, op2) {
-    var top1 = lightwave.ot.cloneOp(op1);
-    var top2 = lightwave.ot.cloneOp(op2);
-    var err;
-    if (!op1 || !op2) {
-        return [top1, top2, err];
-    }
-    if (op1["$t"]) {
-        if (!op2["$t"]) {
-            return [top1, top2, lightwave.ot.NewError("Mismtached operations")];
-        }
-        var result = lightwave.ot.transformOps(op1["$t"], op2["$t"], lightwave.ot.transformStringOp);
-        top1["$t"] = result[0];
-        top2["$t"] = result[1];
-        err = result[2];
-    } else {
-        err = lightwave.NewError("Operation kind not allowed in this place")
-    }
-    return [top1, top2, err];
-};
-
 // Transform a sequence of operations
-lightwave.ot.transformOps = function(ops1, ops2, f) {
+lightwave.ot.transformStringOperations = function(ops1, ops2, f) {
     var tops1 = [], tops2 = [], err;
     var reader = new lightwave.ot.Reader(new lightwave.ot.Stream(ops1), new lightwave.ot.Stream(ops2));
     while (true) {
@@ -221,7 +156,7 @@ lightwave.ot.transformOps = function(ops1, ops2, f) {
         if (err || (!op1 && !op2)) {
             return [tops1, tops2, err];
         }
-        result = f(op1, op2)
+        result = ligthwave.ot.transformStringOperation(op1, op2)
         op1 = result[0];
         op2 = result[1];
         err = result[2];
@@ -239,23 +174,22 @@ lightwave.ot.transformOps = function(ops1, ops2, f) {
 };
 
 // Transform a pair of operations that works on a string
-lightwave.ot.transformStringOp = function(op1, op2) {
-    console.log("Transform string")
+lightwave.ot.transformStringOperation = function(op1, op2) {
     var top1, top2, err;
-    if (op1 && typeof(op1) != "string" && !op1["$d"] && !op1["$s"] && !op1["$t"]) {
+    if (op1 && !op1["i"] && !op1["d"] && !op1["s"] && !op1["t"]) {
         err = lightwave.NewError("Operation not allowed in a string");
         return [top1, top2, err];
     }
-    if (op2 && typeof(op2) != "string" && !op2["$d"] && !op2["$s"] && !op2["$t"]) {
+    if (op2 && !op2["i"] && !op2["d"] && !op2["s"] && !op2["t"]) {
         err = lightwave.NewError("Operation not allowed in a string");
         return [top1, top2, err];
     }
     top1 = op1;
     top2 = op2;
-    if (op1 && (typeof(op1) == "string" || op1["$t"])) {
-        top2 = {"$s": lightwave.ot.opLen(op1)};
-    } else if (op2 && (typeof(op2) == "string" || op2["$t"])) {
-        top1 = {"$s": lightwave.ot.opLen(op2)};
+    if (op1 && (op1["i"] || op1["t"])) {
+        top2 = {"s": lightwave.ot.opLen(op1)};
+    } else if (op2 && (op2["i"] || op2["t"])) {
+        top1 = {"s": lightwave.ot.opLen(op2)};
     }
     return [top1, top2, err];
 };

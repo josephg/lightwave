@@ -202,6 +202,7 @@ type permissionNode struct {
   permissionSigner string
   action int
   seqNumber int64
+  dependencies []string
 }
 
 func (self *permissionNode) BlobRef() string {
@@ -217,7 +218,7 @@ func (self *permissionNode) PermaBlobRef() string {
 }
 
 func (self *permissionNode) Dependencies() []string {
-  return self.Deps
+  return self.dependencies
 }
 
 func (self *permissionNode) SetSequenceNumber(seq int64) {
@@ -270,7 +271,7 @@ func (self *permissionNode) ToMap() map[string]interface{} {
   m["ha"] = ha
   m["hd"] = hd
   m["hid"] = hid
-  m["dep"] = self.Deps
+  m["dep"] = self.dependencies
   m["seq"] = self.seqNumber
   return m
 }
@@ -294,7 +295,7 @@ func (self *permissionNode) FromMap(permaBlobRef string, m map[string]interface{
     }
   }
   if d, ok := m["dep"]; ok {
-    self.Deps = d.([]string)
+    self.dependencies = d.([]string)
   }
   self.seqNumber = m["seq"].(int64)
 }

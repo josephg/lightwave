@@ -28,6 +28,8 @@ import (
 var (
   frontPageTmpl    *template.Template
   frontPageTmplErr os.Error
+  appLoginPageTmpl    *template.Template
+  appLoginPageTmplErr os.Error
 )
 
 type channelStruct struct {
@@ -69,6 +71,13 @@ func init() {
     return
   }
 
+  appLoginPageTmpl = template.New(nil)
+  appLoginPageTmpl.SetDelims("{{", "}}")
+  if err := appLoginPageTmpl.ParseFile("applogin.html"); err != nil {
+    appLoginPageTmplErr = fmt.Errorf("tmpl.ParseFile failed: %v", err)
+    return
+  }
+
   http.HandleFunc("/", handleFrontPage)
   http.HandleFunc("/private/submit", handleSubmit)
   http.HandleFunc("/private/open", handleOpen)
@@ -80,6 +89,7 @@ func init() {
   http.HandleFunc("/private/inboxitem", handleInboxItem)
   http.HandleFunc("/private/markasread", handleMarkAsRead)
   http.HandleFunc("/private/markasarchived", handleMarkAsArchived)
+  http.HandleFunc("/applogin", handleAppLogin)
 
   http.HandleFunc("/internal/notify", handleDelayedNotify)
 
@@ -185,6 +195,7 @@ func handleDisconnect(w http.ResponseWriter, r *http.Request) {
     log.Printf("Err: %v", err)
     return
   }
+
 }
 
 type openCloseRequest struct {
@@ -468,6 +479,38 @@ func handleListInbox(w http.ResponseWriter, r *http.Request) {
 type inviteByMail struct {
   Content string "content"
   UserName string "user"
+}
+
+func handleAppLogin(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  u := user.Current(c)
+  // User logged in?
+  if u == nil {
+    url, _ := user.LoginURL(c, "/applogin")
+    http.Redirect(w, r, url, 307)
+    return
+  }
+
+  cookies := ""
+  for _, c := range r.Cookie {
+      if len(cookies) != 0 {
+	cookies += ";"
+      }
+      cookies += c.Raw
+  }
+  log.Printf("Cookies %v", cookies)
+  
+  logout_url, _ := user.LogoutURL(c, "/")
+  b := new(bytes.Buffer)
+  data := map[string]interface{}{"logout": logout_url, "cookies": cookies}
+  if err := appLoginPageTmpl.Execute(b, data); err != nil {
+    w.WriteHeader(http.StatusInternalServerError) // 500
+    fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
+    return
+  }
+
+  w.Header().Set("Content-Length", strconv.Itoa(b.Len()))
+  b.WriteTo(w)
 }
 
 func handleInviteByMail(w http.ResponseWriter, r *http.Request) {

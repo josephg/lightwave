@@ -1146,7 +1146,7 @@ PageContent.prototype.applyStyle_ = function(style) {
 
 PageContent.prototype.mutate = function(mutation, islocal) {
     if (mutation.field == "text") {
-        lightwave.ot.ExecuteOperation(this, mutation.op);
+        lightwave.ot.executeStringOperations(this, mutation.op);
         if (this.cssClass == "title") {
             if ( islocal ) {
                 this.page.submitText(this.firstTextLine());
@@ -1172,27 +1172,32 @@ PageContent.prototype.firstTextLine = function() {
 PageContent.prototype.buildParagraphs = function() {
     this.paragraphs = [];
     var parags = this.text.split("\n");
-    for( var i = 0; i < parags.length; i++ ) {
+    // Start by 1 because the string starts with a newline char.
+    for( var i = 1; i < parags.length; i++ ) {
         var p = parags[i];
-        this.paragraphs.push({text:p});
+        this.paragraphs.push({text:p, style:{}});
     }
 };
 
 PageContent.prototype.Begin = function() {
     this.tombStream = new lightwave.ot.TombStream(this.tombs);
     this.mut_charCount = 0;
-    this.mut_paragIndex = 0;
+    this.mut_paragIndex = -1;
     this.mut_paragModified = false;
 };
 
-PageContent.prototype.InsertChars = function(str) {
+PageContent.prototype.InsertChars = function(str, style) {
+    if (this.mut_paragIndex == -1) {
+        console.log("ERR: Cannot insert at position 0");
+        return;
+    }
     this.tombStream.InsertChars(str.length);
     var parags = str.split("\n");
     for( var i = 0; i < parags.length; i++ ) {
         var s = parags[i];
         var parag = this.paragraphs[this.mut_paragIndex];
         if ( i > 0 ) {
-            this.paragraphs.splice(this.mut_paragIndex + 1, 0, {text:s + parag.text.substring(this.mut_charCount, parag.text.length)});
+            this.paragraphs.splice(this.mut_paragIndex + 1, 0, {text:s + parag.text.substring(this.mut_charCount, parag.text.length), style: style ? style : {} });
             parag.text = parag.text.substring(0, this.mut_charCount);
             if ( this.listener ) {
                 this.listener.viewRenderParagraph(this.mut_paragIndex);
@@ -1214,6 +1219,10 @@ PageContent.prototype.InsertTombs = function(count) {
 };
 
 PageContent.prototype.Delete = function(count) {
+    if (this.mut_paragIndex == -1) {
+        console.log("ERR: Cannot delete at position 0");
+        return;
+    }
     var burried, err;
     var result = this.tombStream.Bury(count);
     burried = result[0];
@@ -1244,7 +1253,8 @@ PageContent.prototype.Delete = function(count) {
     return null;
 };
 
-PageContent.prototype.Skip = function(count) {
+PageContent.prototype.Skip = function(count, style) {
+    var s = decodeStyle(style);
     var chars = 0, err;
     var result = this.tombStream.Skip(count);
     chars = result[0];
@@ -1253,9 +1263,12 @@ PageContent.prototype.Skip = function(count) {
         return err;
     }
     while( chars > 0 ) {
-        var parag = this.paragraphs[this.mut_paragIndex];
+        var len = 0;
+        if (this.mut_paragIndex != -1 ) {
+            len = this.paragraphs[this.mut_paragIndex].text.length;
+        }
         // Skip a line break?
-        if (this.mut_charCount == parag.text.length) {
+        if (this.mut_charCount == len) {
             if (this.mut_paragModified) {
                 if (this.listener) {
                     this.listener.viewRenderParagraph(this.mut_paragIndex);
@@ -1265,8 +1278,12 @@ PageContent.prototype.Skip = function(count) {
             this.mut_paragIndex++;
             this.mut_charCount = 0;
             chars--;
+            if (s) {
+                this.paragraphs[this.mut_paragIndex].style = mergeStyles(this.paragraphs[this.mut_paragIndex].style, s);
+                this.mut_paragModified = true;
+            }
         } else {
-            var l = Math.min(chars, parag.text.length - this.mut_charCount);
+            var l = Math.min(chars, len - this.mut_charCount);
             chars -= l;
             this.mut_charCount += l;
         }
@@ -1294,3 +1311,35 @@ var colorSchemes = [
     {"color":"#99ff99"},
     {"color":"#ffda70"}
 ];
+
+// ===============================================
+// Helper functions
+// ===============================================
+
+function decodeStyle(style) {
+    if (!style || style == "") {
+        return null;
+    }
+    var result = { };
+    var lst = style.split(";");
+    for( var i = 0; i < lst.length; i++ ) {
+        lst2 = lst[i].split(":");
+        if (lst2.length == 2) {
+            result[lst2[0]] = lst2[1];
+        }
+    }
+    return result;
+}
+
+function mergeStyles(style1, style2) {
+    if (!style1) {
+        return style2;
+    }
+    if (!style2) {
+        return style1;
+    }
+    for (var key in style2) {
+        style1[key] = style2[key];
+    }
+    return style1;
+}

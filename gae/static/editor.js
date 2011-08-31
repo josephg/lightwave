@@ -32,7 +32,12 @@ LW.Editor = function(entity, entityField, dom) {
     for( var i = 0; i < this.entity.paragraphs.length; ++i ) {
         this.renderParagraph(i, true);
     }
+
+    var editor = this;
+    this.dom.addEventListener("focus", function() { LW.Editor.currentEditor = editor; })
 };
+
+LW.Editor.currentEditor = null;
 
 /**
  * Handle non-printable keys, i.e. backspace or delete.
@@ -65,12 +70,12 @@ LW.Editor.prototype.keydown = function(e) {
         var mut = [];
         var count = this.otCharCountTo_(pos) - 1;
         if ( count > 0 ) {
-            mut.push({"$s": count});
+            mut.push({"s": count});
         }
-        mut.push({"$d": 1});
+        mut.push({"d": 1});
         count = this.otCharCountFrom_(pos);
         if ( count > 0 ) {
-            mut.push({"$s": count});
+            mut.push({"s": count});
         }
 
         // Delete a linebreak?
@@ -121,12 +126,12 @@ LW.Editor.prototype.keydown = function(e) {
         var mut = [];
         var count = this.otCharCountTo_(pos);
         if ( count > 0 ) {
-            mut.push({"$s": count});
+            mut.push({"s": count});
         }
-        mut.push({"$d": 1});
+        mut.push({"d": 1});
         count = this.otCharCountFrom_(pos) - 1;
         if ( count > 0 ) {
-            mut.push({"$s": count});
+            mut.push({"s": count});
         }
 
         var parag = this.entity.paragrapgs[pos.paragIndex];
@@ -200,12 +205,12 @@ LW.Editor.prototype.keypress = function(e) {
         var mut = [];
         var count = this.otCharCountTo_(pos);
         if ( count > 0 ) {
-            mut.push({"$s": count});
+            mut.push({"s": count});
         }
-        mut.push("\n");
+        mut.push({"i":"\n"});
         count = this.otCharCountFrom_(pos);
         if ( count > 0 ) {
-            mut.push({"$s": count});
+            mut.push({"s": count});
         }
         this.submitMutation(mut);
 
@@ -219,12 +224,12 @@ LW.Editor.prototype.keypress = function(e) {
     var mut = [];
     var count = this.otCharCountTo_(pos);
     if ( count > 0 ) {
-        mut.push({"$s": count});
+        mut.push({"s": count});
     }
-    mut.push(String.fromCharCode(e.charCode));
+    mut.push({"i":String.fromCharCode(e.charCode)});
     count = this.otCharCountFrom_(pos);
     if ( count > 0 ) {
-        mut.push({"$s": count});
+        mut.push({"s": count});
     }
 
     // First character? Needs some special treatment -> let the OT logic do it
@@ -312,6 +317,39 @@ LW.Editor.prototype.keyup = function(e) {
     }
 };
 
+LW.Editor.prototype.setParagLayout = function(cssclass) {
+    this.dom.focus();
+    var sel = window.getSelection();
+    var selDom = sel.anchorNode;
+    var selOffset = sel.anchorOffset;
+        
+    if ( sel.isCollapsed ) {
+        var pos = this.getTextPosition( selDom, selOffset );
+        console.log("Set layout " + cssclass);
+        var parag = this.entity.paragraphs[pos.paragIndex];
+        parag.style["cssclass"] = cssclass;
+        var dom = this.dom.children[pos.paragIndex];
+        dom.className = "lw_line parag-" + cssclass;
+        // Modify the newline character in front of the paragraph text
+        var before = 0;
+        if (pos.paragIndex > 0) {
+            var before = this.otCharCountTo_({paragIndex: pos.paragIndex, charCount: 0}) - 1;
+        }
+        var after = this.otCharCountFrom_({paragIndex: pos.paragIndex, charCount: 0});
+        var mut = [];
+        if ( before > 0 ) {
+            mut.push({"s": before});
+        }
+        mut.push({"s": 1, "f": "cssclass:" + cssclass});
+        if ( after > 0 ) {
+            mut.push({"s": after});
+        }
+        this.submitMutation(mut);
+    } else {
+        // TODO
+    }
+};
+
 /**
  * TODO!!!
  * Changes the style of the current selection.
@@ -365,12 +403,12 @@ LW.Editor.prototype.deleteSelection = function(showCursor) {
     var mut = [];
     var count = this.otCharCountTo_(pos1);
     if ( count > 0 ) {
-        mut.push({"$s": count});
+        mut.push({"s": count});
     }
-    mut.push({"$d": this.otCharCountFromTo_(pos1, pos2)});
+    mut.push({"d": this.otCharCountFromTo_(pos1, pos2)});
     count = this.otCharCountFrom_(pos2);
     if ( count > 0 ) {
-        mut.push({"$s": count});
+        mut.push({"s": count});
     }
     this.submitMutation(mut);
 
@@ -421,7 +459,7 @@ LW.Editor.prototype.getTextPosition = function(selDom, selOffset) {
         charCount = this.domCharCount(selDom);
     // Count the number of characters in front of selDom and find the line DIV
     var line = selDom;
-    while( line.nodeType == 3 || line.className != "lw_line" ) {
+    while( line.nodeType == 3 || !$(line).hasClass("lw_line") ) {
         var p = line.previousSibling;
         while( p ) {
             charCount += this.domCharCount(p);
@@ -495,13 +533,20 @@ LW.Editor.prototype.renderParagraph = function(paragIndex, insert) {
         // TODO: Format
         html = esc(parag.text);
     }
+    var cssclass = "lw_line";
+    if (parag.style["cssclass"]) {
+        cssclass = cssclass + " parag-" + parag.style["cssclass"];
+    }
+    var dom;
     if ( insert ) {
-        var dom = document.createElement("p");
-        dom.className = "lw_line";
+        dom = document.createElement("p");
+        dom.className = cssclass;
         dom.innerHTML = html;
         this.dom.insertBefore(dom, this.dom.children[paragIndex]);
     } else {
-        this.dom.children[paragIndex].innerHTML = html;
+        var dom = this.dom.children[paragIndex];
+        dom.innerHTML = html;
+        dom.className = cssclass;
     }
 };
 
@@ -531,7 +576,7 @@ LW.Editor.prototype.otCharCountTo_ = function(pos) {
     for( var i = 0; i < pos.paragIndex; ++i ) {
         count += this.entity.paragraphs[i].text.length + 1;
     }
-    count += pos.charCount;
+    count += 1 + pos.charCount;
     var tombStream = new lightwave.ot.TombStream(this.entity.tombs);
     var tmp = tombStream.SkipChars(count);
     if (tmp[1]) {
@@ -545,7 +590,7 @@ LW.Editor.prototype.otCharCountFrom_ = function(pos) {
     for( var i = 0; i < pos.paragIndex; ++i ) {
         count += this.entity.paragraphs[i].text.length + 1;
     }
-    count += pos.charCount;
+    count += 1 + pos.charCount;
     var tombStream = new lightwave.ot.TombStream(this.entity.tombs);
     var tmp = tombStream.SkipChars(count);
     if (tmp[1]) {
@@ -559,7 +604,7 @@ LW.Editor.prototype.otCharCountFromTo_ = function(pos1, pos2) {
     for( var i = 0; i < pos1.paragIndex; ++i ) {
         count += this.entity.paragraphs[i].text.length + 1;
     }
-    count += pos1.charCount;
+    count += 1 + pos1.charCount;
     var tombStream = new lightwave.ot.TombStream(this.entity.tombs);
     var tmp = tombStream.SkipChars(count);
     if (tmp[1]) {
@@ -574,7 +619,7 @@ LW.Editor.prototype.otCharCountFromTo_ = function(pos1, pos2) {
         for( var i = pos1.paragIndex + 1; i < pos2.paragIndex; ++i ) {
             count += this.entity.paragraphs[i].text.length + 1;
         }
-        count += pos2.charCount;
+        count += 1 + pos2.charCount;
     }
     var tmp = tombStream.SkipChars(count);
     if (tmp[1]) {
@@ -586,10 +631,8 @@ LW.Editor.prototype.otCharCountFromTo_ = function(pos1, pos2) {
 
 LW.Editor.prototype.submitMutation = function(mut) {
     console.log("OP: " + JSON.stringify(mut));
-    op = {"$t": mut};
-//    lightwave.ot.ExecuteOperation(this.entity, op);
     // Send mutation to the server
-    var msg = {perma: this.entity.page.pageBlobRef, op: op, type: "mutation", entity: this.entity.id, field: this.entityField};
+    var msg = {perma: this.entity.page.pageBlobRef, op: mut, type: "mutation", entity: this.entity.id, field: this.entityField};
     // Apply locally
     this.entity.mutate(msg, true);
     var pageContent = this.entity;

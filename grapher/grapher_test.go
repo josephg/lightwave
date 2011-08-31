@@ -12,8 +12,36 @@ import (
 var schema = &Schema{ FileSchemas: map[string]*FileSchema {
     "application/x-test-file": &FileSchema{ EntitySchemas: map[string]*EntitySchema {
 	"application/x-test-entity": &EntitySchema { FieldSchemas: map[string]*FieldSchema {
-	    "text": &FieldSchema{ Type: TypeString, ElementType: TypeNone, Transformation: TransformationString } } } } } } }
-	  
+	    "text": &FieldSchema{ Type: TypeString, ElementType: TypeNone, Transformation: TransformationMerge } } } } } } }
+
+type dummyTransformer struct {
+  grapher *Grapher
+}
+
+func newDummyTransformer(grapher *Grapher) Transformer {
+  t := &dummyTransformer{grapher: grapher}
+  grapher.AddTransformer(t)
+  return t
+}
+
+func (self *dummyTransformer) Kind() int {
+  return TransformationMerge
+}
+
+func (self *dummyTransformer) DataType() int {
+  return TypeString
+}
+
+// Interface towards the Grapher
+func (self *dummyTransformer) TransformClientMutation(mutation MutationNode, rollback <-chan MutationNode) (err os.Error) {
+  return
+}
+
+// Interface towards the Grapher
+func (self *dummyTransformer) TransformMutation(mutation MutationNode, rollback <-chan MutationNode, concurrent []string) (err os.Error) {
+  return
+}
+
 type dummyFederation struct {
 }
 
@@ -34,9 +62,9 @@ func TestPermanode(t *testing.T) {
   grapher := NewGrapher("a@b", schema, s, sg, &dummyFederation{})
   s.AddListener(grapher)
   
-  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "mimetype":"application/x-test-file"}`)
   blobref1 := store.NewBlobRef(blob1)
-  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "mimetype":"application/x-test-file", "perma":"` + blobref1 + `"}`)
   blobref2 := store.NewBlobRef(blob2)
   
   s.StoreBlob(blob1, blobref1)
@@ -60,9 +88,9 @@ func TestPermanode2(t *testing.T) {
   grapher := NewGrapher("a@b", schema, s, sg, &dummyFederation{})
   s.AddListener(grapher)
 
-  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "mimetype":"application/x-test-file", "random":"perma1abc"}`)
   blobref1 := store.NewBlobRef(blob1)
-  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma2xyz", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob2 := []byte(`{"type":"permanode", "signer":"a@b", "mimetype":"application/x-test-file", "random":"perma2xyz", "perma":"` + blobref1 + `"}`)
   blobref2 := store.NewBlobRef(blob2)
 
   // Insert them in the wrong order
@@ -87,12 +115,13 @@ func TestPermanode3(t *testing.T) {
   sg := NewSimpleGraphStore()
   grapher := NewGrapher("a@b", schema, s, sg, fed)
   s.AddListener(grapher)
-
-  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "random":"perma1abc"}`)
+  newDummyTransformer(grapher)
+  
+  blob1 := []byte(`{"type":"permanode", "signer":"a@b", "mimetype":"application/x-test-file", "random":"perma1abc"}`)
   blobref1 := store.NewBlobRef(blob1)
   blob1b := []byte(`{"type":"keep", "signer":"a@b", "perma":"` + blobref1 + `"}`)
   blobref1b := store.NewBlobRef(blob1b)
-  blob1c := []byte(`{"type":"entity", "signer":"a@b", "perma":"` + blobref1 + `", "content":"", "dep":["` + blobref1b + `"]}`)
+  blob1c := []byte(`{"type":"entity", "signer":"a@b", "perma":"` + blobref1 + `", "mimetype": "application/x-test-entity", "content":"", "dep":["` + blobref1b + `"]}`)
   blobref1c := store.NewBlobRef(blob1c)
   blob2 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "dep":["` + blobref1c + `"], "op":{"$t":["Hello World"]}, "entity":"` + blobref1c + `", "field":"text"}`)
   blobref2 := store.NewBlobRef(blob2)
@@ -101,10 +130,10 @@ func TestPermanode3(t *testing.T) {
   blob4 := []byte(`{"type":"mutation", "signer":"a@b", "perma":"` + blobref1 + `", "dep":["` + blobref2 + `"], "op":{"$t":[{"$s":11}, "??"]}, "entity":"` + blobref1c + `", "field":"text"}`)
   blobref4 := store.NewBlobRef(blob4)
   // Grant user foo@bar read access. At the same time this serves as an invitation
-  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "signer":"a@b", "action":"invite", "dep":["` + blobref4 + `"], "user":"foo@bar", "allow":` + fmt.Sprintf("%v", Perm_Read) + `, "deny":0, "t":"2006-01-02T15:04:05+07:00"}`)
+  blob5 := []byte(`{"type":"permission", "perma":"` + blobref1 + `", "signer":"a@b", "action":"invite", "dep":["` + blobref4 + `"], "user":"foo@bar", "allow":` + fmt.Sprintf("%v", Perm_Read) + `, "deny":0}`)
   blobref5 := store.NewBlobRef(blob5)
   // Fake a keep
-  blob7 := []byte(`{"type":"keep", "signer":"foo@bar", "permission":"` + blobref5 + `", "perma":"` + blobref1 + `", "t":"2006-01-02T15:04:05+07:00"}`)
+  blob7 := []byte(`{"type":"keep", "signer":"foo@bar", "permission":"` + blobref5 + `", "perma":"` + blobref1 + `"}`)
   blobref7 := store.NewBlobRef(blob7)
 
   s.StoreBlob(blob1, blobref1)

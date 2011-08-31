@@ -35,7 +35,10 @@ func NewSimpleBlobStore() *SimpleBlobStore {
       var b blobStruct
       b = <-s.channel
       for _, l := range s.listeners {
-	l.HandleBlob(b.data, b.ref)
+	err := l.HandleBlob(b.data, b.ref)
+	if err != nil {
+	  log.Printf("Err: %v", err)
+	}
       }    
     }
   }

@@ -11,7 +11,7 @@
 <script type="text/javascript" src="compose.js"></script>
 <script type="text/javascript" src="apply.js"></script>
 <script type="text/javascript" src="editor.js"></script>
-<title>Notebook</title>
+<title>Lightwave</title>
 <style type="text/css">
 </style>
 </head>
@@ -32,17 +32,29 @@
     <div id="vtabs">
       <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
     </div>
-    <div id="pagecontrols"><div class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div class="ui-toolbar"><button onclick="pageArchive()">Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button id="page-further-actions-button" onclick="showPageFurtherAtions()">Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div></div>    
-   <div id="page">
-     <div id="share">
+    <div id="pagecontrols"><div style="position:relative; top:10px" class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div style="position:relative; top:10px" class="ui-toolbar"><button onclick="pageArchive()">Archive</button><button>Delete</button></div> <div style="position:relative; top:10px" class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button id="page-further-actions-button" onclick="showPageFurtherAtions()">Further actions &#x25be;</button></div> <div style="position:relative; top:10px" class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div>
+      <div style="float:right; position:relative; top:10px; margin-left:20px;"><input id="pagesearchbox" class="ui-searchbox ui-searchbox-inactive" value="Search" type="text" onfocus="pageSearchboxFocus()" onkeypress="onPageSearchboxKeyPress(event)"></div>
+      <div id="paraglayouts">
+        <button onclick="setParagLayout('head1')" class="paraglayout"><div class="paraglayout-sample parag-head1"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Heading 1</div></button>
+        <button onclick="setParagLayout('head2')" class="paraglayout"><div class="paraglayout-sample parag-head2"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Heading 2</div></button>
+        <button onclick="setParagLayout('standard')" class="paraglayout"><div class="paraglayout-sample parag-standard"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Standard</div></button>
+        <button onclick="setParagLayout('emph')" class="paraglayout"><div class="paraglayout-sample parag-emph"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Emphasize</div></button>
+      </div>
+    </div>    
+    <div id="page">
+      <div id="share">
         <div class="sharebutton" onclick="showShare(event)">Share this page &#x25be;</div>
         <div class="invitations" id="invitations">Invitations sent</div>
       </div>
       <div id="pagecontent"></div>
     </div>
+    <div id="searchpage" style="display:none">Search goes here ...
+    </div>
   </div>
   <div id="inbox">
-    <div class="inboxcontrols"><div class="ui-toolbar"><button><input id="inboxui-select-all" onclick="inboxSelectAll(event)" type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxArchive()">Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showInboxLabels(event)">Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxMarkAsRead()">Mark as read</button></div></div>
+    <div class="inboxcontrols"><div class="ui-toolbar"><button><input id="inboxui-select-all" onclick="inboxSelectAll(event)" type="checkbox">&#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxArchive()">Archive</button><button>Delete</button></div> <div class="ui-toolbar"><button onclick="showInboxLabels(event)">Label &#x25be;</button><button>Further actions &#x25be;</button></div> <div class="ui-toolbar"><button onclick="inboxMarkAsRead()">Mark as read</button></div>
+      <div style="float:right; position:relative; margin-right:20px;"><input id="inboxsearchbox" class="ui-searchbox ui-searchbox-inactive" value="Search" type="text" onfocus="inboxSearchboxFocus()"></div>
+    </div>
     </div>
   </div>
 </div>
@@ -94,9 +106,9 @@ function newChapter() {
   var p = new Page(c, "tmp-" + Math.random().toString(), "Untitled Page", null)
   p.pageBlobRef = "tmp-page" + Math.random().toString();
   c.addPage(p);
-  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "Page title", "title", {});
+  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "\nPage title", "title", {});
   p.addContent(co1);
-  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text", "textbox", {});
+  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "\nSome text", "textbox", {});
   p.addContent(co2);
   p.addFollower(new Follower(p, store.userID));
   book.addChapter(c, true);
@@ -115,9 +127,9 @@ function newPage() {
   }
   p.pageBlobRef = "tmp-page" + Math.random().toString();
   book.currentChapter.addPage(p, true);
-  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "Page title", "title", {});
+  var co1 = new PageContent(p, "tmp-title" + Math.random().toString(), "\nPage title", "title", {});
   p.addContent(co1);
-  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "Some text " + Math.random().toString(), "textbox", {});
+  var co2 = new PageContent(p, "tmp-content" + Math.random().toString(), "\nSome text " + Math.random().toString(), "textbox", {});
   p.addContent(co2);
   p.addFollower(new Follower(p, store.userID));
   store.createPage(p);
@@ -291,6 +303,55 @@ function showPageFurtherAtions(e) {
   dlg.style.top = (pos[1] + 2 + targ.offsetHeight).toString() + "px";
 }
 
+function inboxCopyToChapter_(chapter) {
+  // Get all selected pages
+  var selpages = book.inbox.getSelectedPages();
+  for( var i = 0; i < selpages.length; i++) {
+    if (!chapter.getPageByPageBlobRef(selpages[i].pageBlobRef)) {
+      copyPageToChapter(selpages[i], chapter);
+    }
+  }
+  book.inbox.redrawInbox();
+}
+
+function inboxDeleteFromChapter_(chapter) {
+  // Get all selected pages
+  var selpages = book.inbox.getSelectedPages();
+  for( var i = 0; i < selpages.length; i++) {
+    var p = chapter.getPageByPageBlobRef(selpages[i].pageBlobRef);
+    if (p) {
+      store.deletePageEntity(p);
+    }
+  }
+  book.inbox.redrawInbox();
+}
+
+function showInboxLabels_toggle(e, chapter) {
+  // Update the UI
+  var span;
+  if (!e) var e = window.event;
+  if (e.target) span = e.target;
+  else if (e.srcElement) span = e.srcElement;
+  span = span.firstChild;
+  if (span.nodeType == 3) // defeat Safari bug
+    span = span.parentNode;
+  if ($(span).hasClass("tristate-1")) {
+    span.innerHTML = "&#x25ce; ";
+    span.className = "tristate-2";
+    inboxDeleteFromChapter_(chapter);
+  } else if ($(span).hasClass("tristate-2")) {
+    span.innerHTML = "&#x25c9; ";
+    span.className = "tristate-1";
+    inboxCopyToChapter_(chapter);
+  } else {
+    span.innerHTML = "&#x25c9; ";
+    span.className = "tristate-1";
+    inboxCopyToChapter_(chapter);
+  }
+  e.cancelBubble = true;
+  if (e.stopPropagation) e.stopPropagation();
+}
+
 function showInboxLabels(e) {
   var targ;
   if (!e) var e = window.event;
@@ -315,14 +376,14 @@ function showInboxLabels(e) {
     var lst = pages[selpages[i].pageBlobRef];
     for( var k = 0; k < lst.length; k++) {
       var c = lst[k];
-      chapters[c.id] = chapters[c.id] + 1;
+      chapters[c.id] = (chapters[c.id] > 0 ? chapters[c.id] : 0) + 1;
     }
- }
-
+  }
+  // Start at 1 to skip the inbox
   for ( var i = 1; i < book.chapters.length; i++) {
     var chapter = book.chapters[i];
     var div = document.createElement("div");
-    div.className = "stack" + chapter.colorScheme.toString();
+    div.style.backgroundColor = colorSchemes[chapter.colorScheme].color;
     var input = document.createElement("span");
     if (chapters[chapter.id] == selpages.length) {
       input.className = "tristate-1";
@@ -334,27 +395,11 @@ function showInboxLabels(e) {
       input.className = "tristate-3";
       input.innerHTML = "&#x25ac; ";
     }
-    div.addEventListener("click", function(e) {
-      var span;
-      if (!e) var e = window.event;
-      if (e.target) span = e.target;
-      else if (e.srcElement) span = e.srcElement;
-      span = span.firstChild;
-      if (span.nodeType == 3) // defeat Safari bug
-        span = span.parentNode;
-      if ($(span).hasClass("tristate-1")) {
-        span.innerHTML = "&#x25ce; ";
-        span.className = "tristate-2";
-      } else if ($(span).hasClass("tristate-2")) {
-        span.innerHTML = "&#x25c9; ";
-        span.className = "tristate-1";
-      } else {
-        span.innerHTML = "&#x25c9; ";
-        span.className = "tristate-1";
-      }
-      e.cancelBubble = true;
-      if (e.stopPropagation) e.stopPropagation();
-    });
+    div.addEventListener("click", function(ch) {
+      return function(e) {
+        showInboxLabels_toggle(e, ch);
+      };
+    }(chapter));
     div.appendChild(input);
     div.appendChild(document.createTextNode(chapter.text));
     listbox.appendChild(div);
@@ -394,7 +439,7 @@ function showPageLabels(e) {
   for ( var i = 1; i < book.chapters.length; i++) {
     var chapter = book.chapters[i];
     var div = document.createElement("div");
-    div.className = "stack" + chapter.colorScheme.toString();
+    div.style.backgroundColor = colorSchemes[chapter.colorScheme].color;
     var input = document.createElement("input");
     input.type = "checkbox";
     if (chapters[chapter.id]) {
@@ -404,8 +449,14 @@ function showPageLabels(e) {
       if (checkbox.checked) {
         copyPageToChapter(page, ch);
       } else {
-      // TODO
+        var p = ch.getPageByPageBlobRef(page.pageBlobRef);
+        if (p) {
+          store.deletePageEntity(p);
+        }
       }
+      if (!e) var e = window.event;
+      e.cancelBubble = true;
+      if (e.stopPropagation) e.stopPropagation();
     };}(input, chapter));
     div.addEventListener("click", function(checkbox, ch) { return function(e) {
       if (!checkbox.checked) {
@@ -413,7 +464,10 @@ function showPageLabels(e) {
         copyPageToChapter(page, ch);
       } else {
         checkbox.checked = false;
-      // TODO
+        var p = ch.getPageByPageBlobRef(page.pageBlobRef);
+        if (p) {
+          store.deletePageEntity(p);
+        }
       }
       if (!e) var e = window.event;
       e.cancelBubble = true;
@@ -427,6 +481,54 @@ function showPageLabels(e) {
   dlg.style.visibility = "visible";
   dlg.style.left = (pos[0] + 2).toString() + "px";
   dlg.style.top = (pos[1] + 2 + targ.offsetHeight).toString() + "px";
+}
+
+function setParagLayout(layout) {
+  var e = LW.Editor.currentEditor;
+  if (!e) {
+    return;
+  }
+  e.setParagLayout(layout);
+}
+
+function pageSearchboxFocus() {
+  var box = document.getElementById("pagesearchbox");
+  if ($(box).hasClass("ui-searchbox-inactive")) {
+    $(box).removeClass("ui-searchbox-inactive");
+    box.value = "";
+  }
+}
+
+function inboxSearchboxFocus() {
+  var box = document.getElementById("inboxsearchbox");
+  if ($(box).hasClass("ui-searchbox-inactive")) {
+    $(box).removeClass("ui-searchbox-inactive");
+    box.value = "";
+  }
+}
+
+function showPageSearch() {
+  var pagediv = document.getElementById("page");
+  pagediv.style.display = "none";
+  var ldiv = document.getElementById("paraglayouts");
+  ldiv.style.display = "none";
+  var searchdiv = document.getElementById("searchpage");
+  searchdiv.style.display = "block";
+}
+
+function hidePageSearch() {
+  var pagediv = document.getElementById("page");
+  pagediv.style.display = "block";
+  var ldiv = document.getElementById("paraglayouts");
+  ldiv.style.display = "block";
+  var searchdiv = document.getElementById("searchpage");
+  searchdiv.style.display = "none";
+}
+
+function onPageSearchboxKeyPress(e) {
+  if ( e.keyIdentifier == "Enter" || e.keyCode == 13) {
+    showPageSearch();
+  }
 }
 
 function showWaitScreen() {

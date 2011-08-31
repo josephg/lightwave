@@ -17,8 +17,9 @@ import (
 // --------------------------------------------------
 // Struct to deserialize any schema blob
 
+/*
 type superSchema struct {
-  // Allowed value are "permanode", "mutation", "permission", "keep"
+  // Allowed value are "permanode", "mutation", "permission", "keep", "entity", "delentity"
   Type    string "type"
   Time    int64 "t"
   Signer string "signer"
@@ -42,6 +43,34 @@ type superSchema struct {
   Field string "field"
   
   Content *json.RawMessage "content"
+}
+*/
+
+type superSchema struct {
+  // Allowed value are "permanode", "mutation", "permission", "keep", "entity", "delentity"
+  Type    string `json:"type"`
+  Time    int64 `json:"t"`
+  Signer string `json:"signer"`
+  
+  Permission string `json:"permission"`
+  Action string `json:"action"`
+//  Sig    string "sig"
+
+  Dependencies []string `json:"dep"`
+  
+  Random string `json:"random"`
+  PermaNode string `json:"perma"`
+  MimeType string `json:"mimetype"`
+  
+  User string `json:"user"`
+  Allow int `json:"allow"`
+  Deny int `json:"deny"`
+  
+  Operation *json.RawMessage `json:"op"`
+  Entity string `json:"entity"`
+  Field string `json:"field"`
+  
+  Content *json.RawMessage `json:"content"`
 }
 
 // -----------------------------------------------------
@@ -297,7 +326,7 @@ func (self *Grapher) decodeNode(schema *superSchema, blobref string) (result int
     if schema.PermaNode == "" {
       return nil, os.NewError("Missing perma in permission")
     }
-    n := &permissionNode{permissionSigner: schema.Signer, permaBlobRef: schema.PermaNode, ot.Permission: ot.Permission{ID: blobref, Deps: schema.Dependencies}}
+    n := &permissionNode{permissionSigner: schema.Signer, permaBlobRef: schema.PermaNode, dependencies: schema.Dependencies, ot.Permission: ot.Permission{ID: blobref}}
     n.User = schema.User
     n.Allow = schema.Allow
     n.Deny = schema.Deny
@@ -531,7 +560,7 @@ func (self *Grapher) checkKeep(perma *permaNode, keep *keepNode) bool {
   }
   // Permission has not yet been received or processed? -> enqueue
   if perm == nil {
-    log.Printf("Permission is not yet applied for the keep")
+    log.Printf("Permission %v is not yet applied for the keep", keep.permissionBlobRef)
     self.enqueue(perma.BlobRef(), keep.BlobRef(), []string{keep.permissionBlobRef})
     // The user accepted the invitation?
     if keep.Signer() == self.userID {
@@ -930,7 +959,7 @@ func (self *Grapher) CreatePermissionBlob(perma_blobref string, applyAtSeqNumber
   return
 }
 
-func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref string, field string, operation interface{}, applyAtSeqNumber int64) (node AbstractNode, err os.Error) {
+func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref string, field string, operation []byte, applyAtSeqNumber int64) (node AbstractNode, err os.Error) {
   perma, e := self.permaNode(perma_blobref)
   if e != nil {
     err = e
@@ -971,8 +1000,8 @@ func (self *Grapher) CreateMutationBlob(perma_blobref string, entity_blobref str
   mutJson := map[string]interface{}{ "signer": self.userID, "perma":perma_blobref, "dep": deps, "entity":entity_blobref, "field":field}
   var msg json.RawMessage
   switch m.operation.(type) {
-  case ot.Operation:
-    op := m.operation.(ot.Operation) // The following two lines work around a problem in GO/JSON
+  case ot.StringOperation:
+    op := m.operation.(ot.StringOperation) // The following two lines work around a problem in GO/JSON
     op_bytes, err := op.MarshalJSON()
     if err != nil {
       return nil, err

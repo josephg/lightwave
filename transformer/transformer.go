@@ -17,20 +17,19 @@ func NewTransformer(grapher *grapher.Grapher) grapher.Transformer {
   return t
 }
 
-func decodeMutation(mutation grapher.MutationNode) (mut ot.Mutation, err os.Error) {
+func decodeMutation(mutation grapher.MutationNode) (mut ot.StringMutation, err os.Error) {
   switch mutation.Operation().(type) {
-  case ot.Operation:
-    mut.Operation = mutation.Operation().(ot.Operation)
+  case []ot.StringOperation:
+    mut.Operations = mutation.Operation().([]ot.StringOperation)
   case []byte:
-    err = mut.Operation.UnmarshalJSON(mutation.Operation().([]byte))
+    mut.Operations, err = ot.UnmarshalStringOperations(mutation.Operation().([]byte))
     if err != nil {
       return mut, err
     }
   default:
     panic("Unknown OT operation")
   }
-  mut.ID = mutation.BlobRef()
-  mut.Site = mutation.Signer()
+  mut.Id = mutation.Signer() + "/" + mutation.BlobRef()
   return
 }
 
@@ -50,7 +49,7 @@ func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, 
     return e
   }
 
-  muts := make([]ot.Mutation, 0)
+  muts := make([]ot.StringMutation, 0)
   for m := range rollback {
     m3, e := decodeMutation(m)
     if e != nil {
@@ -61,13 +60,13 @@ func (self *transformer) TransformClientMutation(mutation grapher.MutationNode, 
   }
     
   // Transform 'mut' to apply it locally
-  _, pmut, err := ot.TransformSeq(muts, mut)
+  _, pmut, err := transformSeq(muts, mut)
   if err != nil {
     log.Printf("TRANSFORM ERR: %v", err)
     return err
   }
   
-  bytes, err := pmut.Operation.MarshalJSON()
+  bytes, err := ot.MarshalStringOperations(pmut.Operations)
   if err != nil {
     panic("Cannot serlialize")
   }
@@ -82,7 +81,7 @@ func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollba
     return e
   }
 
-  muts := make([]ot.Mutation, 0)
+  muts := make([]ot.StringMutation, 0)
   for m := range rollback {
     m3, e := decodeMutation(m)
     if e != nil {
@@ -96,7 +95,7 @@ func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollba
   for _, p := range concurrent {
     prune[p] = true
   }
-  pmuts, e := ot.PruneMutationSeq(muts, prune)
+  pmuts, e := ot.PruneStringMutationSeq(muts, prune)
   if e != nil {
     log.Printf("Prune Error: %v\n", e)
     return e
@@ -105,8 +104,8 @@ func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollba
   // Transform 'mut' to apply it locally
   pmuts = append(pmuts, mut)
   for _, m := range muts {
-    if m.ID != pmuts[0].ID {
-      pmuts, _, err = ot.TransformSeq(pmuts, m)
+    if m.Id != pmuts[0].Id {
+      pmuts, _, err = transformSeq(pmuts, m)
       if err != nil {
 	log.Printf("TRANSFORM ERR: %v", err)
 	return
@@ -116,10 +115,36 @@ func (self *transformer) TransformMutation(mutation grapher.MutationNode, rollba
     }
   }
   
-  bytes, err := pmuts[0].Operation.MarshalJSON()
+  bytes, err := ot.MarshalStringOperations(pmuts[0].Operations)
   if err != nil {
     panic("Cannot serlialize")
   }
   mutation.SetOperation(bytes)
   return nil  
+}
+
+// Transform two mutations
+func transform(m1 ot.StringMutation, m2 ot.StringMutation) (tm1 ot.StringMutation, tm2 ot.StringMutation, err os.Error) {
+  tm1 = m1
+  tm2 = m2
+  if m1.Id == m2.Id {
+  // If the IDs are equal, return empty mutations
+  } else if m1.Id < m2.Id {
+    tm1.Operations, tm2.Operations, err = ot.TransformStringOperations(m1.Operations, m2.Operations)
+  } else {
+    tm2.Operations, tm1.Operations, err = ot.TransformStringOperations(m2.Operations, m1.Operations)
+  }
+  return
+}
+
+func transformSeq(muts []ot.StringMutation, mut ot.StringMutation) (tmuts []ot.StringMutation, tmut ot.StringMutation, err os.Error) {
+  tmut = mut
+  for _, m := range muts {
+    m, tmut, err = transform(m, tmut)
+    if err != nil {
+      return
+    }
+    tmuts = append(tmuts, m)
+  }
+  return
 }

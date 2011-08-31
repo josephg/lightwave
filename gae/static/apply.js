@@ -193,42 +193,25 @@ lightwave.ot.TombStream.prototype.SkipToEnd = function() {
 // ------------------------------------------------------------------
 // Execution of mutations
 
-lightwave.ot.ExecuteOperation = function(input, op) {
-    var err;
-    if (!op) {
-        return [input, null];
-    }
-    if (op["$t"]) {
-        if (!input) {
-            input = new lightwave.ot.SimpleText("");
-        }
-        err = lightwave.ot.executeString(input, op["$t"]);
-        return [input, err];
-    } else {
-        err = lightwave.NewError("Apply: Operation not allowed in this place")
-    }
-    return [input, err];
-};
-
 // Apply a mutation to the input document
-lightwave.ot.executeString = function(text, ops) {
+lightwave.ot.executeStringOperations = function(text, ops) {
     text.Begin();
     for ( var i = 0; i < ops.length; i++) {
         var op = ops[i];
         if (!op ) {
             continue;
-        } else if (typeof(op) == "string") {
-	    text.InsertChars(op);
-        } else if ( op["$t"] ) {
-	    text.InsertTombs(op["$t"]);
-        } else if ( op["$s"] ) {
-            var err = text.Skip(op["$s"]);
+        } else if ( op["i"] ) {
+            text.InsertChars(op["i"], op["f"]);
+        } else if ( op["t"] ) {
+	    text.InsertTombs(op["t"]);
+        } else if ( op["s"] ) {
+            var err = text.Skip(op["s"], op["f"]);
             if (err) {
                 text.End();
                 return err;
             }
-        } else if ( op["$d"] ) {
-            var err = text.Delete(op["$d"]);
+        } else if ( op["d"] ) {
+            var err = text.Delete(op["d"]);
             if (err) {
                 text.End();
                 return err;

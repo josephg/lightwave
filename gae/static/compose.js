@@ -22,7 +22,7 @@ lightwave.ot.composeReader.prototype.Read = function() {
     }
     // EOF Stream1?
     if (this.stream1.IsEOF()) {
-        if (typeof(this.stream2.ops[this.stream2.pos]) != "string") {
+        if (!this.stream2.ops[this.stream2.pos]["i"]) {
             err = lightwave.NewError("Streams have different length (1)")
             return [null, null, err];
         }
@@ -31,7 +31,7 @@ lightwave.ot.composeReader.prototype.Read = function() {
     }
     // EOF Stream2?
     if (this.stream2.IsEOF()) {
-        if (typeof(this.stream1.ops[this.stream1.pos]) != "string") {
+        if (!this.stream1.ops[this.stream1.pos]["i"]) {
             err = os.NewError("Streams have different length (2)")
             return [null, null, err];
         }
@@ -39,7 +39,7 @@ lightwave.ot.composeReader.prototype.Read = function() {
         return [first, second, null];
     }
     // Insert of stream1 goes first
-    if (typeof(this.stream1.ops[this.stream1.pos]) == "string") {
+    if (this.stream1.ops[this.stream1.pos]["i"]) {
         second = this.stream1.Read(-1)
         return [first, second, null];
     }
@@ -52,29 +52,7 @@ lightwave.ot.composeReader.prototype.Read = function() {
     return [first, second, null];
 };
 
-lightwave.ot.ComposeOperation = function(first, second) {
-    var result, err;
-    if (!first && !second) {
-        return [null, null];
-    }
-    if (!first) {
-        result = second;
-    } else if (!second) {
-        result = first
-    } else if (first["$t"]) {
-        if (!second["$t"]) {
-            return [null, lightwave.ot.NewError("Mismtached operations")];
-        }
-        var tmp = lightwave.ot.composeOps(first["$t"], second["$t"], lightwave.ot.composeStringOp);
-        result = {"$t": tmp[0]};
-        err = tmp[1];
-    } else {
-        err = lightwave.NewError("Operation kind not allowed in this place")
-    }
-    return [result, err];
-};
-
-lightwave.ot.composeOps = function(first, second, f) {
+lightwave.ot.composeStringOperations = function(first, second, f) {
     var result = [], err;
     var reader = new lightwave.ot.composeReader(new lightwave.ot.Stream(second), new lightwave.ot.Stream(first));
     while (true) {
@@ -88,7 +66,7 @@ lightwave.ot.composeOps = function(first, second, f) {
             return [result, err];
         }
         var op;
-        var tmp = f(first_op, second_op);
+        var tmp = lightwave.ot.composeStringOperation(first_op, second_op);
         op = tmp[0];
         err = tmp[1];
         if (err) {
@@ -101,24 +79,24 @@ lightwave.ot.composeOps = function(first, second, f) {
     return [result, err];
 };
 
-lightwave.ot.composeStringOp = function(first, second) {
+lightwave.ot.composeStringOperation = function(first, second) {
     var result, err;
-    if (first && typeof(first) != "string" && !first["$s"] && !first["$d"] && !first["$t"]) {
+    if (first && !first["i"] && !first["s"] && !first["d"] && !first["t"]) {
         err = os.NewError("Operation not allowed in a string: first");
         return [result, err];
     }
-    if (second && typeof(second) != "string" && !second["$s"] && !second["$d"] && !second["$t"]) {
+    if (second && !second["i"] && !second["s"] && !second["d"] && !second["t"]) {
         err = os.NewError("Operation not allowed in a string: second");
         return [result, err];
     }
-    if (first && (typeof(first) == "string" || first["$t"])) {
-        if (second && second["$d"]) {
-            result = {"$t": lightwave.ot.opLen(first)}; // Insert a tomb in the composed op
+    if (first && (first["i"] || first["t"])) {
+        if (second && second["d"]) {
+            result = {"t": lightwave.ot.opLen(first)}; // Insert a tomb in the composed op
         } else {
             result = first;
         }
-    } else if (first && first["$d"]) {
-        result = {"$d": lightwave.ot.opLen(first)};
+    } else if (first && first["d"]) {
+        result = {"d": lightwave.ot.opLen(first)};
     } else {
         result = second;
     }

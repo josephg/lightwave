@@ -131,8 +131,8 @@ func (self *channelAPI) Blob_DeleteEntity(perma grapher.PermaNode, entity graphe
 func (self* channelAPI) Blob_Mutation(perma grapher.PermaNode, mutation grapher.MutationNode) {
   mutJson := map[string]interface{}{ "perma":perma.BlobRef(), "seq": mutation.SequenceNumber(), "type":"mutation", "signer":mutation.Signer(), "entity": mutation.EntityBlobRef(), "field": mutation.Field(), "time": mutation.Time()}
   switch mutation.Operation().(type) {
-  case ot.Operation:
-    op := mutation.Operation().(ot.Operation) // The following two lines work around a problem in GO/JSON
+  case []ot.StringOperation:
+    op := mutation.Operation().([]ot.StringOperation) // The following two lines work around a problem in GO/JSON
     mutJson["op"] = &op
   case []byte:
     msg := json.RawMessage(mutation.Operation().([]byte))

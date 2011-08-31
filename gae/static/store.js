@@ -467,13 +467,17 @@ store.markAsRead = function(perma, seq) {
 };
 
 store.markAsArchived = function(page) {
+    store.deletePageEntity(page);
+    // Archive
+    store.httpGet( "/private/markasarchived?perma=" + page.pageBlobRef, null );
+};
+
+store.deletePageEntity = function(page) {
     // Remove from the UI
     page.chapter.removePage(page);
     // Remove from the book
     var msg = {perma: page.chapter.book.id, type: "delentity", entity: page.id}
     store.submit(msg, null, null, function(m) { m.entity = page.id });
-    // Archive
-    store.httpGet( "/private/markasarchived?perma=" + page.pageBlobRef, null );
 };
 
 store.getInboxItem = function(perma) {
@@ -616,7 +620,7 @@ PermaInfo.prototype.enqueueOut = function(msg) {
     if ( msg.blob.type == "mutation" && this.outqueue.length > 0) {
         var last = this.outqueue[this.outqueue.length - 1];
         if (last.blob.type == "mutation" && last.blob.entity == msg.blob.entity) {
-            var tmp = lightwave.ot.ComposeOperation(last.blob.op, msg.blob.op);
+            var tmp = lightwave.ot.composeStringOperations(last.blob.op, msg.blob.op);
             if (!tmp[1]) { // If compress succeeds. It should always, just being defensive here
                 last.blob.op = tmp[0];
                 return;
@@ -660,7 +664,7 @@ PermaInfo.prototype.transformIncoming = function(blob) {
     // Transform
     for( var i = 0; i < lst.length; i++) {
         var client = lst[i];
-        var tmp = lightwave.ot.TransformOperation(blob.op, client.op);
+        var tmp = lightwave.ot.transformStringOperations(blob.op, client.op);
         if (tmp[2]) {
             console.log("ERR transforming: " + tmp[2]);
             // In this case we should turn this into the empty transformation

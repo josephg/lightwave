@@ -144,114 +144,55 @@ button:active {
 /* -------- TOOLBARS -------- */
 
 .ui-toolbar {
-/*
-	background-color:#EDEDED;
-	background-image:-moz-linear-gradient(top, White, #DDDDDD);
-	background-image:-webkit-gradient(linear, left top, left bottom, from(White), to(#DDDDDD));
-*/	
-/*	border-top-style:solid;
-	border-top-width:1px;
-	border-top-color:#AAAAAA;
-	border-bottom-style:solid;
-	border-bottom-width:1px;
-	border-bottom-color:#AAAAAA;
-*/	
 	margin-left:0px;
 	margin-right:0px;
 	padding:0px;
-/*	height:22px; */
 	vertical-align:middle;
 	display:inline-block;
-	/*white-space:nowrap;*/
 	overflow:hidden;
 }
 .ui-toolbar button {
-	border:1px solid #aaaaaa;
-	border-left-color:transparent;
-	border-left-style:solid;
-	border-left-width:0px;
-	        border-radius:0px;
-	   -moz-border-radius:0px;
-	-webkit-border-radius:0px;
-	
-	        box-shadow:none;
-	   -moz-box-shadow:none;
-	-webkit-box-shadow:none;
-	
-	padding-left:8px;
-	padding-right:8px;
-	margin:0px;
-	height:24px;
-	
-	vertical-align:middle;
+    border:1px solid #aaaaaa;
+    border-left-color:transparent;
+    border-left-style:solid;
+    border-left-width:0px;
+    border-radius:0px;
+    -moz-border-radius:0px;
+    -webkit-border-radius:0px;
+    
+    box-shadow:none;
+    -moz-box-shadow:none;
+    -webkit-box-shadow:none;
+    
+    padding-left:8px;
+    padding-right:8px;
+    margin:0px;
+    height:24px;
+    
+    vertical-align:middle;
 }
 .ui-toolbar button:first-child {
-        border-left:1px solid #aaaaaa;
-        border-top-left-radius:4px;
-        border-bottom-left-radius:4px;
+    border-left:1px solid #aaaaaa;
+    border-top-left-radius:4px;
+    border-bottom-left-radius:4px;
 }
 .ui-toolbar button:last-child {
-        border-right:1px solid #aaaaaa;
-        border-top-right-radius:4px;
-        border-bottom-right-radius:4px;
+    border-right:1px solid #aaaaaa;
+    border-top-right-radius:4px;
+    border-bottom-right-radius:4px;
 }
 .ui-toolbar button:hover {
-	border-color:#7F7F7F;
+    border-color:#7F7F7F;
 }
 .ui-toolbar button:active {
-	background-color:#C3C3C3;
-	background-image:-moz-linear-gradient(top, #AAAAAA, #DBDBDB);
-	background-image:-webkit-gradient(linear, left top, left bottom, from(#AAAAAA), to(#DBDBDB));
+    background-color:#C3C3C3;
+    background-image:-moz-linear-gradient(top, #AAAAAA, #DBDBDB);
+    background-image:-webkit-gradient(linear, left top, left bottom, from(#AAAAAA), to(#DBDBDB));
 }
 .ui-toolbar button.dropdown-open {
     color: white;
     background-image:-moz-linear-gradient(top, #777777, #979797);
     background-image:-webkit-gradient(linear, left top, left bottom, from(#777777), to(#979797));
-}
-
-.ui-small-toolbar {
-	border-style:solid;
-	border-width:1px;
-	border-color:#A4B0C0;
-	border-radius:3px;
-	-moz-border-radius:3px;
-	-webkit-border-radius:3px;
-	
-	        box-shadow:4px 4px 8px rgba(0,0,0,0.3);
-	   -moz-box-shadow:4px 4px 8px rgba(0,0,0,0.3);
-	-webkit-box-shadow:4px 4px 8px rgba(0,0,0,0.3);
-	
-	background-color:#F1F6FC;
-	background:-moz-linear-gradient(top, #FAFBFD, #FAFBFD, #FAFBFD, #FAFBFD, #FAFBFD, #ECF1F8, #ECF1F8, #ECF1F8, #ECF1F8);
-	/* there is probably a better way to do this in FF, but I am too lazy to learn most -moz- things that are different from -webkit- :P */
-	background:-webkit-gradient(linear, 0% 52%, 0% 53%, from(#FAFBFD), to(#ECF1F8));
-	
-	display:inline-block;
-	
-	padding-left:4px;
-	padding-right:4px;
-	padding-top:2px;
-	padding-bottom:-1px;
-	margin-right:2px;
-	
-	opacity:0.25;
-	transition-property:opacity;
-	transition-duration:0.25s;
-	transition-timing-function:ease-in-out;
-	-o-transition-property:opacity;
-	-o-transition-duration:0.25s;
-	-o-transition-timing-function:ease-in-out;
-	-moz-transition-property:opacity;
-	-moz-transition-duration:0.25s;
-	-moz-transition-timing-function:ease-in-out;
-	-webkit-transition-property:opacity;
-	-webkit-transition-duration:0.25s;
-	-webkit-transition-timing-function:ease-in-out;
-	
-	cursor:default;
-}
-.ui-small-toolbar:hover {
-	opacity:1;
 }
 
 /* -------- OTHER STUFF -------- */
@@ -286,11 +227,18 @@ button:active {
 	        box-sizing:border-box;
 	   -moz-box-sizing:border-box;
 	-webkit-box-sizing:border-box;
+    outline:none;
+    margin-left:1px;
+    margin-right:1px;
+}
+.ui-searchbox-inactive {
+    color:#888888;
 }
 .ui-searchbox:focus {
-	border-width:2px;
-	border-color:green;
-	outline-color:transparent;
+    border-width:2px;
+    border-color:green;
+    margin-left:0px;
+    margin-right:0px;
 }
 
 .ui-drop-down {
