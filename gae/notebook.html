@@ -26,19 +26,20 @@
 <div id="screen">
   <div id="tabs">
     <div class="tab newtab inactivetab" style="left:-3px" onclick="newChapter()">+</div>
+    <a href="/logout" style="text-decoration:none; float:right">Logout</a>
   </div>
   <div id="tabsborder">&nbsp;</div>
   <div id="pagecontainer" style="display:none">
     <div id="vtabs">
-      <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>      
-    </div>
+      <div class="newvtab" id="newvtab" onclick="newPage()">New page &#x25be;</div>
+   </div>
     <div id="pagecontrols"><div style="position:relative; top:10px" class="ui-toolbar"><button id="back-to-inbox" onclick="showInbox()">&#x21a9;</button></div> <div style="position:relative; top:10px" class="ui-toolbar"><button onclick="pageArchive()">Archive</button><button>Delete</button></div> <div style="position:relative; top:10px" class="ui-toolbar"><button onclick="showPageLabels(event)">Label &#x25be;</button><button id="page-further-actions-button" onclick="showPageFurtherAtions()">Further actions &#x25be;</button></div> <div style="position:relative; top:10px" class="ui-toolbar"><button onclick="pageMarkAsRead()">Mark as read</button></div>
       <div style="float:right; position:relative; top:10px; margin-left:20px;"><input id="pagesearchbox" class="ui-searchbox ui-searchbox-inactive" value="Search" type="text" onfocus="pageSearchboxFocus()" onkeypress="onPageSearchboxKeyPress(event)"></div>
       <div id="paraglayouts">
-        <button onclick="setParagLayout('head1')" class="paraglayout"><div class="paraglayout-sample parag-head1"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Heading 1</div></button>
-        <button onclick="setParagLayout('head2')" class="paraglayout"><div class="paraglayout-sample parag-head2"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Heading 2</div></button>
-        <button onclick="setParagLayout('standard')" class="paraglayout"><div class="paraglayout-sample parag-standard"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Standard</div></button>
-        <button onclick="setParagLayout('emph')" class="paraglayout"><div class="paraglayout-sample parag-emph"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Emphasize</div></button>
+        <button onclick="setParagLayout('head1')" class="paraglayout"><div class="paraglayout-sample parag-button-head1"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Heading 1</div></button>
+        <button onclick="setParagLayout('head2')" class="paraglayout"><div class="paraglayout-sample parag-button-head2"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Heading 2</div></button>
+        <button onclick="setParagLayout('standard')" class="paraglayout"><div class="paraglayout-sample parag-button-standard"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Standard</div></button>
+        <button onclick="setParagLayout('emph')" class="paraglayout"><div class="paraglayout-sample parag-button-emph"><div class="center-table"><div class="center-cell">AaBbCcDdEeFfGgHh</div></div></div><div class="paraglayout-name">Emphasize</div></button>
       </div>
     </div>    
     <div id="page">

@@ -570,11 +570,32 @@ body.fullscreen {
   vertical-align:middle;
   display:table-cell;
 }
+.parag-button-head1 {
+  color:#345a8a;
+  font-size:24pt;
+}
+.parag-button-head2 {
+  color: black;
+  font-size:18pt;
+}
+.parag-button-standard {
+  color: black;
+  font-size:12pt;
+}
+.parag-button-emph {
+  color: black;
+  font-size:12pt;
+  font-weight:bold;
+}
 .parag-head1 {
+  margin-top:16px;
+  margin-bottom:8px;
   color:#345a8a;
   font-size:24pt;
 }
 .parag-head2 {
+  margin-top:12px;
+  margin-bottom:4px;
   color: black;
   font-size:18pt;
 }

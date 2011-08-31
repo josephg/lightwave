@@ -3,7 +3,6 @@ package lightwave
 import (
   "appengine"
   "appengine/channel"
-  "appengine/user"
   "appengine/datastore"
   "appengine/memcache"
   "appengine/taskqueue"
@@ -25,9 +24,8 @@ type channelAPI struct {
   messageBuffer[] string
 }
 
-func newChannelAPI(c appengine.Context, store *store, sessionid string, bufferOnly bool, grapher *grapher.Grapher) *channelAPI {
-  u := user.Current(c)
-  a := &channelAPI{sessionID: sessionid, store: store, userID: u.Id, c: c, bufferOnly: bufferOnly, grapher: grapher}
+func newChannelAPI(c appengine.Context, store *store, userid string, sessionid string, bufferOnly bool, grapher *grapher.Grapher) *channelAPI {
+  a := &channelAPI{sessionID: sessionid, store: store, userID: userid, c: c, bufferOnly: bufferOnly, grapher: grapher}
   grapher.SetAPI(a)
   return a
 }

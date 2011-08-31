@@ -4,7 +4,6 @@ import (
   "os"
   "log"
   "appengine"
-  "appengine/user"
   "appengine/datastore"
   "crypto/sha256"
   "encoding/hex"
@@ -274,9 +273,9 @@ func (self *store) Dequeue(perma_blobref string, blobref string) (blobrefs []str
   return
 }
 
-func (self *store) ListPermas(mimeType string) (perma_blobrefs []string, err os.Error) {
+func (self *store) ListPermas(userid string, mimeType string) (perma_blobrefs []string, err os.Error) {
   // TODO: Use query GetAll?
-  query := datastore.NewQuery("node").Filter("k =", int64(grapher.OTNode_Keep)).Filter("s =", user.Current(self.c).Email).KeysOnly()
+  query := datastore.NewQuery("node").Filter("k =", int64(grapher.OTNode_Keep)).Filter("s =", userid).KeysOnly()
   if mimeType != "" {
     query = query.Filter("mt =", mimeType)
   }
@@ -299,10 +298,9 @@ type inboxStruct struct {
   Archived bool
 }
 
-func (self *store) ListInbox(includeArchived bool) (inbox []map[string]interface{}, err os.Error) {
+func (self *store) ListInbox(userid string, includeArchived bool) (inbox []map[string]interface{}, err os.Error) {
   // TODO: Use query GetAll?
-  u := user.Current(self.c)
-  parent := datastore.NewKey("user", u.Id, 0, nil)
+  parent := datastore.NewKey("user", userid, 0, nil)
   query := datastore.NewQuery("inbox").Ancestor(parent)
   if !includeArchived {
     query = query.Filter("Archived =", false)
@@ -325,28 +323,15 @@ func (self *store) ListInbox(includeArchived bool) (inbox []map[string]interface
   return
 }
 
-/*
-func (self *store) StoreInboxItem(perma_blobref string, seq int64) (err os.Error) {
-  u := user.Current(self.c)
-  // Store it
-  b := inboxStruct{LastSeq: seq}
-  parent := datastore.NewKey("user", u.Id, 0, nil)
-  _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), &b)
-  return err  
-}
-*/
-
-func (self *store) GetInboxItem(perma_blobref string) (item *inboxStruct, err os.Error) {
-  u := user.Current(self.c)
+func (self *store) GetInboxItem(userid string, perma_blobref string) (item *inboxStruct, err os.Error) {
   b := &inboxStruct{}
-  parent := datastore.NewKey("user", u.Id, 0, nil)
+  parent := datastore.NewKey("user", userid, 0, nil)
   err = datastore.Get(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), b)
   return b, err  
 }
 
-func (self *store) MarkInboxItemAsRead(perma_blobref string, seq int64) (err os.Error) {
-  u := user.Current(self.c)
-  b, err := self.GetInboxItem(perma_blobref)
+func (self *store) MarkInboxItemAsRead(userid string, perma_blobref string, seq int64) (err os.Error) {
+  b, err := self.GetInboxItem(userid, perma_blobref)
 //  if err == datastore.ErrNoSuchEntity {
 //    b = &inboxStruct{LastSeq: seq, Archived: false}
 //  } else if err != nil {
@@ -358,14 +343,13 @@ func (self *store) MarkInboxItemAsRead(perma_blobref string, seq int64) (err os.
   }
   b.LastSeq = seq
   // Store it
-  parent := datastore.NewKey("user", u.Id, 0, nil)
+  parent := datastore.NewKey("user", userid, 0, nil)
   _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), b)
   return err  
 }
 
-func (self *store) MarkInboxItemAsArchived(perma_blobref string) (err os.Error) {
-  u := user.Current(self.c)
-  b, err := self.GetInboxItem(perma_blobref)
+func (self *store) MarkInboxItemAsArchived(userid string, perma_blobref string) (err os.Error) {
+  b, err := self.GetInboxItem(userid, perma_blobref)
   if err != nil {
     return err
   }
@@ -374,14 +358,14 @@ func (self *store) MarkInboxItemAsArchived(perma_blobref string) (err os.Error) 
   }
   b.Archived = true
   // Store it
-  parent := datastore.NewKey("user", u.Id, 0, nil)
+  parent := datastore.NewKey("user", userid, 0, nil)
   _, err = datastore.Put(self.c, datastore.NewKey("inbox", perma_blobref, 0, parent), b)
   return err  
 }
 
-func (self *store) CreateUser() (usr *userStruct, err os.Error) {
-  u := user.Current(self.c)
-  usr = &userStruct{UserEmail: u.Email}
-  _, err = datastore.Put(self.c, datastore.NewKey("user", u.Id, 0, nil), usr)
+func (self *store) CreateUser(userid, passwd, email string) (usr *userStruct, err os.Error) {
+  // TODO: Salt the password
+  usr = &userStruct{UserEmail: email, UserPasswd: passwd}
+  _, err = datastore.Put(self.c, datastore.NewKey("user", userid, 0, nil), usr)
   return
 }

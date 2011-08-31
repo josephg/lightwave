@@ -7,7 +7,6 @@ import (
   "io/ioutil"
   "appengine"
   "appengine/channel"
-  "appengine/user"
   "appengine/datastore"
   "appengine/mail"
   "appengine/memcache"
@@ -20,9 +19,11 @@ import (
   "rand"
   "strings"
   "crypto/sha256"
+  "crypto/hmac"
+  "encoding/base64"
   grapher "lightwavegrapher"
   tf "lightwavetransformer"
-  importer "lightwaveimporter"
+//  importer "lightwaveimporter"
 )
 
 var (
@@ -35,7 +36,6 @@ var (
 type channelStruct struct {
   Token string
   UserID string
-  UserEmail string
   SessionID string
   OpenPermas []string
 }
@@ -89,6 +89,9 @@ func init() {
   http.HandleFunc("/private/inboxitem", handleInboxItem)
   http.HandleFunc("/private/markasread", handleMarkAsRead)
   http.HandleFunc("/private/markasarchived", handleMarkAsArchived)
+  http.HandleFunc("/signup", handleSignup)
+  http.HandleFunc("/logout", handleLogout)
+  http.HandleFunc("/login", handleLogin)
   http.HandleFunc("/applogin", handleAppLogin)
 
   http.HandleFunc("/internal/notify", handleDelayedNotify)
@@ -96,7 +99,7 @@ func init() {
   http.HandleFunc("/_ah/channel/connected/", handleConnect)
   http.HandleFunc("/_ah/channel/disconnected/", handleDisconnect)
 
-  http.HandleFunc("/import", handleImport)
+//  http.HandleFunc("/import", handleImport)
 }
 
 func handleFrontPage(w http.ResponseWriter, r *http.Request) {
@@ -105,38 +108,10 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     return
   }
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  // User logged in?
-  if u == nil {
-    url, _ := user.LoginURL(c, "/")
-    fmt.Fprintf(w, `<a href="%s">Sign in or register</a>`, url)
-    return
-  }
-
-  s := newStore(c)
-
-  // New User?
-  usr, err := hasUser(c, u.Id)
+  userid, sessionid, err := getSession(c, r)
   if err != nil {
-    http.Error(w, "Couldn't search for user", http.StatusInternalServerError)
-    c.Errorf("HasUser: %v", err)
+    http.Redirect(w, r, "/login/login.html", 307)
     return
-  }
-  
-  // New user?
-  if usr == nil {
-    usr, err = s.CreateUser()
-    if err != nil {
-      http.Error(w, "Couldn't create user", http.StatusInternalServerError)
-      c.Errorf("CreateUser: %v", err)
-      return
-    }
-    _, err := createBook(c);
-    if err != nil {
-      http.Error(w, "Couldn't create book", http.StatusInternalServerError)
-      c.Errorf("CreateBook: %v", err)
-      return
-    }
   }
   
   if frontPageTmplErr != nil {
@@ -145,38 +120,29 @@ func handleFrontPage(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // TODO: This does not allow for multiple sessions
-  session := fmt.Sprintf("s%v", rand.Int31())
-  tok, err := channel.Create(c, u.Id + "/" + session)
+  tok, err := channel.Create(c, userid + "/" + sessionid)
   if err != nil {
     http.Error(w, "Couldn't create Channel", http.StatusInternalServerError)
     c.Errorf("channel.Create: %v", err)
     return
   }
 
-  logout_url, _ := user.LogoutURL(c, "/")
-
   var ch channelStruct
-  ch.UserID = u.Id
-  ch.UserEmail = u.Email
+  ch.UserID = userid
   ch.Token = tok
-  ch.SessionID = session
-  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + session, 0, nil), &ch)
+  ch.SessionID = sessionid
+  _, err = datastore.Put(c, datastore.NewKey("channel", userid + "/" + sessionid, 0, nil), &ch)
   if err != nil {
     return
   }
 
   b := new(bytes.Buffer)
-  data := map[string]interface{}{ "userid":  u.Email, "logout": logout_url, "token": tok, "session": session }
+  data := map[string]interface{}{ "userid":  userid, "token": tok, "session": sessionid }
   if err := frontPageTmpl.Execute(b, data); err != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
     fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
     return
   }
-
-  // Cookie
-  cookie := &http.Cookie{Path:"/", Name:"Session", Value: session, Expires: *time.SecondsToUTC(time.UTC().Seconds() + 60 * 60 * 24)}
-  http.SetCookie(w, cookie)
 
   w.Header().Set("Content-Length", strconv.Itoa(b.Len()))
   b.WriteTo(w)
@@ -206,17 +172,11 @@ type openCloseRequest struct {
 
 func handleOpen(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
-    return
-  }
-  cookie := getSessionCookie(r)
-  if cookie == nil {
+  userid, sessionid, err := getSession(c, r)
+  if err != nil {
     sendError(w, r, "No session cookie")
     return
   }
-  sessionid := cookie.Value
   // Read the request body
   jreq, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -233,8 +193,8 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
   }
   // Load the channel infos
   var ch channelStruct
-  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch); err != nil {
-    sendError(w, r, "Unknown channel")
+  if err = datastore.Get(c, datastore.NewKey("channel", userid + "/" + sessionid, 0, nil), &ch); err != nil {
+    sendError(w, r, "Unknown channel: " + userid + "/" + sessionid)
     return
   }
   // Check
@@ -253,16 +213,16 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
   if !is_open {
     // Update channel infos
     ch.OpenPermas = append(ch.OpenPermas, req.Perma)
-    _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch)
+    _, err = datastore.Put(c, datastore.NewKey("channel", userid + "/" + sessionid, 0, nil), &ch)
     if err != nil {
       sendError(w, r, "Internal server error")
       return
     }
     // Repeat all blobs from this document.  
     s := newStore(c)
-    g := grapher.NewGrapher(u.Email, schema, s, s, nil)
+    g := grapher.NewGrapher(userid, schema, s, s, nil)
     s.SetGrapher(g)
-    ch := newChannelAPI(c, s, sessionid, true, g)
+    ch := newChannelAPI(c, s, userid, sessionid, true, g)
     perma, err = g.Repeat(req.Perma, req.From)
     if err != nil {
       sendError(w, r, "Failed opening")
@@ -284,23 +244,18 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
       perma = grapher.NewPermaNode(nil)
       perma.FromMap(req.Perma, data)
     }
-    markAsRead(c, perma.BlobRef(), perma.SequenceNumber() - 1)
+    markAsRead(c, userid, perma.BlobRef(), perma.SequenceNumber() - 1)
   }
 }
 
 func handleClose(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
-    return
-  }
-  cookie := getSessionCookie(r)
-  if cookie == nil {
+  userid, sessionid, err := getSession(c, r)
+  if err != nil {
     sendError(w, r, "No session cookie")
     return
   }
-  sessionid := cookie.Value
+
   // Parse the request body
   jreq, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -317,7 +272,7 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
   }
   // Load the channel infos
   var ch channelStruct
-  if err = datastore.Get(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch); err != nil {
+  if err = datastore.Get(c, datastore.NewKey("channel", userid + "/" + sessionid, 0, nil), &ch); err != nil {
     sendError(w, r, "Unknown channel")
     return
   }
@@ -336,7 +291,7 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
   }
   // Update channel infos
   ch.OpenPermas = permas
-  _, err = datastore.Put(c, datastore.NewKey("channel", u.Id + "/" + sessionid, 0, nil), &ch)
+  _, err = datastore.Put(c, datastore.NewKey("channel", userid + "/" + sessionid, 0, nil), &ch)
   if err != nil {
     sendError(w, r, "Internal server error")
     return
@@ -347,18 +302,11 @@ func handleClose(w http.ResponseWriter, r *http.Request) {
 
 func handleSubmit(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
-    return
-  }
-
-  cookie := getSessionCookie(r)
-  if cookie == nil {
+  userid, sessionid, err := getSession(c, r)
+  if err != nil {
     sendError(w, r, "No session cookie")
     return
   }
-  sessionid := cookie.Value
 
   blob, err := ioutil.ReadAll(r.Body)
   if err != nil {
@@ -368,12 +316,12 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   r.Body.Close()
 
   s := newStore(c)
-  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
+  g := grapher.NewGrapher(userid, schema, s, s, nil)
   s.SetGrapher(g)
   tf.NewTransformer(g)
   tf.NewMapTransformer(g)
   tf.NewLatestTransformer(g)
-  newChannelAPI(c, s, sessionid, false, g)
+  newChannelAPI(c, s, userid, sessionid, false, g)
   
 //  log.Printf("Received: %v", string(blob))
   node, e := g.HandleClientBlob(blob)
@@ -384,7 +332,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 
   if perm, ok := node.(grapher.PermissionNode); ok {
     // Is the user who was granted permissions registered locally?
-    usr, err := hasUserName(c, perm.UserName())
+    usr, err := isLocalUser(c, perm.UserName())
     if err != nil {
       log.Printf("Err in HasUserName: %v", err)
     }
@@ -398,7 +346,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
   } else if perma, ok := node.(grapher.PermaNode); ok {
     // Add to the inbox of the user who created the permanode
     b := inboxStruct{LastSeq: 0, Archived: true}
-    parent := datastore.NewKey("user", u.Id, 0, nil)
+    parent := datastore.NewKey("user", userid, 0, nil)
     _, err = datastore.Put(c, datastore.NewKey("inbox", perma.BlobRef(), 0, parent), &b)
     fmt.Fprintf(w, `{"ok":true, "blobref":"%v"}`, node.BlobRef())
   } else {
@@ -411,25 +359,16 @@ func sendError(w http.ResponseWriter, r *http.Request, msg string) {
   fmt.Fprintf(w, `{"ok":false, "error":"%v"}`, msg)
 }
 
-func getSessionCookie(r *http.Request) *http.Cookie {
-  for _, c := range r.Cookie {
-    if c.Name == "Session" {
-      return c
-    }
-  }
-  return nil
-}
-
 func handleListPermas(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
+  userid, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
     return
   }
 
   s := newStore(c)
-  permas, err := s.ListPermas(r.FormValue("mimetype"))
+  permas, err := s.ListPermas(userid, r.FormValue("mimetype"))
   if err != nil {
     sendError(w, r, err.String())
     return
@@ -450,14 +389,14 @@ func userShortName(email string) string {
 
 func handleListInbox(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
+  userid, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
     return
   }
 
   s := newStore(c)
-  inbox, err := s.ListInbox(false)
+  inbox, err := s.ListInbox(userid, false)
   if err != nil {
     sendError(w, r, err.String())
     return
@@ -481,43 +420,93 @@ type inviteByMail struct {
   UserName string "user"
 }
 
-func handleAppLogin(w http.ResponseWriter, r *http.Request) {
+func handleLogin(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  // User logged in?
-  if u == nil {
-    url, _ := user.LoginURL(c, "/applogin")
-    http.Redirect(w, r, url, 307)
-    return
-  }
-
-  cookies := ""
-  for _, c := range r.Cookie {
-      if len(cookies) != 0 {
-	cookies += ";"
-      }
-      cookies += c.Raw
-  }
-  log.Printf("Cookies %v", cookies)
-  
-  logout_url, _ := user.LogoutURL(c, "/")
-  b := new(bytes.Buffer)
-  data := map[string]interface{}{"logout": logout_url, "cookies": cookies}
-  if err := appLoginPageTmpl.Execute(b, data); err != nil {
+  userid := r.FormValue("username");
+  passwd := r.FormValue("passwd");
+  usr, err := hasUser(c, userid);
+  if err != nil {
     w.WriteHeader(http.StatusInternalServerError) // 500
-    fmt.Fprintf(w, "tmpl.Execute failed: %v", err)
+    return
+  }
+  if usr == nil {
+    http.Redirect(w, r, "/login/login.html?err=nologin", 307);
+    return
+  }
+  // TODO: salt
+  if usr.UserPasswd != passwd {
+    http.Redirect(w, r, "/login/login.html?err=nologin", 307);
     return
   }
 
-  w.Header().Set("Content-Length", strconv.Itoa(b.Len()))
-  b.WriteTo(w)
+  createSessionCookie(w, userid)
+  http.Redirect(w, r, "/", 307);
+}
+
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+  // Cookie
+  cookie := &http.Cookie{Path:"/", Name:"Session", Value: "", Expires: *time.SecondsToUTC(time.UTC().Seconds() + maxAge)}
+  http.SetCookie(w, cookie)
+  http.Redirect(w, r, "/login/login.html", 307);
+}
+
+func handleSignup(w http.ResponseWriter, r *http.Request) {
+  c := appengine.NewContext(r)
+  userid := r.FormValue("username")
+  passwd := r.FormValue("passwd")
+  email := r.FormValue("email")
+  if userid == "" || passwd == "" || email == "" {
+    http.Redirect(w, r, "/login/signup.html?err=missing", 307);
+    return
+  }
+
+  usr, err := hasUser(c, userid);
+  if err != nil {
+    w.WriteHeader(http.StatusInternalServerError) // 500
+    return
+  }
+    
+  if usr != nil {
+    // Username is already used
+    // TODO: Better feedback
+    http.Redirect(w, r, "/login/signup.html?err=exists", 307);
+    return
+  }
+  
+  s := newStore(c)
+  _, err = s.CreateUser(userid, passwd, email)
+  if err != nil {
+    w.WriteHeader(http.StatusInternalServerError) // 500
+    return
+  }
+  _, err = createBook(c, userid)
+  if err != nil {
+    w.WriteHeader(http.StatusInternalServerError) // 500
+    return
+  }
+
+  createSessionCookie(w, userid)
+  http.Redirect(w, r, "/", 307)
+}
+
+func handleAppLogin(w http.ResponseWriter, r *http.Request) {
+/*  c := appengine.NewContext(r)
+  userid, sessionid, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+  */
+  // TODO
+//  w.Header().Set("Content-Length", strconv.Itoa(b.Len()))
+//  b.WriteTo(w)
 }
 
 func handleInviteByMail(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
+  _, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
     return
   }
 
@@ -536,7 +525,7 @@ func handleInviteByMail(w http.ResponseWriter, r *http.Request) {
   }
   
   msg := &mail.Message{ 
-    Sender:  u.Email,
+    Sender:  "torben.weis@gmail.com",
     To:      []string{req.UserName},
     Subject: "Invitation to LightWave",
     Body:    req.Content,
@@ -567,8 +556,9 @@ func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
   // For all users find all channels on which they are listening
   for _, user := range perma.Users() {
     // Do we know this user?
-    userid, err := hasUserName(c, user)
+    userid, err := isLocalUser(c, user)
     if err != nil {
+      // TODO: In the case of federation this is not really an error?
       log.Printf("Err: Unknown user %v", user)
       continue
     }
@@ -604,9 +594,15 @@ func handleDelayedNotify(w http.ResponseWriter, r *http.Request) {
 
 func handleInboxItem(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
+  userid, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+
   s := newStore(c)
   perma_blobref := r.FormValue("perma")
-  item, err := s.GetInboxItem(perma_blobref)
+  item, err := s.GetInboxItem(userid, perma_blobref)
   if err != nil {
     http.Error(w, "Could not get inbox item", http.StatusInternalServerError)
     c.Errorf("handleInboxItem: %v", err)
@@ -628,6 +624,12 @@ func handleInboxItem(w http.ResponseWriter, r *http.Request) {
 func handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
   // TODO: In a transaction first read it, build max, then write it back
   c := appengine.NewContext(r)
+  userid, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+
   perma_blobref := r.FormValue("perma")
   seq, err := strconv.Atoi64(r.FormValue("seq"))
   if err != nil {
@@ -635,7 +637,7 @@ func handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
     c.Errorf("handleInboxItem: %v", err)
     return
   }
-  err = markAsRead(c, perma_blobref, seq)
+  err = markAsRead(c, userid, perma_blobref, seq)
   if err != nil {
     fmt.Fprintf(w, `{"ok":false, "error":"Failed accessing database"}`)
   } else {
@@ -643,17 +645,23 @@ func handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
   }
 }
 
-func markAsRead(c appengine.Context, perma_blobref string, seq int64) os.Error {
+func markAsRead(c appengine.Context, userid string, perma_blobref string, seq int64) os.Error {
   s := newStore(c)
-  return s.MarkInboxItemAsRead(perma_blobref, seq)
+  return s.MarkInboxItemAsRead(userid, perma_blobref, seq)
 }
 
 func handleMarkAsArchived(w http.ResponseWriter, r *http.Request) {
   // TODO: In a transaction first read it, build max, then write it back
   c := appengine.NewContext(r)
+  userid, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
+    return
+  }
+
   s := newStore(c)
   perma_blobref := r.FormValue("perma")
-  err := s.MarkInboxItemAsArchived(perma_blobref)
+  err = s.MarkInboxItemAsArchived(userid, perma_blobref)
   if err != nil {
     fmt.Fprintf(w, `{"ok":false, "error":"Failed accessing database"}`)
   } else {
@@ -667,21 +675,21 @@ type UnreadStruct struct {
 
 func handleListUnread(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
-  u := user.Current(c)
-  if u == nil {
-    sendError(w, r, "No user attached to the request")
+  userid, _, err := getSession(c, r)
+  if err != nil {
+    sendError(w, r, "No session cookie")
     return
   }
 
   s := newStore(c)
-  inbox, err := s.ListInbox(true)
+  inbox, err := s.ListInbox(userid, true)
   if err != nil {
     sendError(w, r, err.String())
     return
   }
 
   // Read the bloom filter
-  parent := datastore.NewKey("user", u.Id, 0, nil)
+  parent := datastore.NewKey("user", userid, 0, nil)
   key := datastore.NewKey("unread", "unread", 0, parent)
   filter := NewBloomFilter(sha256.New())
   var b UnreadStruct
@@ -793,10 +801,9 @@ func addUnread(c appengine.Context, userid string, perma_blobref string) os.Erro
   return err
 }
 
-func createBook(c appengine.Context) (perma_blobref string, err os.Error) {
-  u := user.Current(c)
+func createBook(c appengine.Context, userid string) (perma_blobref string, err os.Error) {
   s := newStore(c)
-  g := grapher.NewGrapher(u.Email, schema, s, s, nil)
+  g := grapher.NewGrapher(userid, schema, s, s, nil)
   s.SetGrapher(g)
 
   blob := []byte(`{"type":"permanode", "mimetype":"application/x-lightwave-book"}`) 
@@ -808,13 +815,7 @@ func createBook(c appengine.Context) (perma_blobref string, err os.Error) {
   return 
 }
 
-func addToInbox(c appengine.Context, username string, perma_blobref string, seq int64) (err os.Error) {
-  // Does this user have an inbox on this machine?
-  userid, err := hasUserName(c, username);
-  if err != nil || userid == "" {
-    return err
-  }
-  
+func addToInbox(c appengine.Context, userid string, perma_blobref string, seq int64) (err os.Error) {
   // Store it
   b := inboxStruct{LastSeq: seq}
   parent := datastore.NewKey("user", userid, 0, nil)
@@ -824,6 +825,7 @@ func addToInbox(c appengine.Context, username string, perma_blobref string, seq 
 
 type userStruct struct {
   UserEmail string
+  UserPasswd string
 }
 
 func hasUser(c appengine.Context, userid string) (usr *userStruct, err os.Error) {
@@ -839,23 +841,24 @@ func hasUser(c appengine.Context, userid string) (usr *userStruct, err os.Error)
   return
 }
 
-func hasUserName(c appengine.Context, username string) (userid string, err os.Error) {
-  query := datastore.NewQuery("user").Filter("UserEmail =", username).KeysOnly()
-  it := query.Run(c)
-  key, err := it.Next(nil)
-  if err == datastore.Done {
-    return "", nil
+func isLocalUser(c appengine.Context, username string) (userid string, err os.Error) {
+  i := strings.Index(username, "@")
+  if i == -1 {
+    return
   }
-  if err != nil {
-    log.Printf("Err: in query: %v", err)
+  if username[i + 1:] != "light-wave.appspot.com" {
+    return
+  }
+  usr, err := hasUser(c, username[0:i])
+  if usr == nil || err != nil {
     return "", err
   }
-  return key.StringID(), nil
+  return username[0:i], nil
 }
-
 
 // ====================================================================================
 
+/*
 func handleImport(w http.ResponseWriter, r *http.Request) {
   c := appengine.NewContext(r)
   u := user.Current(c)
@@ -909,3 +912,101 @@ func handleImport(w http.ResponseWriter, r *http.Request) {
   
   fmt.Fprintf(w, "Ok, imported")
 }
+*/
+
+// ============================================================
+// Session & Cookies
+
+const (
+  serverSecret = "!Top?Secret?975"
+  // Session cookie lasts 7 days
+  maxAge = 60 * 60 * 24 * 7
+)
+
+func getCookieSig(val []byte, timestamp string) string {
+  hm := hmac.NewSHA1( []byte(serverSecret) )
+  hm.Write(val)
+  hm.Write([]byte(timestamp))
+
+  hex := fmt.Sprintf("%02x", hm.Sum())
+  return hex
+}
+
+func encodeSecureCookie(user string, session string, creationTime int64) string {
+  var buf bytes.Buffer
+  encoder := base64.NewEncoder(base64.StdEncoding, &buf)
+  encoder.Write([]byte(user))
+  encoder.Write([]byte("!"))
+  encoder.Write([]byte(session))
+  encoder.Close()
+  timestamp := strconv.Itoa64(creationTime)
+  sig := getCookieSig(buf.Bytes(), timestamp)
+  return strings.Join([]string{buf.String(), timestamp, sig}, "|")
+}
+
+func decodeSecureCookie(value string) (user string, session string, err os.Error) {
+  parts := strings.Split(value, "|", 3)
+  if len(parts) != 3 {
+    err = os.NewError("Malformed cookie value")
+    return
+  }
+  val := parts[0]
+  timestamp := parts[1]
+  sig := parts[2]
+  // Check signature
+  if getCookieSig([]byte(val), timestamp) != sig {
+    return "", "", os.NewError("Signature error, cookie is invalid")
+  }
+  // Check time stamp
+  ts, _ := strconv.Atoi64(timestamp)
+  if ts + maxAge < time.UTC().Seconds() {
+    return "", "", os.NewError("Cookie is outdated")
+  }
+
+  buf := bytes.NewBufferString(val)
+  encoder := base64.NewDecoder(base64.StdEncoding, buf)
+  res, _ := ioutil.ReadAll(encoder)
+  str := string(res)
+  lst := strings.Split(str, "!", -1)
+  if len(lst) != 2 {
+    return "", "", os.NewError("Missing !")
+  }
+  return lst[0], lst[1], nil
+}
+
+func createSessionCookie(w http.ResponseWriter, user string) (session string) {
+  session = fmt.Sprintf("s%v", rand.Int31())
+  value := encodeSecureCookie(user, session, time.UTC().Seconds())
+  // Cookie
+  cookie := &http.Cookie{Path:"/", Name:"Session", Value: value, Expires: *time.SecondsToUTC(time.UTC().Seconds() + maxAge)}
+  http.SetCookie(w, cookie)
+  return
+}
+
+func getSessionCookie(r *http.Request) *http.Cookie {
+  for _, c := range r.Cookie {
+    if c.Name == "Session" {
+      return c
+    }
+  }
+  return nil
+}
+
+var ErrUnknownUser = os.NewError("Unknown User")
+var ErrSessionExpired = os.NewError("Session expired")
+var ErrNoSession = os.NewError("No session")
+
+func getSession(c appengine.Context, r *http.Request) (user string, session string, err os.Error) {
+  cookie := getSessionCookie(r)
+  if cookie == nil {
+    err = ErrNoSession
+    return
+  }
+  user, session, err = decodeSecureCookie(cookie.Value)
+  if err != nil {
+    err = ErrSessionExpired
+    return
+  }
+  return
+}
+
