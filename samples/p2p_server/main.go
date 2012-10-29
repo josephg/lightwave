@@ -3,6 +3,7 @@ package main
 import (
   "flag"
   . "lightwave/store"
+  "os"
 )
 
 func main() {
@@ -14,18 +15,27 @@ func main() {
   var raddr string
   flag.StringVar(&raddr, "r", "", "Netwrk address of a remote peer, e.g. 'fed2.com:8282' (optional)")
   var csAddr string
-  flag.StringVar(&csAddr, "s", ":6868", "Address of the client server protocol")
+  flag.StringVar(&csAddr, "s", "", "Address of the client server protocol")
   flag.Parse()
   
   // Initialize Store, Indexer and Network
   store := NewSimpleBlobStore()
-  replication := NewReplication(userid, store, laddr, raddr)
   indexer := NewIndexer(store)
-  csproto := NewCSProtocol(store, indexer, csAddr)
   
   // Accept incoming network connections
-  go replication.Listen()
+  replication := NewReplication(userid, store, laddr, raddr)
+  if laddr != "" || raddr != "" {
+    println("Replication listening on port", laddr)
+    go replication.Listen()
+  }
   
   // Accept clients
-  csproto.Listen()
+  if csAddr != "" {
+    println("Client protocol listening on port", csAddr)
+    csproto := NewCSProtocol(store, indexer, csAddr)
+    go csproto.Listen()
+  }
+
+  println("Press enter to quit")
+  os.Stdin.Read(make([]byte, 1))
 }
