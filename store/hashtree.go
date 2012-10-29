@@ -1,11 +1,11 @@
-package lightwavestore
+package store
 
 import (
   "crypto/sha256"
   "encoding/hex"
-  "os"
   "sort"
   "bytes"
+  "errors"
 )
 
 const (
@@ -37,12 +37,12 @@ type HashTree interface {
   // The hash is a SHA256 hash
   Hash() (hash string)
   // Adds a BLOB id to the tree. The id is a hex encoded SHA256 hash.
-  Add(id string) os.Error
+  Add(id string) error
   // Returns the children of some inner node.
   // The kind return value determines whether the children are in turn
   // inner nodes or rather IDs added via Add().
   // The strings used here are hex encodings of SHA256 hashes.
-  Children(prefix string) (kind int, children []string, err os.Error)
+  Children(prefix string) (kind int, children []string, err error)
 }
 
 // An implementation of the HashTree interface.
@@ -65,29 +65,29 @@ func (self *SimpleHashTree) Hash() (hash string) {
   return hex.EncodeToString(self.binaryHash())
 }
 
-func (self *SimpleHashTree) Add(id string) os.Error {
+func (self *SimpleHashTree) Add(id string) error {
   if len(id) != HashTree_Depth {
-    return os.NewError("ID has the wrong length.")
+    return errors.New("ID has the wrong length.")
   }
   bin_id, e := hex.DecodeString(id)
   if e != nil {
-    return os.NewError("Malformed ID")
+    return errors.New("Malformed ID")
   }
   self.add(bin_id, 0)
   return nil
 }
 
-func (self *SimpleHashTree) Children(prefix string) (kind int, children []string, err os.Error) {
+func (self *SimpleHashTree) Children(prefix string) (kind int, children []string, err error) {
   depth := len(prefix)
   if depth >= HashTree_Depth {
-    return HashTree_NIL, nil, os.NewError("Prefix is too long")
+    return HashTree_NIL, nil, errors.New("Prefix is too long")
   }
   if len(prefix) % 2 == 1 {
     prefix = prefix + "0"
   }
   bin_prefix, e := hex.DecodeString(prefix)
   if e != nil {
-    return HashTree_NIL, nil, os.NewError("Prefix must be a hex encoding")
+    return HashTree_NIL, nil, errors.New("Prefix must be a hex encoding")
   }
   kind, bin_children, err := self.children(bin_prefix, 0, depth)
   for _, bin_child := range bin_children {
@@ -96,7 +96,7 @@ func (self *SimpleHashTree) Children(prefix string) (kind int, children []string
   return
 }
 
-func (self *hashTreeNode) children(prefix []byte, level int, depth int) (kind int, children [][]byte, err os.Error) {
+func (self *hashTreeNode) children(prefix []byte, level int, depth int) (kind int, children [][]byte, err error) {
   // Recursion ?
   if depth > 0 {
     if self.childNodes == nil {
@@ -154,14 +154,14 @@ func (self *hashTreeNode) add(id []byte, level int) {
     for _, hash := range self.childIDs {
       i := hash[level / 2]
       if level % 2 == 0 {
-	i = i >> 4
+        i = i >> 4
       } else {
-	i = i & 0xf
+        i = i & 0xf
       }
       ch := self.childNodes[i]
       if ch == nil {
-	ch = &hashTreeNode{}
-	self.childNodes[i] = ch
+        ch = &hashTreeNode{}
+        self.childNodes[i] = ch
       }
       ch.add(hash, level + 1)
     }
@@ -177,7 +177,7 @@ func (self *hashTreeNode) binaryHash() []byte {
   if len(self.childNodes) > 0 {
     for _, child := range self.childNodes {
       if child != nil {
-	h.Write(child.binaryHash())
+        h.Write(child.binaryHash())
       }
     }
   } else {
@@ -186,7 +186,7 @@ func (self *hashTreeNode) binaryHash() []byte {
       h.Write([]byte(hash))
     }
   }
-  self.hash = h.Sum()
+  self.hash = h.Sum([]byte{})
   return self.hash
 }
 

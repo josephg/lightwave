@@ -1,8 +1,8 @@
-package lightwavestore
+package store
 
 import (
-  "json"
-  "os"
+  "encoding/json"
+  "errors"
 )
 
 type Message struct {
@@ -17,14 +17,14 @@ type messageWithoutPayload struct {
 
 // 'data' is a pointer to some data structure.
 // The function decodes the payload into this data structure.
-func (self *Message) DecodePayload(data interface{}) os.Error {
+func (self *Message) DecodePayload(data interface{}) error {
   if self.Payload == nil {
-    return os.NewError("No payload in message")
+    return errors.New("No payload in message")
   }
   return json.Unmarshal(*self.Payload, data)
 }
 
-func (self *Message) EncodePayload(data interface{}) os.Error {
+func (self *Message) EncodePayload(data interface{}) error {
   if data == nil {
     self.Payload = nil
     return nil

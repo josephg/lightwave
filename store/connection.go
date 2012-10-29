@@ -1,11 +1,11 @@
-package lightwavestore
+package store
 
 import (
   "net"
   "log"
-  "json"
-  "os"
+  "encoding/json"
   "sync"
+  "errors"
 )
 
 type Connection struct {
@@ -16,12 +16,12 @@ type Connection struct {
   enc *json.Encoder
   dec *json.Decoder
   mutex sync.Mutex
-  errChannel chan<- os.Error
+  errChannel chan<- error
   receivedBlobs [100]string
   receivedBlobsIndex int
 }
 
-func newConnection(conn net.Conn, replication *Replication, errChannel chan<- os.Error) *Connection {
+func newConnection(conn net.Conn, replication *Replication, errChannel chan<- error) *Connection {
   c := &Connection{conn: conn, replication: replication, enc: json.NewEncoder(conn), dec: json.NewDecoder(conn)}
   go c.read()
   return c
@@ -42,9 +42,9 @@ func (self *Connection) hasReceivedBlob(blobref string) bool {
 }
 
 // Sends a message that does not require a response
-func (self *Connection) Send(cmd string, data interface{}) (err os.Error) {
+func (self *Connection) Send(cmd string, data interface{}) (err error) {
   if cmd == "" {
-    return os.NewError("Must specify a cmd")
+    return errors.New("Must specify a cmd")
   }
   var msg Message
   msg.Cmd = cmd
@@ -75,7 +75,7 @@ func (self *Connection) read() {
     if err != nil {
       log.Printf("ERR READ JSON: %v\n", err)
       if self.errChannel != nil {
-	self.errChannel <- err
+        self.errChannel <- err
       }
       self.Close()
       return

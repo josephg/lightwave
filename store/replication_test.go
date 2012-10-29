@@ -1,4 +1,4 @@
-package lightwavestore
+package store
 
 import (
   "testing"

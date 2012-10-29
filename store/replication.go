@@ -1,9 +1,8 @@
-package lightwavestore
+package store
 
 import (
-  "os"
   "sync"
-  "json"
+  "encoding/json"
   "net"
   "log"
   "time"
@@ -48,11 +47,11 @@ func (self *Replication) registerConnection(conn *Connection, kind int) {
 
 func (self *Replication) unregisterConnection(conn *Connection) {
   self.mutex.Lock()
-  self.connections[conn] = 0, false
+  delete(self.connections, conn)
   self.mutex.Unlock()
 }
 
-func (self *Replication) Listen() (err os.Error) {
+func (self *Replication) Listen() (err error) {
   l, err := net.Listen("tcp", self.laddr)
   if err != nil {
     return
@@ -73,8 +72,8 @@ func (self *Replication) Listen() (err os.Error) {
 }
 
 // Creates a connection to another peer
-func (self *Replication) dialMaster(raddr string) (err os.Error) {
-  ch := make(chan os.Error)
+func (self *Replication) dialMaster(raddr string) (err error) {
+  ch := make(chan error)
   for {
     c, err := net.Dial("tcp", raddr)
     if err != nil {
@@ -99,12 +98,12 @@ func (self *Replication) dialMaster(raddr string) (err os.Error) {
 }
 
 // Called from the store when a new blob has been stored
-func (self *Replication) HandleBlob(blob []byte, blobref string) os.Error {
+func (self *Replication) HandleBlob(blob []byte, blobref string) error {
   for connection, flags := range self.connections {
     if flags & connStreaming == connStreaming {
       // Do not send the blob on the same connection on which it has been received
       if !connection.hasReceivedBlob(blobref) {
-	connection.Send("BLOB", json.RawMessage(blob))
+        connection.Send("BLOB", json.RawMessage(blob))
       }
     }
   }
@@ -313,39 +312,39 @@ func (self *Replication) treeHashChildrenHandler(msg Message) {
   for _, ch := range children2 {
     map2[ch] = true
   }
-  
+
   if kind1 == HashTree_IDs && kind2 == HashTree_IDs {
     // Both returned hashes. Compare the two sets of hashes
     for key, _ := range map1 {
       if _, ok := map2[key]; !ok {
-	msg.connection.Send("GET", key)
+        msg.connection.Send("GET", key)
       }
     }
     for key, _ := range map2 {
       if _, ok := map1[key]; !ok {
-	blob, err := self.store.GetBlob(key)
-	if err != nil {
-	  log.Printf("Retrieving block %v failed\n", key)
-	} else {
-	  msg.connection.Send("BLOB", json.RawMessage(blob))
-	}
+        blob, err := self.store.GetBlob(key)
+        if err != nil {
+          log.Printf("Retrieving block %v failed\n", key)
+        } else {
+          msg.connection.Send("BLOB", json.RawMessage(blob))
+        }
       }
     }
   } else if kind1 == HashTree_InnerNodes && kind2 == HashTree_InnerNodes {
     // Both returned subtree nodes? Recursion into the sub tree nodes
     for i := 0; i < HashTree_NodeDegree; i++ {
       if children1[i] == children2[i] {
-	continue
+        continue
       }
       p := prefix + string(hextable[i])
       if children1[i] == "" {
-	self.getnHandlerIntern(p, msg.connection)
+        self.getnHandlerIntern(p, msg.connection)
       } else if children2[i] == "" {
-	// Get all blobs with this prefix
+        // Get all blobs with this prefix
         msg.connection.Send("GETN", p)
       } else {
-	// Recursion
-	msg.connection.Send("TCHLD", p)
+        // Recursion
+        msg.connection.Send("TCHLD", p)
       }
     }
   } else if kind1 == HashTree_InnerNodes && kind2 == HashTree_IDs {
@@ -354,7 +353,7 @@ func (self *Replication) treeHashChildrenHandler(msg Message) {
       p := prefix + string(hextable[i])
       lst := []string{}
       for key, _ := range map1 {
-	lst = append(lst, key)
+        lst = append(lst, key)
       }
       r := struct{Prefix string "prefix"; Except []string "except"}{p, lst}
       msg.connection.Send("GETNX", &r)

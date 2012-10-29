@@ -1,7 +1,7 @@
-package lightwavestore
+package store
 
 import (
-  "os"
+  "errors"
   "strings"
   "crypto/sha256"
   "encoding/hex"
@@ -11,7 +11,7 @@ import (
 func NewBlobRef(blob []byte) string {
   h := sha256.New()
   h.Write(blob)
-  return string(hex.EncodeToString(h.Sum()))
+  return string(hex.EncodeToString(h.Sum([]byte{})))
 }
 
 type blobStruct struct {
@@ -51,7 +51,7 @@ func (self *SimpleBlobStore) Enumerate() (result map[string][]byte) {
   return self.blobs
 }
 
-func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) (finalBlobRef string, err os.Error) {
+func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) (finalBlobRef string, err error) {
   // Empty blob reference?
   if len(blobref) == 0 {
     blobref = NewBlobRef(blob)
@@ -75,16 +75,16 @@ func (self *SimpleBlobStore) HashTree() HashTree {
   return self.hashTree
 }
 
-func (self *SimpleBlobStore) GetBlob(blobref string) (blob []byte, err os.Error) {
+func (self *SimpleBlobStore) GetBlob(blobref string) (blob []byte, err error) {
   var ok bool
   if blob, ok = self.blobs[blobref]; ok {
     return
   }
-  err = os.NewError("Unknown Blob ID")
+  err = errors.New("Unknown Blob ID")
   return
 }
 
-func (self *SimpleBlobStore) GetBlobs(prefix string) (channel <-chan Blob, err os.Error) {
+func (self *SimpleBlobStore) GetBlobs(prefix string) (channel <-chan Blob, err error) {
   ch := make(chan Blob)
   go self.getBlobs(prefix, ch)
   return ch, nil

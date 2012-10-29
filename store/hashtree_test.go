@@ -1,4 +1,4 @@
-package lightwavestore
+package store
 
 import (
   "crypto/sha256"
@@ -23,14 +23,14 @@ func TestHashTree1(t *testing.T) {
       member := set[perm[i]]
       h := sha256.New()
       h.Write([]byte(member))
-      tree.Add(hex.EncodeToString(h.Sum()))
+      tree.Add(hex.EncodeToString(h.Sum([]byte{})))
     }
     result := tree.Hash()
     if test == 0 {
       hash = result
     } else {
       if hash != result {
-	t.Fatal("Hashes are not the same")
+        t.Fatal("Hashes are not the same")
       }
     }
   }
