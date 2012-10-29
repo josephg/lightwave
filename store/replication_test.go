@@ -1,10 +1,10 @@
 package store
 
 import (
-  "testing"
-  "time"
   "bytes"
   "fmt"
+  "testing"
+  "time"
 )
 
 func TestReplication(t *testing.T) {
@@ -33,23 +33,23 @@ func TestReplication(t *testing.T) {
 
   go rep1.Listen()
   go rep2.Listen()
-//  time.Sleep(100000)
-//  
-//  err := fed2.Dial("fed1.com")
-//  if err != nil {
-//    t.Fatal("Could not connect")
-//  }
+  //  time.Sleep(100000)
+  //  
+  //  err := fed2.Dial("fed1.com")
+  //  if err != nil {
+  //    t.Fatal("Could not connect")
+  //  }
 
   // Wait for synchronization to happen
   time.Sleep(3000000000)
-  
+
   // Now both stores should have the same stuff
   m1 := store1.Enumerate()
   m2 := store2.Enumerate()
-  if len(m1) != len(m2) || len(m1) != 1000 + d1 + d2 {
+  if len(m1) != len(m2) || len(m1) != 1000+d1+d2 {
     t.Fatalf("Wrong number of entries: %v %v", len(m1), len(m2))
   }
-   
+
   for key, blob := range m1 {
     blob2, ok := m2[key]
     if !ok {

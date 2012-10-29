@@ -6,8 +6,8 @@ import (
 )
 
 type Message struct {
-  Cmd string "cmd"
-  Payload *json.RawMessage "data"
+  Cmd        string           "cmd"
+  Payload    *json.RawMessage "data"
   connection *Connection
 }
 
@@ -41,4 +41,3 @@ func (self *Message) EncodePayload(data interface{}) error {
   self.Payload = &p
   return nil
 }
-

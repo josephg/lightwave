@@ -1,23 +1,23 @@
 package store
 
 import (
-  "net"
-  "log"
   "encoding/json"
-  "sync"
   "errors"
+  "log"
+  "net"
+  "sync"
 )
 
 type Connection struct {
   // The userID of the remote server
-  userID string
-  replication *Replication
-  conn net.Conn
-  enc *json.Encoder
-  dec *json.Decoder
-  mutex sync.Mutex
-  errChannel chan<- error
-  receivedBlobs [100]string
+  userID             string
+  replication        *Replication
+  conn               net.Conn
+  enc                *json.Encoder
+  dec                *json.Decoder
+  mutex              sync.Mutex
+  errChannel         chan<- error
+  receivedBlobs      [100]string
   receivedBlobsIndex int
 }
 

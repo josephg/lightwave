@@ -1,15 +1,15 @@
 package store
 
 import (
+  "bytes"
   "crypto/sha256"
   "encoding/hex"
-  "sort"
-  "bytes"
   "errors"
+  "sort"
 )
 
 const (
-  HashTree_Depth = 32 * 2 // 32 byte hash in hex-encoding is 64 characters
+  HashTree_Depth      = 32 * 2 // 32 byte hash in hex-encoding is 64 characters
   HashTree_NodeDegree = 16
 )
 
@@ -52,8 +52,8 @@ type SimpleHashTree struct {
 }
 
 type hashTreeNode struct {
-  hash []byte
-  childIDs [][]byte
+  hash       []byte
+  childIDs   [][]byte
   childNodes []*hashTreeNode
 }
 
@@ -82,7 +82,7 @@ func (self *SimpleHashTree) Children(prefix string) (kind int, children []string
   if depth >= HashTree_Depth {
     return HashTree_NIL, nil, errors.New("Prefix is too long")
   }
-  if len(prefix) % 2 == 1 {
+  if len(prefix)%2 == 1 {
     prefix = prefix + "0"
   }
   bin_prefix, e := hex.DecodeString(prefix)
@@ -102,8 +102,8 @@ func (self *hashTreeNode) children(prefix []byte, level int, depth int) (kind in
     if self.childNodes == nil {
       return HashTree_NIL, nil, nil
     }
-    index := prefix[level / 2]
-    if level % 2 == 0 {
+    index := prefix[level/2]
+    if level%2 == 0 {
       index = index >> 4
     } else {
       index = index & 0xf
@@ -112,9 +112,9 @@ func (self *hashTreeNode) children(prefix []byte, level int, depth int) (kind in
     if ch == nil {
       return HashTree_NIL, nil, nil
     }
-    return ch.children(prefix, level + 1, depth - 1)
+    return ch.children(prefix, level+1, depth-1)
   }
-    
+
   if self.childNodes == nil {
     return HashTree_IDs, self.childIDs, nil
   }
@@ -132,8 +132,8 @@ func (self *hashTreeNode) children(prefix []byte, level int, depth int) (kind in
 
 func (self *hashTreeNode) add(id []byte, level int) {
   self.hash = nil
-  index := id[level / 2]
-  if level % 2 == 0 {
+  index := id[level/2]
+  if level%2 == 0 {
     index = index >> 4
   } else {
     index = index & 0xf
@@ -144,7 +144,7 @@ func (self *hashTreeNode) add(id []byte, level int) {
       ch = &hashTreeNode{}
       self.childNodes[index] = ch
     }
-    ch.add(id, level + 1)
+    ch.add(id, level+1)
   } else {
     self.childIDs = append(self.childIDs, id)
     if len(self.childIDs) <= HashTree_NodeDegree {
@@ -152,8 +152,8 @@ func (self *hashTreeNode) add(id []byte, level int) {
     }
     self.childNodes = make([]*hashTreeNode, HashTree_NodeDegree)
     for _, hash := range self.childIDs {
-      i := hash[level / 2]
-      if level % 2 == 0 {
+      i := hash[level/2]
+      if level%2 == 0 {
         i = i >> 4
       } else {
         i = i & 0xf
@@ -163,7 +163,7 @@ func (self *hashTreeNode) add(id []byte, level int) {
         ch = &hashTreeNode{}
         self.childNodes[i] = ch
       }
-      ch.add(hash, level + 1)
+      ch.add(hash, level+1)
     }
     self.childIDs = nil
   }
@@ -193,7 +193,6 @@ func (self *hashTreeNode) binaryHash() []byte {
 // ------------------------------------------
 // Helpers
 
-
 type bytesArray [][]byte
 
 func (p bytesArray) Len() int {
@@ -201,7 +200,7 @@ func (p bytesArray) Len() int {
 }
 
 func (p bytesArray) Less(i, j int) bool {
-    return bytes.Compare(p[i], p[j]) == -1
+  return bytes.Compare(p[i], p[j]) == -1
 }
 
 func (p bytesArray) Swap(i, j int) {
@@ -211,7 +210,7 @@ func (p bytesArray) Swap(i, j int) {
 func sortBytesArray(arr [][]byte) {
   sort.Sort(bytesArray(arr))
 }
-  
+
 // Helper function
 func min(a, b int) int {
   if a < b {

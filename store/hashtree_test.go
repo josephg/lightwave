@@ -3,9 +3,9 @@ package store
 import (
   "crypto/sha256"
   "encoding/hex"
-  "testing"
   "fmt"
   "rand"
+  "testing"
 )
 
 // This test checks that the hash tree is always the same

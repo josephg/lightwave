@@ -1,11 +1,11 @@
 package store
 
 import (
-  "errors"
-  "strings"
   "crypto/sha256"
   "encoding/hex"
+  "errors"
   "log"
+  "strings"
 )
 
 func NewBlobRef(blob []byte) string {
@@ -16,34 +16,34 @@ func NewBlobRef(blob []byte) string {
 
 type blobStruct struct {
   data []byte
-  ref string
+  ref  string
 }
 
 type SimpleBlobStore struct {
   listeners []BlobStoreListener
-  blobs map[string][]byte
-  hashTree *SimpleHashTree
-  channel chan blobStruct
+  blobs     map[string][]byte
+  hashTree  *SimpleHashTree
+  channel   chan blobStruct
 }
 
 func NewSimpleBlobStore() *SimpleBlobStore {
-  s := &SimpleBlobStore{blobs:make(map[string][]byte), hashTree: NewSimpleHashTree()}
-  
+  s := &SimpleBlobStore{blobs: make(map[string][]byte), hashTree: NewSimpleHashTree()}
+
   s.channel = make(chan blobStruct, 1000)
   f := func() {
     for {
       var b blobStruct
       b = <-s.channel
       for _, l := range s.listeners {
-	err := l.HandleBlob(b.data, b.ref)
-	if err != nil {
-	  log.Printf("Err: %v", err)
-	}
-      }    
+        err := l.HandleBlob(b.data, b.ref)
+        if err != nil {
+          log.Printf("Err: %v", err)
+        }
+      }
     }
   }
   go f()
-  
+
   return s
 }
 
@@ -64,9 +64,9 @@ func (self *SimpleBlobStore) StoreBlob(blob []byte, blobref string) (finalBlobRe
   self.hashTree.Add(blobref)
   // Store the blob and allow for its further processing
   self.blobs[blobref] = blob
-//  for _, l := range self.listeners {
-//    l.HandleBlob(blob, blobref)
-//  }
+  //  for _, l := range self.listeners {
+  //    l.HandleBlob(blob, blobref)
+  //  }
   self.channel <- blobStruct{blob, blobref}
   return blobref, nil
 }
@@ -95,7 +95,7 @@ func (self *SimpleBlobStore) getBlobs(prefix string, channel chan Blob) {
   // connection is broken
   for blobref, blob := range self.blobs {
     if strings.HasPrefix(blobref, prefix) {
-      channel <- Blob{Data:blob, BlobRef: blobref}
+      channel <- Blob{Data: blob, BlobRef: blobref}
     }
   }
   close(channel)

@@ -1,16 +1,16 @@
 package store
 
 import (
-  "sync"
   "encoding/json"
-  "net"
   "log"
+  "net"
+  "sync"
   "time"
 )
 
 const (
-  connClient = 1
-  connServer = 2
+  connClient    = 1
+  connServer    = 2
   connStreaming = 4
 )
 
@@ -20,14 +20,14 @@ const (
 
 type Replication struct {
   userID string
-  mutex sync.Mutex
+  mutex  sync.Mutex
   // The value in the map denotes the state of the connection as specified
   // by the conn* constants.
   connections map[*Connection]int
-  store BlobStore
+  store       BlobStore
   // The empty string or the network address of a master
   masterAddr string
-  laddr string
+  laddr      string
 }
 
 func NewReplication(userID string, store BlobStore, laddr string, masterAddr string) *Replication {
@@ -100,14 +100,14 @@ func (self *Replication) dialMaster(raddr string) (err error) {
 // Called from the store when a new blob has been stored
 func (self *Replication) HandleBlob(blob []byte, blobref string) error {
   for connection, flags := range self.connections {
-    if flags & connStreaming == connStreaming {
+    if flags&connStreaming == connStreaming {
       // Do not send the blob on the same connection on which it has been received
       if !connection.hasReceivedBlob(blobref) {
         connection.Send("BLOB", json.RawMessage(blob))
       }
     }
   }
-  return nil;
+  return nil
 }
 
 func (self *Replication) HandleMessage(msg Message) {
@@ -235,7 +235,10 @@ func (self *Replication) getnHandlerIntern(prefix string, conn *Connection) {
 
 // Handles the 'GETNX' command
 func (self *Replication) getnxHandler(msg Message) {
-  query := &struct{Prefix string "prefix"; Except []string "except"}{}
+  query := &struct {
+    Prefix string   "prefix"
+    Except []string "except"
+  }{}
   if msg.DecodePayload(query) != nil {
     log.Printf("Error in GETNX request")
     return
@@ -282,7 +285,11 @@ func (self *Replication) treeHashHandler(msg Message) {
 
 // Handles the 'TCHLD' command
 func (self *Replication) treeHashChildrenHandler(msg Message) {
-  req := struct{Prefix string "prefix"; Kind int "kind"; Children []string "chld"}{}
+  req := struct {
+    Prefix   string   "prefix"
+    Kind     int      "kind"
+    Children []string "chld"
+  }{}
   var prefix string
   // This is a request?
   if msg.DecodePayload(&prefix) == nil {
@@ -291,11 +298,11 @@ func (self *Replication) treeHashChildrenHandler(msg Message) {
     msg.connection.Send("TCHLD", &req)
     return
   }
-  if msg.DecodePayload(&req) != nil {    
+  if msg.DecodePayload(&req) != nil {
     log.Printf("Error in TCHL message")
     return
   }
-  
+
   kind1, children1, prefix := req.Kind, req.Children, req.Prefix
   kind2, children2, err := self.store.HashTree().Children(prefix)
   if kind1 == HashTree_NIL || kind2 == HashTree_NIL || err != nil {
@@ -355,7 +362,10 @@ func (self *Replication) treeHashChildrenHandler(msg Message) {
       for key, _ := range map1 {
         lst = append(lst, key)
       }
-      r := struct{Prefix string "prefix"; Except []string "except"}{p, lst}
+      r := struct {
+        Prefix string   "prefix"
+        Except []string "except"
+      }{p, lst}
       msg.connection.Send("GETNX", &r)
     }
   } else {
@@ -363,6 +373,6 @@ func (self *Replication) treeHashChildrenHandler(msg Message) {
       // Send all blobs with this prefix (except those in map2) to the other side
       p := prefix + string(hextable[i])
       self.getnxHandlerIntern(p, map2, msg.connection)
-    }  
+    }
   }
 }

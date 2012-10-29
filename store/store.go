@@ -13,7 +13,6 @@ type BlobStoreListener interface {
 }
 
 type Blob struct {
-  Data []byte
+  Data    []byte
   BlobRef string
 }
-
