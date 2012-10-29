@@ -1,4 +1,4 @@
-package lightwaveot
+package ot
 
 import (
   "testing"
@@ -6,11 +6,11 @@ import (
 
 func TestObjExec(t *testing.T) {
   o := NewSimpleObject()
-  m1 := Mutation{ID:"m1", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:11, Value: "Hello World"} } } } } } } } } }
+  m1 := Mutation{ID: "m1", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 11, Value: "Hello World"}}}}}}}}}}
   _, err := Execute(o, m1)
   if err != nil {
     t.Fatal(err.String())
@@ -21,9 +21,9 @@ func TestObjExec(t *testing.T) {
     t.Fatal("Object attribute has wrong value or version")
   }
 
-  m2 := Mutation{ID:"m2", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:StringOp, Len:1, Operations: []Operation{ Operation{Kind:SkipOp, Len:11}, Operation{Kind:InsertOp, Len:3, Value:"!!!"} } } } } } } }
+  m2 := Mutation{ID: "m2", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: StringOp, Len: 1, Operations: []Operation{Operation{Kind: SkipOp, Len: 11}, Operation{Kind: InsertOp, Len: 3, Value: "!!!"}}}}}}}}
   _, err = Execute(o, m2)
   if err != nil {
     t.Fatal(err.String())
@@ -34,12 +34,12 @@ func TestObjExec(t *testing.T) {
     t.Fatal("Object attribute has wrong value or version")
   }
 
-  m3 := Mutation{ID:"m3", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:3, Value: "Old"} } } } },
-	    Operation{Kind:SkipOp, Len:1} } } } } }
+  m3 := Mutation{ID: "m3", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 3, Value: "Old"}}}}},
+      Operation{Kind: SkipOp, Len: 1}}}}}}
   _, err = Execute(o, m3)
   if err != nil {
     t.Fatal(err.String())
@@ -50,9 +50,9 @@ func TestObjExec(t *testing.T) {
     t.Fatalf("Object attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
   }
 
-  m4 := Mutation{ID:"m4", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:StringOp, Len:1, Operations: []Operation{ Operation{Kind:SkipOp, Len:3}, Operation{Kind:InsertOp, Len:3, Value:"???"} } }, Operation{Kind:SkipOp, Len:1} } } } } }
+  m4 := Mutation{ID: "m4", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: StringOp, Len: 1, Operations: []Operation{Operation{Kind: SkipOp, Len: 3}, Operation{Kind: InsertOp, Len: 3, Value: "???"}}}, Operation{Kind: SkipOp, Len: 1}}}}}}
   _, err = Execute(o, m4)
   if err != nil {
     t.Fatal(err.String())
@@ -63,11 +63,11 @@ func TestObjExec(t *testing.T) {
     t.Fatalf("Object attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
   }
 
-  m0 := Mutation{ID:"m5", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:3, Value: "Neu"} } } } } } } } } }
+  m0 := Mutation{ID: "m5", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 3, Value: "Neu"}}}}}}}}}}
   seq := []Mutation{m1, m2, m3, m4}
   tseq, tm0, err := TransformSeq(seq, m0)
   if err != nil {
@@ -83,8 +83,8 @@ func TestObjExec(t *testing.T) {
   version, val = o.Get("a1")
   if version != 2 || val.(*SimpleText).Text != "Neu" {
     t.Fatalf("Object attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
-  }  
-  
+  }
+
   o2 := NewSimpleObject()
   _, err = Execute(o2, m0)
   if err != nil {
@@ -102,7 +102,7 @@ func TestObjExec(t *testing.T) {
   if version != 2 || val.(*SimpleText).Text != "Neu" {
     t.Fatalf("Object attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
   }
-  
+
   // Test composition
   cseq := []Mutation{m1, m2, m3, m4}
   c, err := ComposeSeq(cseq)
@@ -158,22 +158,22 @@ func TestObjExec(t *testing.T) {
 }
 
 func TestObjTransform(t *testing.T) {
-  m1 := Mutation{ID:"m1", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:11, Value: "Hello World"} } } } } } } } } }
-  m2 := Mutation{ID:"m2", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:16, Value: "The other option"} } } } } } } } } }
+  m1 := Mutation{ID: "m1", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 11, Value: "Hello World"}}}}}}}}}}
+  m2 := Mutation{ID: "m2", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 16, Value: "The other option"}}}}}}}}}}
   tm1, tm2, err := Transform(m1, m2)
   if err != nil {
     t.Fatal(err.String())
     return
   }
-  
+
   o1 := NewSimpleObject()
   o2 := NewSimpleObject()
   _, err = Execute(o1, m1)
@@ -239,20 +239,20 @@ func TestObjTransform(t *testing.T) {
 }
 
 func TestObjTransformAndCompose2(t *testing.T) {
-  m1 := Mutation{ID:"m1", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:StringOp, Operations: []Operation{
-		Operation{Kind:InsertOp, Len:2, Value:"ab"} } } } } } } }
-  m2 := Mutation{ID:"m2", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	  Operation{Kind:StringOp, Operations: []Operation{
-		Operation{Kind:InsertOp, Len:2, Value:"xy"} } } } } } } }
+  m1 := Mutation{ID: "m1", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: StringOp, Operations: []Operation{
+        Operation{Kind: InsertOp, Len: 2, Value: "ab"}}}}}}}}
+  m2 := Mutation{ID: "m2", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: StringOp, Operations: []Operation{
+        Operation{Kind: InsertOp, Len: 2, Value: "xy"}}}}}}}}
   tm1, tm2, err := Transform(m1, m2)
   if err != nil {
     t.Fatal(err.String())
     return
   }
-  
+
   o1 := NewSimpleObject()
   o1.Set("a1", 0, NewSimpleText(""))
   o2 := NewSimpleObject()
@@ -318,19 +318,19 @@ func TestObjTransformAndCompose2(t *testing.T) {
   version, val = o2.Get("a1")
   if version != 0 || val.(*SimpleText).Text != "abxy" {
     t.Fatalf("Object o2 attribute has wrong value or version: %v %v", version, val.(*SimpleText).Text)
-  }  
+  }
 }
 
 func TestObjPrune(t *testing.T) {
-  m1 := Mutation{ID:"m1", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:StringOp, Operations: []Operation{
-		Operation{Kind:InsertOp, Len:2, Value:"ab"} } } } } } } }
-  m2 := Mutation{ID:"m2", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	  Operation{Kind:StringOp, Operations: []Operation{
-		Operation{Kind:InsertOp, Len:2, Value:"xy"} } } } } } } }
-  
+  m1 := Mutation{ID: "m1", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: StringOp, Operations: []Operation{
+        Operation{Kind: InsertOp, Len: 2, Value: "ab"}}}}}}}}
+  m2 := Mutation{ID: "m2", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: StringOp, Operations: []Operation{
+        Operation{Kind: InsertOp, Len: 2, Value: "xy"}}}}}}}}
+
   tm1, tm2, err := Transform(m1, m2)
   if err != nil {
     t.Fatal(err.String())
@@ -365,18 +365,18 @@ func TestObjPrune(t *testing.T) {
 }
 
 func TestObjPrune2(t *testing.T) {
-  m1 := Mutation{ID:"m1", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:11, Value: "Hello World"} } } } } } } } } }
-  m2 := Mutation{ID:"m2", Operation: Operation{Kind:ObjectOp, Len:1, Operations: []Operation{
-	Operation{Kind:AttributeOp, Value:"a1", Operations: []Operation{
-	    Operation{Kind:InsertOp, Len:1, Operations: []Operation{
-		Operation{Kind:StringOp, Operations: []Operation{
-                    Operation{Kind:InsertOp, Len:16, Value: "The other option"} } } } } } } } } }
+  m1 := Mutation{ID: "m1", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 11, Value: "Hello World"}}}}}}}}}}
+  m2 := Mutation{ID: "m2", Operation: Operation{Kind: ObjectOp, Len: 1, Operations: []Operation{
+    Operation{Kind: AttributeOp, Value: "a1", Operations: []Operation{
+      Operation{Kind: InsertOp, Len: 1, Operations: []Operation{
+        Operation{Kind: StringOp, Operations: []Operation{
+          Operation{Kind: InsertOp, Len: 16, Value: "The other option"}}}}}}}}}}
 
-    tm1, tm2, err := Transform(m1, m2)
+  tm1, tm2, err := Transform(m1, m2)
   if err != nil {
     t.Fatal(err.String())
     return

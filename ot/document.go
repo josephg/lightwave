@@ -1,9 +1,8 @@
-package lightwaveot
+package ot
 
 import (
-  "os"
+  "errors"
   "fmt"
-  vec "container/vector"
 )
 
 // Every data structure that can be mutated by string operations must implement
@@ -18,8 +17,8 @@ type Text interface {
   Begin()
   InsertChars(str string)
   InsertTombs(count int)
-  Delete(count int) (err os.Error)
-  Skip(count int) (err os.Error)
+  Delete(count int) (err error)
+  Skip(count int) (err error)
   End()
 }
 
@@ -34,8 +33,8 @@ type Array interface {
   Begin()
   Insert(data interface{})
   InsertTombs(count int)
-  Delete(count int) (err os.Error)
-  Skip(count int) (err os.Error)
+  Delete(count int) (err error)
+  Skip(count int) (err error)
   End()
 }
 
@@ -46,11 +45,11 @@ type Array interface {
 // It stores where inside the string of characters the tombs are located.
 // See SimpleText for an example of how to use the TombStream.
 type TombStream struct {
-  seq *vec.IntVector
+  seq         *[]int
   pos, inside int
 }
 
-func NewTombStream(seq *vec.IntVector) *TombStream {
+func NewTombStream(seq *[]int) *TombStream {
   return &TombStream{seq: seq}
 }
 
@@ -61,7 +60,7 @@ func (self *TombStream) InsertChars(n int) {
     self.seq.Push(n)
     self.inside = n
   } else if self.seq.At(self.pos) >= 0 { // Insert inside a character sequence
-    self.seq.Set(self.pos, self.seq.At(self.pos) + n)
+    self.seq.Set(self.pos, self.seq.At(self.pos)+n)
     self.inside += n
   } else if self.inside == -self.seq.At(self.pos) { // End of a tomb sequence?
     self.pos++
@@ -76,8 +75,8 @@ func (self *TombStream) InsertChars(n int) {
     self.seq.Insert(self.pos, n)
     self.inside = n
   } else { // Insert inside a tomb sequence
-    self.seq.Insert(self.pos + 1, n )
-    self.seq.Insert(self.pos + 2, self.seq.At(self.pos) + self.inside)
+    self.seq.Insert(self.pos+1, n)
+    self.seq.Insert(self.pos+2, self.seq.At(self.pos)+self.inside)
     self.seq.Set(self.pos, -self.inside)
     self.pos++
     self.inside = n
@@ -91,7 +90,7 @@ func (self *TombStream) InsertTombs(n int) {
     self.seq.Push(-n)
     self.inside = n
   } else if self.seq.At(self.pos) < 0 { // Insert inside a tomb sequence
-    self.seq.Set(self.pos, self.seq.At(self.pos) - n)
+    self.seq.Set(self.pos, self.seq.At(self.pos)-n)
     self.inside += n
   } else if self.inside == self.seq.At(self.pos) { // End of a character sequence?
     self.pos++
@@ -106,32 +105,32 @@ func (self *TombStream) InsertTombs(n int) {
     self.seq.Insert(self.pos, -n)
     self.inside = n
   } else { // Insert inside a character sequence
-    self.seq.Insert(self.pos + 1, -n )
-    self.seq.Insert(self.pos + 2, self.seq.At(self.pos) - self.inside)
+    self.seq.Insert(self.pos+1, -n)
+    self.seq.Insert(self.pos+2, self.seq.At(self.pos)-self.inside)
     self.seq.Set(self.pos, self.inside)
     self.pos++
     self.inside = n
   }
 }
 
-func (self *TombStream) Bury(n int) (burried int, err os.Error) {
+func (self *TombStream) Bury(n int) (burried int, err error) {
   for n != 0 {
     if self.pos == self.seq.Len() { // End of the sequence -> error
-      err = os.NewError("Burry reached EOF")
+      err = errors.New("Burry reached EOF")
       return
     }
     x := self.seq.At(self.pos)
     if x < 0 { // Bury characters that have already been burried?
-      m := min(n, -x - self.inside)
+      m := min(n, -x-self.inside)
       self.inside += m
       n -= m
       if self.inside == -x && n > 0 {
-	self.pos++
-	self.inside = 0
+        self.pos++
+        self.inside = 0
       }
       continue
     }
-    m := min(n, x - self.inside)
+    m := min(n, x-self.inside)
     n -= m
     burried += m
     self.seq.Set(self.pos, -m)
@@ -144,42 +143,42 @@ func (self *TombStream) Bury(n int) (burried int, err os.Error) {
     } else if self.pos > 0 {
       self.seq.Delete(self.pos)
       self.pos--
-      self.seq.Set(self.pos, self.seq.At(self.pos) - m)
+      self.seq.Set(self.pos, self.seq.At(self.pos)-m)
       self.inside = -self.seq.At(self.pos)
     }
     if right > 0 {
-      self.seq.Insert(self.pos + 1, right)
-    } else if self.pos + 1 < self.seq.Len() {
-      self.seq.Set(self.pos, self.seq.At(self.pos) + self.seq.At(self.pos + 1))
+      self.seq.Insert(self.pos+1, right)
+    } else if self.pos+1 < self.seq.Len() {
+      self.seq.Set(self.pos, self.seq.At(self.pos)+self.seq.At(self.pos+1))
       self.seq.Delete(self.pos + 1)
     }
   }
   return
 }
 
-func (self *TombStream) Skip(n int) (chars int, err os.Error) {
+func (self *TombStream) Skip(n int) (chars int, err error) {
   for n > 0 {
     if self.pos >= self.seq.Len() {
-      return chars, os.NewError("TombStream reached EOF")
+      return chars, errors.New("TombStream reached EOF")
     }
     x := self.seq.At(self.pos)
     if x >= 0 {
       if self.inside == x {
-	self.pos++
-	self.inside = 0
-	continue
+        self.pos++
+        self.inside = 0
+        continue
       }
-      m := min(x - self.inside, n)
+      m := min(x-self.inside, n)
       self.inside += m
       n -= m
       chars += m
     } else {
       if self.inside == -x {
-	self.pos++
-	self.inside = 0
-	continue
+        self.pos++
+        self.inside = 0
+        continue
       }
-      m := min(-x - self.inside, n)
+      m := min(-x-self.inside, n)
       self.inside += m
       n -= m
     }
@@ -187,10 +186,10 @@ func (self *TombStream) Skip(n int) (chars int, err os.Error) {
   return
 }
 
-func (self *TombStream) SkipChars(n int) (skipped int, err os.Error) {
+func (self *TombStream) SkipChars(n int) (skipped int, err error) {
   for n > 0 {
     if self.pos >= self.seq.Len() {
-      return skipped, os.NewError("TombStream reached EOF")
+      return skipped, errors.New("TombStream reached EOF")
     }
     x := self.seq.At(self.pos)
     x2 := x
@@ -202,7 +201,7 @@ func (self *TombStream) SkipChars(n int) (skipped int, err os.Error) {
       self.inside = 0
       continue
     }
-    m := min(x2 - self.inside, n)
+    m := min(x2-self.inside, n)
     self.inside += m
     skipped += m
     if x >= 0 {
@@ -228,12 +227,12 @@ func (self *TombStream) SkipToEnd() (count int) {
 // ------------------------------------------------------------------
 // Execution of mutations
 
-func Execute(input interface{}, mut Mutation) (output interface{}, err os.Error) {
+func Execute(input interface{}, mut Mutation) (output interface{}, err error) {
   output, err = ExecuteOperation(input, mut.Operation)
   return
 }
 
-func ExecuteOperation(input interface{}, op Operation) (output interface{}, err os.Error) {
+func ExecuteOperation(input interface{}, op Operation) (output interface{}, err error) {
   switch op.Kind {
   case NoOp:
     return input, nil
@@ -243,7 +242,7 @@ func ExecuteOperation(input interface{}, op Operation) (output interface{}, err 
     }
     text, ok := input.(Text)
     if !ok {
-      err = os.NewError("Type mismatch: Not a string")
+      err = errors.New("Type mismatch: Not a string")
       return
     }
     err = executeString(text, op.Operations)
@@ -253,19 +252,19 @@ func ExecuteOperation(input interface{}, op Operation) (output interface{}, err 
   case ObjectOp:
     obj, ok := input.(Object)
     if !ok {
-      err = os.NewError("Type mismatch: Not an object")
+      err = errors.New("Type mismatch: Not an object")
       return
     }
     err = executeObject(obj, op.Operations)
-    output = obj    
+    output = obj
   default:
-    err = os.NewError("Operation not allowed in this place")
+    err = errors.New("Operation not allowed in this place")
   }
   return
 }
 
 // Apply a mutation to the input document
-func executeString(text Text, ops []Operation) (err os.Error) {
+func executeString(text Text, ops []Operation) (err error) {
   text.Begin()
   defer text.End()
   for _, op := range ops {
@@ -273,19 +272,19 @@ func executeString(text Text, ops []Operation) (err os.Error) {
     case InsertOp:
       str := op.Value.(string)
       if len(str) > 0 {
-	text.InsertChars(str)
+        text.InsertChars(str)
       } else {
-	text.InsertTombs(op.Len)
+        text.InsertTombs(op.Len)
       }
     case SkipOp:
       e := text.Skip(op.Len)
       if e != nil {
-	panic("TombStream ended unexpectedly")
+        panic("TombStream ended unexpectedly")
       }
     case DeleteOp:
       err = text.Delete(op.Len)
       if err != nil {
-	return
+        return
       }
     case NoOp:
       // Do nothing by intention
@@ -296,13 +295,13 @@ func executeString(text Text, ops []Operation) (err os.Error) {
   return
 }
 
-func executeObject(obj Object, ops []Operation) (err os.Error) {
+func executeObject(obj Object, ops []Operation) (err error) {
   obj.Begin()
   defer obj.End()
   // Iterate over all AttributeOps
   for _, attr := range ops {
     if attr.Kind != AttributeOp {
-      err = os.NewError("Expected an AttributeOp as child of ObjectOp")
+      err = errors.New("Expected an AttributeOp as child of ObjectOp")
       return
     }
     // Get the current value
@@ -312,43 +311,43 @@ func executeObject(obj Object, ops []Operation) (err os.Error) {
     for _, op := range attr.Operations {
       switch op.Kind {
       case InsertOp:
-	if pos <= version {
-	  version++
-	} else {
-	  exec_op = op
-	}
-	pos++
+        if pos <= version {
+          version++
+        } else {
+          exec_op = op
+        }
+        pos++
       case SkipOp:
-	pos += op.Len
+        pos += op.Len
       case StringOp, ObjectOp, ArrayOp:
-    	if pos == version {
-	  exec_op = op
-	}
-	pos++
+        if pos == version {
+          exec_op = op
+        }
+        pos++
       default:
-	err = os.NewError("Operation not allowed as a child of an AttributeOp")
+        err = errors.New("Operation not allowed as a child of an AttributeOp")
       }
     }
     switch exec_op.Kind {
     case InsertOp:
       if len(exec_op.Operations) > 1 {
-	err = os.NewError("InsertOp must have at most one child operation")
+        err = errors.New("InsertOp must have at most one child operation")
         return
       } else if len(exec_op.Operations) == 1 { // Insert a mutable object?
-	op := exec_op.Operations[0]
-	switch op.Kind {
-	case StringOp:
-	  val, err = ExecuteOperation(NewSimpleText(""), op)
-	case ObjectOp:
-	  val, err = ExecuteOperation(NewSimpleObject(), op)
-	case ArrayOp:
-	  // TODO
-	}
-	if err != nil {
-	  return
-	}
+        op := exec_op.Operations[0]
+        switch op.Kind {
+        case StringOp:
+          val, err = ExecuteOperation(NewSimpleText(""), op)
+        case ObjectOp:
+          val, err = ExecuteOperation(NewSimpleObject(), op)
+        case ArrayOp:
+          // TODO
+        }
+        if err != nil {
+          return
+        }
       } else { // Insert a simple constant (Everything JSON supports)
-	val = exec_op.Value
+        val = exec_op.Value
       }
       version = pos - 1
     case StringOp, ObjectOp, ArrayOp:
@@ -380,7 +379,7 @@ func (self *TextMarker) Insert(pos int, length int) {
 }
 
 func (self *TextMarker) Delete(pos int, length int) {
-  if self.TextPos >= pos + length {
+  if self.TextPos >= pos+length {
     self.TextPos -= length
   } else if self.TextPos > pos {
     self.TextPos = pos
@@ -403,12 +402,12 @@ func (self *TextRange) Delete(pos int, length int) {
 // Plain text that can be edited concurrently.
 // Implements the Text interface.
 type SimpleText struct {
-  Text string            // The string without any tombs
+  Text string // The string without any tombs
   // A positive number represents a sequence of visible characters.
   // A negative number represents a sequence of tombs.
-  tombs vec.IntVector
+  tombs      []int
   tombStream *TombStream // Used during a mutation
-  pos int                // Used during a mutation
+  pos        int         // Used during a mutation
 }
 
 func NewSimpleText(text string) *SimpleText {
@@ -440,17 +439,17 @@ func (self *SimpleText) InsertTombs(count int) {
   self.tombStream.InsertTombs(count)
 }
 
-func (self *SimpleText) Delete(count int) (err os.Error) {
+func (self *SimpleText) Delete(count int) (err error) {
   var burried int
   burried, err = self.tombStream.Bury(count)
   if err != nil {
     return
   }
-  self.Text = self.Text[:self.pos] + self.Text[self.pos + burried:]
+  self.Text = self.Text[:self.pos] + self.Text[self.pos+burried:]
   return
 }
 
-func (self *SimpleText) Skip(count int) (err os.Error) {
+func (self *SimpleText) Skip(count int) (err error) {
   var chars int
   chars, err = self.tombStream.Skip(count)
   self.pos += chars
@@ -465,7 +464,7 @@ func (self *SimpleText) End() {
 // SimpleObject
 
 type SimpleObject struct {
-  values map[string]interface{}
+  values   map[string]interface{}
   versions map[string]int
 }
 
@@ -508,12 +507,12 @@ func (self *SimpleObject) End() {
 // Plain text that can be edited concurrently.
 // Implements the Text interface.
 type SimpleArray struct {
-  array vec.Vector
+  array []interface{}
   // A positive number represents a sequence of visible characters.
   // A negative number represents a sequence of tombs.
-  tombs vec.IntVector
+  tombs      []int
   tombStream *TombStream // Used during a mutation
-  pos int                // Used during a mutation
+  pos        int         // Used during a mutation
 }
 
 func NewSimpleArray() *SimpleArray {
@@ -545,17 +544,17 @@ func (self *SimpleArray) InsertTombs(count int) {
   self.tombStream.InsertTombs(count)
 }
 
-func (self *SimpleArray) Delete(count int) (err os.Error) {
+func (self *SimpleArray) Delete(count int) (err error) {
   var burried int
   burried, err = self.tombStream.Bury(count)
   if err != nil {
     return
   }
-  self.array.Cut(self.pos, self.pos + burried)
+  self.array.Cut(self.pos, self.pos+burried)
   return
 }
 
-func (self *SimpleArray) Skip(count int) (err os.Error) {
+func (self *SimpleArray) Skip(count int) (err error) {
   var chars int
   chars, err = self.tombStream.Skip(count)
   self.pos += chars

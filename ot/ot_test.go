@@ -1,15 +1,13 @@
-package lightwaveot
+package ot
 
 import (
-  "os"
-  "testing"
-  "rand"
-  "fmt"
-  "encoding/hex"
-  "crypto/sha256"
   vec "container/vector"
+  "crypto/sha256"
+  "encoding/hex"
+  "fmt"
+  "math/rand"
+  "testing"
 )
-
 
 // --------------------------------------------
 // Hashes and hex-encoding helper functions
@@ -21,7 +19,7 @@ func hexHash(input string) string {
 func hash(input []byte) []byte {
   h := sha256.New()
   h.Write(input)
-  return h.Sum()
+  return h.Sum(nil)
 }
 
 func idToString(id []byte) string {
@@ -53,7 +51,7 @@ func permutations(pos int, arr []int, comm chan []int) {
     tmp := arr[pos]
     arr[pos] = arr[i]
     arr[i] = tmp
-    permutations(pos + 1, arr, comm)
+    permutations(pos+1, arr, comm)
     arr[i] = arr[pos]
     arr[pos] = tmp
   }
@@ -77,11 +75,11 @@ func subsets(n int, max int, arr []int, comm chan []int) {
     comm <- arr
     return
   }
-  subsets(n + 1, max, arr, comm)
-  arr2 := make([]int, len(arr) + 1)
+  subsets(n+1, max, arr, comm)
+  arr2 := make([]int, len(arr)+1)
   copy(arr2, arr)
   arr2[len(arr)] = n
-  subsets(n + 1, max, arr2, comm)
+  subsets(n+1, max, arr2, comm)
   if n == 0 {
     close(comm)
   }
@@ -97,31 +95,31 @@ func RandomOperations(n int) (ops []Operation) {
     r := rand.Float64()
     if r < 0.1 { // Insert a tomb?
       l := rand.Intn(3) + 1
-      if len(ops) == 0 || ops[len(ops) - 1].Kind != InsertOp || len(ops[len(ops) - 1].Value.(string)) > 0 {
-        ops = append(ops, Operation{Kind:InsertOp, Len: l, Value: ""})
+      if len(ops) == 0 || ops[len(ops)-1].Kind != InsertOp || len(ops[len(ops)-1].Value.(string)) > 0 {
+        ops = append(ops, Operation{Kind: InsertOp, Len: l, Value: ""})
       }
     } else if r < 0.3 { // Insert characters?
       data := fmt.Sprintf("_%v_", rand.Intn(100))
-      if len(ops) == 0 || ops[len(ops) - 1].Kind != InsertOp || len(ops[len(ops) - 1].Value.(string)) == 0 {
-        ops = append(ops, Operation{Kind:InsertOp, Len: len(data), Value: data})
+      if len(ops) == 0 || ops[len(ops)-1].Kind != InsertOp || len(ops[len(ops)-1].Value.(string)) == 0 {
+        ops = append(ops, Operation{Kind: InsertOp, Len: len(data), Value: data})
       }
     }
     if i == n { // Allowed inserts at the end, but now it is time to quit the for loop
       break
     }
-    incr := rand.Intn(n - i - 1) + 1
+    incr := rand.Intn(n-i-1) + 1
     r = rand.Float64()
     if r < 0.6 { // Skip?
-      if len(ops) > 0 && ops[len(ops) - 1].Kind == SkipOp {
-	ops[len(ops) - 1].Len += incr
+      if len(ops) > 0 && ops[len(ops)-1].Kind == SkipOp {
+        ops[len(ops)-1].Len += incr
       } else {
-        ops = append(ops, Operation{Kind:SkipOp, Len: incr})
+        ops = append(ops, Operation{Kind: SkipOp, Len: incr})
       }
     } else { // Delete
-      if len(ops) > 0 && ops[len(ops) - 1].Kind == DeleteOp {
-	ops[len(ops) - 1].Len += incr
+      if len(ops) > 0 && ops[len(ops)-1].Kind == DeleteOp {
+        ops[len(ops)-1].Len += incr
       } else {
-        ops = append(ops, Operation{Kind:DeleteOp, Len: incr})
+        ops = append(ops, Operation{Kind: DeleteOp, Len: incr})
       }
     }
     i += incr
@@ -149,32 +147,32 @@ func TestPruning(t *testing.T) {
     for i := 0; i < len(all); i++ {
       _, x, err := TransformSeq(seq, all[i])
       if err != nil {
-	t.Fatalf("ERR: %v, i=%v\n", err.String(), i)
-      }      
-      seq = append( seq, x )
+        t.Fatalf("ERR: %v, i=%v\n", err.Error(), i)
+      }
+      seq = append(seq, x)
     }
-    
+
     // Transform the mutations but this time skip a subset of mutations
     for subset := range Subsets(len(seq)) {
       seq2 := []Mutation{}
       for i := 0; i < len(all); i++ {
-	skip := false
-	for j := 0; j < len(subset); j++ {
-	  if subset[j] == i {
-	    skip = true
-	    continue
-	  }
-	}
-	if skip {
-	  continue
-	}
-	_, x, err := TransformSeq(seq2, all[i])
-	if err != nil {
-	  t.Fatal(err.String())
-	}
-	seq2 = append( seq2, x )
+        skip := false
+        for j := 0; j < len(subset); j++ {
+          if subset[j] == i {
+            skip = true
+            continue
+          }
+        }
+        if skip {
+          continue
+        }
+        _, x, err := TransformSeq(seq2, all[i])
+        if err != nil {
+          t.Fatal(err.Error())
+        }
+        seq2 = append(seq2, x)
       }
-      
+
       // println("------------- computing undo")
       // Undo mutation k in seq
       var undolist map[string]bool = make(map[string]bool)
@@ -183,32 +181,32 @@ func TestPruning(t *testing.T) {
       }
       seq3, err := PruneMutationSeq(seq, undolist)
       if err != nil {
-	t.Fatalf("ERR: %v\n", err.String())
+        t.Fatalf("ERR: %v\n", err.Error())
       }
-      
+
       // println("------------- done undo")
       // fmt.Printf("SEQ: %v\nSEQ2: %v\nSEQ3: %v\nALL: %v\n", seq, seq2, seq3, all)
       // Check that seq2 and seq3 both generate the same document
       doc2 := NewSimpleText(original)
       for _, mut := range seq2 {
-	result, err := Execute(doc2, mut)
-	if err != nil {
-	  t.Fatal(err.String())
-	}
-	doc2 = result.(*SimpleText)
+        result, err := Execute(doc2, mut)
+        if err != nil {
+          t.Fatal(err.Error())
+        }
+        doc2 = result.(*SimpleText)
       }
 
       doc3 := NewSimpleText(original)
       for _, mut := range seq3 {
-	result, err := Execute(doc3, mut)
-	if err != nil {
-	  t.Fatal(err.String())
-	}
-	doc3 = result.(*SimpleText)
+        result, err := Execute(doc3, mut)
+        if err != nil {
+          t.Fatal(err.Error())
+        }
+        doc3 = result.(*SimpleText)
       }
 
       if doc2.Text != doc3.Text {
-	t.Fatalf("Undo delivers different docs:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text)
+        t.Fatalf("Undo delivers different docs:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text)
       }
       // t.Logf("UNDO2 doc: %v\n", doc2.Text)
     }
@@ -231,124 +229,124 @@ func TestPruningAndComposing(t *testing.T) {
     for i := 0; i < len(all); i++ {
       _, x, err := TransformSeq(seq, all[i])
       if err != nil {
-	t.Fatalf("ERR: %v, i=%v\n", err.String(), i)
-      }      
-      seq = append( seq, x )
+        t.Fatalf("ERR: %v, i=%v\n", err.Error(), i)
+      }
+      seq = append(seq, x)
     }
-    
+
     // Transform the mutations but this time skip mutation k
     for k := 0; k < len(all); k++ {
       seq2 := []Mutation{}
       for i := 0; i < len(all); i++ {
-	if i == k {
-	  continue
-	}
-	_, x, err := TransformSeq(seq2, all[i])
-	if err != nil {
-	  t.Fatal(err.String())
-	}
-	seq2 = append( seq2, x )
+        if i == k {
+          continue
+        }
+        _, x, err := TransformSeq(seq2, all[i])
+        if err != nil {
+          t.Fatal(err.Error())
+        }
+        seq2 = append(seq2, x)
       }
-      
+
       // Undo mutation k in seq
       seq3, err := PruneMutationSeq(seq, map[string]bool{seq[k].ID: true})
       if err != nil {
-	t.Fatalf("ERR: %v, k=%v", err.String(), k)
+        t.Fatalf("ERR: %v, k=%v", err.Error(), k)
       }
-      
+
       // Check that seq2 and seq3 both generate the same document
       doc2 := NewSimpleText(original)
       for _, mut := range seq2 {
-	result, err := Execute(doc2, mut)
-	if err != nil {
-	  t.Fatal(err.String())
-	}
-	doc2 = result.(*SimpleText)
+        result, err := Execute(doc2, mut)
+        if err != nil {
+          t.Fatal(err.Error())
+        }
+        doc2 = result.(*SimpleText)
       }
 
       doc3 := NewSimpleText(original)
       for _, mut := range seq3 {
-	result, err := Execute(doc3, mut)
-	if err != nil {
-	  t.Fatal(err.String())
-	}
-	doc3 = result.(*SimpleText)
+        result, err := Execute(doc3, mut)
+        if err != nil {
+          t.Fatal(err.Error())
+        }
+        doc3 = result.(*SimpleText)
       }
 
       if doc2.Text != doc3.Text {
-	t.Fatalf("Undo delivers different docs:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text)
+        t.Fatalf("Undo delivers different docs:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text)
       }
-      
+
       _, x, err := TransformSeq(seq2, all[k])
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       seq2 = append(seq2, x)
-      
+
       _, x, err = TransformSeq(seq3, all[k])
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       seq3 = append(seq3, x)
-      
+
       result, err := Execute(doc2, seq2[len(seq2)-1])
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       doc2 = result.(*SimpleText)
-      
+
       result, err = Execute(doc3, seq3[len(seq3)-1])
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       doc3 = result.(*SimpleText)
 
       if doc2.Text != doc3.Text {
-	t.Fatal(fmt.Sprintf("Undo delivers different docs after all applications:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text))
+        t.Fatal(fmt.Sprintf("Undo delivers different docs after all applications:\n\tdoc1: %v\n\tdoc2: %v\n", doc2.Text, doc3.Text))
       }
 
       comp1, err := ComposeSeq(seq)
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
 
       comp2, err := ComposeSeq(seq2)
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
-      
+
       comp3, err := ComposeSeq(seq3)
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
 
       cdoc1 := NewSimpleText(original)
       result, err = Execute(cdoc1, comp1)
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       cdoc1 = result.(*SimpleText)
 
       cdoc2 := NewSimpleText(original)
       result, err = Execute(cdoc2, comp2)
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       cdoc2 = result.(*SimpleText)
-      
+
       cdoc3 := NewSimpleText(original)
       result, err = Execute(cdoc3, comp3)
       if err != nil {
-	t.Fatal(err.String())
+        t.Fatal(err.Error())
       }
       cdoc3 = result.(*SimpleText)
 
       if cdoc1.Text != cdoc2.Text {
-	t.Fatal("cdoc1 != cdoc2")
+        t.Fatal("cdoc1 != cdoc2")
       }
 
       if cdoc2.Text != cdoc3.Text {
-	t.Fatal("cdoc2 != cdoc3")
+        t.Fatal("cdoc2 != cdoc3")
       }
     }
   }
@@ -361,7 +359,7 @@ func TestTombStream(t *testing.T) {
   if v.Len() != 1 || v.At(0) != 7 {
     t.Fatal("Error in TombStream 1")
   }
-  
+
   ts = NewTombStream(&v)
   ts.InsertChars(1)
   chars, err1 := ts.Skip(2)
@@ -387,7 +385,7 @@ func TestTombStream(t *testing.T) {
   if v.Len() != 1 || v.At(0) != 10 {
     t.Fatal("Error in TombStream 2")
   }
-  
+
   ts = NewTombStream(&v)
   chars, _ = ts.Skip(3)
   if chars != 3 {
@@ -400,7 +398,7 @@ func TestTombStream(t *testing.T) {
   if v.Len() != 3 || v.At(0) != 3 || v.At(1) != -2 || v.At(2) != 5 {
     t.Fatal("Error in TombStream 3")
   }
-  
+
   ts = NewTombStream(&v)
   chars, _ = ts.Skip(5)
   if chars != 3 {
@@ -449,7 +447,7 @@ func TestTombStream(t *testing.T) {
   if chars != 2 {
     t.Fatal("Invalid number of chars")
   }
-  ts.InsertTombs(3)  // Middle of char
+  ts.InsertTombs(3) // Middle of char
   chars, _ = ts.Skip(1)
   if chars != 1 {
     t.Fatal("Invalid number of chars")
@@ -459,7 +457,7 @@ func TestTombStream(t *testing.T) {
   }
 
   ts = NewTombStream(&v)
-  ts.InsertTombs(2)  // Beginning of seq
+  ts.InsertTombs(2) // Beginning of seq
   if v.Len() != 6 || v.At(0) != -2 || v.At(1) != 1 || v.At(2) != -7 || v.At(3) != 1 || v.At(4) != -3 || v.At(5) != 1 {
     t.Fatal("Error in TombStream 8")
   }
@@ -520,26 +518,26 @@ func TestTransform(t *testing.T) {
     prev := ""
     for perm := range Permutations(len(all)) {
       doc := NewSimpleText(original)
-      var err os.Error
+      var err error
       var applied []Mutation
       for i := 0; i < len(perm); i++ {
-	mut := all[perm[i]]
-	// Transform against all applied ops
-	for _, appliedmut := range applied {
-	  _, mut, err = Transform(appliedmut, mut)
+        mut := all[perm[i]]
+        // Transform against all applied ops
+        for _, appliedmut := range applied {
+          _, mut, err = Transform(appliedmut, mut)
           if err != nil {
-	    t.Fatal(err.String())
+            t.Fatal(err.Error())
           }
-	}
-	applied = append(applied, mut)
-	var result interface{}
-	result, err = Execute(doc, mut)
-	doc = result.(*SimpleText)
+        }
+        applied = append(applied, mut)
+        var result interface{}
+        result, err = Execute(doc, mut)
+        doc = result.(*SimpleText)
       }
       if counter == 0 {
-	prev = doc.Text
+        prev = doc.Text
       } else if prev != doc.Text {
-	t.Fatal("Different docs")
+        t.Fatal("Different docs")
       }
       counter++
     }

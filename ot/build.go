@@ -1,9 +1,8 @@
-package lightwaveot
+package ot
 
 import (
-  "log"
-  "os"
   lst "container/list"
+  "log"
 )
 
 // The builder is used by the Build function as a storage backend.
@@ -94,28 +93,28 @@ func (self *SimpleBuilder) Enqueue(mut Mutation, deps []string) {
 func (self *SimpleBuilder) Dequeue(waitFor string) (muts []Mutation) {
   // Is any other mutation waiting for 'waitFor'?
   if l, ok := self.waitingLists[waitFor]; ok {
-    self.waitingLists[waitFor] = nil, false
+    delete(self.waitingLists, waitFor)
     for l.Len() > 0 {
       waiting_id := l.Remove(l.Front()).(string)
       self.pendingMutations[waiting_id]--
       // The waiting mutation is no waiting for anything anymore -> return it
       if self.pendingMutations[waiting_id] == 0 {
-	self.pendingMutations[waiting_id] = 0, false
-	muts = append(muts, self.waitingBlobs[waiting_id])
-	self.waitingBlobs[waiting_id] = Mutation{}, false
+        delete(self.pendingMutations, waiting_id)
+        muts = append(muts, self.waitingBlobs[waiting_id])
+        delete(self.waitingBlobs, waiting_id)
       }
     }
   }
   return
 }
-  
+
 // Implements the Builder interface
 func (self *SimpleBuilder) History(reverse bool) <-chan Mutation {
   ch := make(chan Mutation)
   if reverse {
     f := func() {
       for i := len(self.mutations) - 1; i >= 0; i-- {
-	ch <- self.appliedBlobs[self.mutations[i]]
+        ch <- self.appliedBlobs[self.mutations[i]]
       }
       close(ch)
     }
@@ -144,7 +143,7 @@ func (self *SimpleBuilder) Apply(mut *Mutation) {
 // -------------------------------------------
 // Build
 
-func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
+func Build(builder Builder, mut Mutation) (applied bool, err error) {
   // The mutation has already been applied?
   if builder.HasApplied(mut.ID) {
     return true, nil
@@ -176,11 +175,11 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
     // history of 'mut' because these must be pruned.
     for history_mut := range builder.History(true) {
       if !h.Substitute(history_mut) {
-	prune[history_mut.ID] = true
+        prune[history_mut.ID] = true
       }
       reverse_muts = append(reverse_muts, history_mut)
       if h.Test() {
-	break
+        break
       }
     }
   }
@@ -189,32 +188,32 @@ func Build(builder Builder, mut Mutation) (applied bool, err os.Error) {
   // This is ugly but prepending in the above loops is too slow.
   muts := make([]Mutation, len(reverse_muts))
   for i := 0; i < len(muts); i++ {
-    muts[i] = reverse_muts[len(reverse_muts) - 1 - i]
+    muts[i] = reverse_muts[len(reverse_muts)-1-i]
   }
-  
+
   // Prune all mutations that have been applied locally but do not belong to the history of 'mut'
   pmuts, e := PruneMutationSeq(muts, prune)
   if e != nil {
     return false, e
   }
-  
+
   // Transform 'mut' to apply it locally
   pmuts = append(pmuts, mut)
   for _, m := range muts {
     if m.ID != pmuts[0].ID {
       pmuts, _, err = TransformSeq(pmuts, m)
       if err != nil {
-	log.Printf("TRANSFORM ERR: %v", err)
-	return
+        log.Printf("TRANSFORM ERR: %v", err)
+        return
       }
     } else {
       pmuts = pmuts[1:]
     }
   }
   mut = pmuts[0]
-  
+
   builder.Apply(&mut)
-  
+
   // Process all mutations that had have been waiting for 'mut'
   for _, m := range builder.Dequeue(mut.ID) {
     Build(builder, m)
@@ -235,14 +234,14 @@ type Frontier map[string]bool
 func (self Frontier) Add(mut Mutation) {
   self[mut.ID] = true
   for _, dep := range mut.Dependencies {
-    self[dep] = false, false
+    delete(self, dep)
   }
 }
 
 func (self Frontier) AddBlob(blobref string, deps []string) {
   self[blobref] = true
   for _, dep := range deps {
-    self[dep] = false, false
+    delete(self, dep)
   }
 }
 
@@ -263,7 +262,7 @@ func (self Frontier) FromIDs(ids []string) {
 // HistoryGraph
 
 type HistoryGraph struct {
-  frontier map[string]bool
+  frontier    map[string]bool
   oldFrontier map[string]bool
   markedCount int
 }
@@ -296,16 +295,16 @@ func (self *HistoryGraph) Substitute(mut Mutation) bool {
   }
   for _, dep := range mut.Dependencies {
     _, mark := self.oldFrontier[dep]
-    existsMark, exists := self.frontier[dep] 
+    existsMark, exists := self.frontier[dep]
     mark = mark || ismarked
     if !exists || (mark && !existsMark) {
       self.frontier[dep] = mark
       if mark {
-	self.markedCount++
+        self.markedCount++
       }
     }
   }
-  self.frontier[mut.ID] = false, false
+  delete(self.frontier, mut.ID)
   return ismarked
 }
 
@@ -319,16 +318,16 @@ func (self *HistoryGraph) SubstituteBlob(blobref string, dependencies []string) 
   }
   for _, dep := range dependencies {
     _, mark := self.oldFrontier[dep]
-    existsMark, exists := self.frontier[dep] 
+    existsMark, exists := self.frontier[dep]
     mark = mark || ismarked
     if !exists || (mark && !existsMark) {
       self.frontier[dep] = mark
       if mark {
-	self.markedCount++
+        self.markedCount++
       }
     }
   }
-  self.frontier[blobref] = false, false
+  delete(self.frontier, blobref)
   return ismarked
 }
 

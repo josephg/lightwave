@@ -1,7 +1,7 @@
-package lightwaveot
+package ot
 
 import (
-  "os"
+  "errors"
   "fmt"
 )
 
@@ -10,7 +10,7 @@ type composeReader struct {
 }
 
 // Read a tuple of operations from Stream1 and Stream2
-func (self *composeReader) Read() (second Operation, first Operation, err os.Error) {
+func (self *composeReader) Read() (second Operation, first Operation, err error) {
   // EOF?
   if self.stream1.IsEOF() && self.stream2.IsEOF() {
     return
@@ -18,7 +18,7 @@ func (self *composeReader) Read() (second Operation, first Operation, err os.Err
   // EOF Stream1?
   if self.stream1.IsEOF() {
     if self.stream2.ops[self.stream2.pos].Kind != InsertOp {
-      err = os.NewError("Streams have different length (1)")
+      err = errors.New("Streams have different length (1)")
       return
     }
     first = self.stream2.Read(-1)
@@ -27,7 +27,7 @@ func (self *composeReader) Read() (second Operation, first Operation, err os.Err
   // EOF Stream2?
   if self.stream2.IsEOF() {
     if self.stream1.ops[self.stream1.pos].Kind != InsertOp {
-      err = os.NewError("Streams have different length (2)")
+      err = errors.New("Streams have different length (2)")
       return
     }
     second = self.stream1.Read(-1)
@@ -39,13 +39,13 @@ func (self *composeReader) Read() (second Operation, first Operation, err os.Err
     return
   }
   // Skip, Insert (of stream2) and Delete go together
-  l := min(self.stream1.ops[self.stream1.pos].Len - self.stream1.inside, self.stream2.ops[self.stream2.pos].Len - self.stream2.inside)
-  second = self.stream1.Read( l ) 
-  first = self.stream2.Read( l )
+  l := min(self.stream1.ops[self.stream1.pos].Len-self.stream1.inside, self.stream2.ops[self.stream2.pos].Len-self.stream2.inside)
+  second = self.stream1.Read(l)
+  first = self.stream2.Read(l)
   return
 }
 
-func ComposeSeq(mutations []Mutation) (result Mutation, err os.Error) {
+func ComposeSeq(mutations []Mutation) (result Mutation, err error) {
   if len(mutations) == 0 {
     return
   }
@@ -59,14 +59,14 @@ func ComposeSeq(mutations []Mutation) (result Mutation, err os.Error) {
   return
 }
 
-func Compose(first Mutation, second Mutation) (result Mutation, err os.Error) {
+func Compose(first Mutation, second Mutation) (result Mutation, err error) {
   result.Operation, err = composeOp(first.Operation, second.Operation)
   return
 }
 
-func composeOp(first Operation, second Operation) (result Operation, err os.Error) {
+func composeOp(first Operation, second Operation) (result Operation, err error) {
   if first.Kind != second.Kind {
-    err = os.NewError("Operations of both streams operate on a different data type or they are not allowed in this place")
+    err = errors.New("Operations of both streams operate on a different data type or they are not allowed in this place")
     return
   }
   result.Kind = first.Kind
@@ -80,15 +80,15 @@ func composeOp(first Operation, second Operation) (result Operation, err os.Erro
   case NoOp:
     // Do nothing by intention
   default:
-    err = os.NewError("Operation kind not allowed in this place")
+    err = errors.New("Operation kind not allowed in this place")
   }
   return
 }
 
-type composeFunc func(fi Operation, undo Operation) (result Operation, err os.Error)
+type composeFunc func(fi Operation, undo Operation) (result Operation, err error)
 
-func composeOps(first []Operation, second []Operation, f composeFunc) (result []Operation, err os.Error) {
-  var reader = composeReader{stream1: &stream{ops:second}, stream2: &stream{ops:first}}
+func composeOps(first []Operation, second []Operation, f composeFunc) (result []Operation, err error) {
+  var reader = composeReader{stream1: &stream{ops: second}, stream2: &stream{ops: first}}
   for {
     var first_op, second_op Operation
     second_op, first_op, err = reader.Read()
@@ -108,13 +108,13 @@ func composeOps(first []Operation, second []Operation, f composeFunc) (result []
   return
 }
 
-func composeStringOp(first Operation, second Operation) (result Operation, err os.Error) {
+func composeStringOp(first Operation, second Operation) (result Operation, err error) {
   if first.Kind != InsertOp && first.Kind != SkipOp && first.Kind != DeleteOp && first.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in a string: first:%v", first.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in a string: first:%v", first.Kind))
     return
   }
   if second.Kind != InsertOp && second.Kind != SkipOp && second.Kind != DeleteOp && second.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in a string: second:%v", second.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in a string: second:%v", second.Kind))
     return
   }
   if first.Kind == InsertOp {
@@ -131,13 +131,13 @@ func composeStringOp(first Operation, second Operation) (result Operation, err o
   return
 }
 
-func composeObject(first []Operation, second []Operation) (result []Operation, err os.Error) {
+func composeObject(first []Operation, second []Operation) (result []Operation, err error) {
   attr_first := make(map[string]int)
   attr_second := make(map[string]int)
   pos := 0
   for _, a := range first {
     if a.Kind != AttributeOp {
-      err = os.NewError("Operation not allowed in an object context")
+      err = errors.New("Operation not allowed in an object context")
       return
     }
     attr_first[a.Value.(string)] = pos
@@ -146,7 +146,7 @@ func composeObject(first []Operation, second []Operation) (result []Operation, e
   pos = 0
   for _, a := range second {
     if a.Kind != AttributeOp {
-      err = os.NewError("Operation not allowed in an object context")
+      err = errors.New("Operation not allowed in an object context")
       return
     }
     attr_second[a.Value.(string)] = pos
@@ -159,9 +159,9 @@ func composeObject(first []Operation, second []Operation) (result []Operation, e
     } else {
       ops, err := composeOps(first[pos1].Operations, second[pos2].Operations, composeAttrOp)
       if err != nil {
-	return
+        return ops, err
       }
-      result = append(result, Operation{Kind:AttributeOp, Value:key, Operations: ops})
+      result = append(result, Operation{Kind: AttributeOp, Value: key, Operations: ops})
     }
   }
   for key, pos2 := range attr_second {
@@ -173,13 +173,13 @@ func composeObject(first []Operation, second []Operation) (result []Operation, e
   return
 }
 
-func composeAttrOp(first Operation, second Operation) (result Operation, err os.Error) {
+func composeAttrOp(first Operation, second Operation) (result Operation, err error) {
   if first.Kind != InsertOp && first.Kind != SkipOp && first.Kind != StringOp && first.Kind != ObjectOp && first.Kind != ArrayOp && first.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in a string: first:%v", first.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in a string: first:%v", first.Kind))
     return
   }
   if second.Kind != InsertOp && second.Kind != SkipOp && second.Kind != StringOp && second.Kind != ObjectOp && second.Kind != ArrayOp && second.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in a string: second:%v", second.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in a string: second:%v", second.Kind))
     return
   }
   if second.Kind == InsertOp { // The first op is for sure NoOp
@@ -187,7 +187,7 @@ func composeAttrOp(first Operation, second Operation) (result Operation, err os.
   } else if first.Kind == InsertOp {
     if second.Kind == StringOp || second.Kind == ObjectOp || second.Kind == ArrayOp {
       if len(first.Operations) != 1 {
-	err = os.NewError("Insert operation must have one child operation when composed with StringOp, ObjectOp or ArrayOp")
+        err = errors.New("Insert operation must have one child operation when composed with StringOp, ObjectOp or ArrayOp")
       }
       result = first
       result.Operations[0], err = composeOp(first.Operations[0], second)

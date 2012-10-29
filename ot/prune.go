@@ -1,20 +1,20 @@
-package lightwaveot
+package ot
 
 import (
-  "os"
+  "errors"
   "fmt"
 )
 
-func PruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err os.Error) {
+func PruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation, err error) {
   started := false
   var u Mutation
   for _, mut := range muts {
     if _, isundo := prune[mut.ID]; !isundo {
       if started {
-	mut, u, err = PruneMutation(mut, u)
-	if err != nil {
-	  return
-	}
+        mut, u, err = PruneMutation(mut, u)
+        if err != nil {
+          return
+        }
       }
       result = append(result, mut)
       continue
@@ -25,25 +25,25 @@ func PruneMutationSeq(muts []Mutation, prune map[string]bool) (result []Mutation
     } else {
       u, err = Compose(u, mut)
       if err != nil {
-	return
+        return
       }
     }
   }
   return
 }
 
-func PruneMutation(mut Mutation, prune Mutation) (tmut Mutation, tprune Mutation, err os.Error) {
+func PruneMutation(mut Mutation, prune Mutation) (tmut Mutation, tprune Mutation, err error) {
   tmut = mut
   tprune = prune
   tmut.Operation, tprune.Operation, err = pruneOp(tmut.Operation, prune.Operation)
   return
 }
 
-func pruneOp(op Operation, prune Operation) (top Operation, tprune Operation, err os.Error) {
+func pruneOp(op Operation, prune Operation) (top Operation, tprune Operation, err error) {
   top = op
   tprune = prune
   if op.Kind != prune.Kind {
-    err = os.NewError("Operations of both streams operate on a different data type or they are not allowed in this place")
+    err = errors.New("Operations of both streams operate on a different data type or they are not allowed in this place")
     return
   }
   switch op.Kind {
@@ -56,13 +56,13 @@ func pruneOp(op Operation, prune Operation) (top Operation, tprune Operation, er
   case NoOp:
     // Do nothing by intention
   default:
-    err = os.NewError("Operation kind not allowed in this place")
+    err = errors.New("Operation kind not allowed in this place")
   }
   return
 }
 
-func pruneOps(ops []Operation, prune []Operation, f transformFunc) (tops []Operation, tprune []Operation, err os.Error) {
-  var reader = composeReader{stream1: &stream{ops:ops}, stream2: &stream{ops:prune}}
+func pruneOps(ops []Operation, prune []Operation, f transformFunc) (tops []Operation, tprune []Operation, err error) {
+  var reader = composeReader{stream1: &stream{ops: ops}, stream2: &stream{ops: prune}}
   for {
     var op1, op2 Operation
     op1, op2, err = reader.Read()
@@ -84,32 +84,32 @@ func pruneOps(ops []Operation, prune []Operation, f transformFunc) (tops []Opera
   return
 }
 
-func pruneStringOp(op Operation, prune Operation) (top Operation, tprune Operation, err os.Error) {
+func pruneStringOp(op Operation, prune Operation) (top Operation, tprune Operation, err error) {
   if op.Kind != InsertOp && op.Kind != SkipOp && op.Kind != DeleteOp && op.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in a string: op:%v", op.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in a string: op:%v", op.Kind))
     return
   }
   if prune.Kind != InsertOp && prune.Kind != SkipOp && prune.Kind != DeleteOp && prune.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in a string: undo:%v", prune.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in a string: undo:%v", prune.Kind))
     return
   }
   top = op
   tprune = prune
   if op.Kind == InsertOp {
     tprune = Operation{Kind: SkipOp, Len: op.Len}
-  } else if  prune.Kind == InsertOp {
+  } else if prune.Kind == InsertOp {
     top = Operation{}
   }
   return
 }
 
-func pruneObject(ops1 []Operation, ops2 []Operation) (tops1 []Operation, tops2 []Operation, err os.Error) {
+func pruneObject(ops1 []Operation, ops2 []Operation) (tops1 []Operation, tops2 []Operation, err error) {
   attr1 := make(map[string]int)
   attr2 := make(map[string]int)
   pos := 0
   for _, a := range ops1 {
     if a.Kind != AttributeOp {
-      err = os.NewError("Operation not allowed in an object context")
+      err = errors.New("Operation not allowed in an object context")
       return
     }
     attr1[a.Value.(string)] = pos
@@ -118,7 +118,7 @@ func pruneObject(ops1 []Operation, ops2 []Operation) (tops1 []Operation, tops2 [
   pos = 0
   for _, a := range ops2 {
     if a.Kind != AttributeOp {
-      err = os.NewError("Operation not allowed in an object context")
+      err = errors.New("Operation not allowed in an object context")
       return
     }
     attr2[a.Value.(string)] = pos
@@ -141,18 +141,18 @@ func pruneObject(ops1 []Operation, ops2 []Operation) (tops1 []Operation, tops2 [
   return
 }
 
-func pruneAttrOp(op Operation, prune Operation) (top Operation, tprune Operation, err os.Error) {
+func pruneAttrOp(op Operation, prune Operation) (top Operation, tprune Operation, err error) {
   if op.Kind != InsertOp && op.Kind != SkipOp && op.Kind != ObjectOp && op.Kind != ArrayOp && op.Kind != StringOp && op.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in an object context: %v", op.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in an object context: %v", op.Kind))
     return
   }
   if prune.Kind != InsertOp && prune.Kind != SkipOp && prune.Kind != ObjectOp && prune.Kind != ArrayOp && prune.Kind != StringOp && prune.Kind != NoOp {
-    err = os.NewError(fmt.Sprintf("Operation not allowed in an object context: %v", prune.Kind))
+    err = errors.New(fmt.Sprintf("Operation not allowed in an object context: %v", prune.Kind))
     return
   }
   top = op
   tprune = prune
-  if op.Kind == InsertOp {  // prune must be NoOp
+  if op.Kind == InsertOp { // prune must be NoOp
     tprune = Operation{Kind: SkipOp, Len: op.Len}
   } else if prune.Kind == InsertOp {
     top = Operation{}
