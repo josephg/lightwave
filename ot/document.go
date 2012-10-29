@@ -45,11 +45,11 @@ type Array interface {
 // It stores where inside the string of characters the tombs are located.
 // See SimpleText for an example of how to use the TombStream.
 type TombStream struct {
-  seq         *[]int
+  seq         *IntVector
   pos, inside int
 }
 
-func NewTombStream(seq *[]int) *TombStream {
+func NewTombStream(seq *IntVector) *TombStream {
   return &TombStream{seq: seq}
 }
 
@@ -405,7 +405,7 @@ type SimpleText struct {
   Text string // The string without any tombs
   // A positive number represents a sequence of visible characters.
   // A negative number represents a sequence of tombs.
-  tombs      []int
+  tombs      IntVector
   tombStream *TombStream // Used during a mutation
   pos        int         // Used during a mutation
 }
@@ -507,10 +507,10 @@ func (self *SimpleObject) End() {
 // Plain text that can be edited concurrently.
 // Implements the Text interface.
 type SimpleArray struct {
-  array []interface{}
+  array Vector
   // A positive number represents a sequence of visible characters.
   // A negative number represents a sequence of tombs.
-  tombs      []int
+  tombs      IntVector
   tombStream *TombStream // Used during a mutation
   pos        int         // Used during a mutation
 }
