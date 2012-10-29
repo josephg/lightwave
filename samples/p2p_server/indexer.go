@@ -1,10 +1,10 @@
 package main
 
 import (
-  . "lightwaveot"
-  . "lightwavestore"
+  . "lightwave/ot"
+  . "lightwave/store"
   "log"
-  "os"
+  "errors"
 )
 
 type IndexerListener interface {
@@ -23,7 +23,7 @@ func NewIndexer(store BlobStore) *Indexer {
   return idx
 }
 
-func (self *Indexer) HandleClientMutation(mut Mutation) (err os.Error) {
+func (self *Indexer) HandleClientMutation(mut Mutation) (err error) {
   appliedAt := 0
   // Fetch all mutations which are newer than mut.AppliedAt
   history_muts := []Mutation{}
@@ -51,17 +51,18 @@ func (self *Indexer) HandleClientMutation(mut Mutation) (err os.Error) {
   return
 }
 
-func (self *Indexer) HandleBlob(blob []byte, blobref string) {
+func (self *Indexer) HandleBlob(blob []byte, blobref string) error {
   mut, err := DecodeMutation(blob)
   if err != nil {
     log.Printf("JSON ERR: %v\n", err)
-    return
+    return nil
   }
   if mut.ID != blobref {
-    panic("Something is wrong with the blobref")
+    return errors.New("Something is wrong with the blobref")
   }
   // Try to apply it
   Build(self, mut)
+  return nil
 }
 
 func (self *Indexer) AddListener(l IndexerListener) {

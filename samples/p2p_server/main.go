@@ -2,7 +2,7 @@ package main
 
 import (
   "flag"
-  . "lightwavestore"
+  . "lightwave/store"
 )
 
 func main() {
