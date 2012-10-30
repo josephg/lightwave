@@ -1,8 +1,7 @@
 package main
 
 import (
-  . "lightwaveot"
-  "os"
+  . "lightwave/ot"
   "log"
   "net"
   "net/textproto"
@@ -21,7 +20,7 @@ func NewCSProtocol(laddr string, indexer *Indexer) *CSProtocol {
   return cs
 }
 
-func (self *CSProtocol) Dial() (err os.Error) {
+func (self *CSProtocol) Dial() (err error) {
   self.conn, err = net.Dial("tcp", self.laddr)
   if err != nil {
     return err

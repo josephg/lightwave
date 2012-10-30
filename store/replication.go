@@ -155,6 +155,7 @@ func (self *Replication) heloHandler(msg Message) {
     msg.connection.Close()
     return
   }
+  println("HELO", userID)
   msg.connection.userID = userID
 }
 

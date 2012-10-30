@@ -1,9 +1,9 @@
 package main
 
 import (
-  . "lightwaveot"
-  "os"
-  "log"
+  . "lightwave/ot"
+  "errors"
+  //"log"
 )
 
 type IndexerListener interface {
@@ -41,13 +41,13 @@ func (self *Indexer) HandleClientMutation(mut Mutation) {
   }
 }
 
-func (self *Indexer) HandleServerMutation(mut Mutation) (err os.Error) {
-  log.Printf("Read from server\n")
+func (self *Indexer) HandleServerMutation(mut Mutation) (err error) {
+  //log.Printf("Read from server\n")
   // Is this a server ACK?
   if mut.Site == self.site {
-    log.Printf("\tAck\n")
+    //log.Printf("\tAck\n")
     if self.mutationInFlight.Operation.Kind == NoOp {
-      return os.NewError("Did not expect a server ACK")
+      return errors.New("Did not expect a server ACK")
     }
     self.mutationInFlight = Mutation{}
     self.serverVersion = mut.AppliedAt + 1
@@ -65,12 +65,12 @@ func (self *Indexer) HandleServerMutation(mut Mutation) (err os.Error) {
   if self.mutationInFlight.Operation.Kind != NoOp {
     tmut, _, err = Transform(mut, self.mutationInFlight)
     if err != nil {
-      return os.NewError("Transformation Error")
+      return errors.New("Transformation Error")
     }
   }
   self.mutationQueue, tmut, err = TransformSeq(self.mutationQueue, tmut)
   if err != nil {
-    return os.NewError("Transformation Error")
+    return errors.New("Transformation Error")
   }
   self.serverVersion = mut.AppliedAt + 1  
   self.Apply(tmut)

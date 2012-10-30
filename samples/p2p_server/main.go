@@ -9,7 +9,7 @@ import (
 func main() {
   // Parse the command line
   var userid string
-  flag.StringVar(&userid, "u", "", "ID of the user owning the blob store, e.g. 'b@bob'")
+  flag.StringVar(&userid, "u", "user", "ID of the user owning the blob store, e.g. 'b@bob'")
   var laddr string
   flag.StringVar(&laddr, "l", "", "Network address of the local peer, e.g. ':8181'")
   var raddr string
@@ -24,7 +24,7 @@ func main() {
   
   // Accept incoming network connections
   replication := NewReplication(userid, store, laddr, raddr)
-  if laddr != "" || raddr != "" {
+  if laddr != "" {
     println("Replication listening on port", laddr)
     go replication.Listen()
   }

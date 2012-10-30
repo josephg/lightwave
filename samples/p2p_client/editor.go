@@ -1,19 +1,18 @@
 package main
 
 import (
-  . "curses"
-  . "lightwaveot"
+  . "lightwave/ot"
+  "github.com/nsf/termbox-go"
   "os"
   "fmt"
   "strings"
-  vec "container/vector"
 )
 
 type Editor struct {
   indexer *Indexer
   frontier Frontier
   text string
-  tombs vec.IntVector
+  tombs IntVector
   // Required during mutations
   mutPos, mutLinePos, mutLine int
   mutTombs *TombStream
@@ -23,7 +22,8 @@ type Editor struct {
 }
 
 func NewEditor(indexer *Indexer) *Editor {
-  e := &Editor{indexer: indexer, Rows: *Rows, Columns: *Cols, frontier:make(Frontier)}
+  rows, cols := termbox.Size()
+  e := &Editor{indexer: indexer, Rows: rows, Columns: cols, frontier:make(Frontier)}
   indexer.AddListener(e)
   return e
 }
@@ -44,8 +44,8 @@ func (self *Editor) InsertChars(str string) {
   self.text = self.text[:self.mutPos] + str + self.text[self.mutPos:]
   newlines := strings.Count(str, "\n")
   if newlines > 0 {
-    Stdwin.Move(self.mutLinePos, self.mutLine)
-    Stdwin.Clrtobot()
+    termbox.SetCursor(self.mutLinePos, self.mutLine)
+    //Stdwin.Clrtobot()
     self.mutLine += newlines
     self.mutLinePos = len(str) - strings.LastIndex(str, "\n") - 1
   } else {
@@ -60,7 +60,7 @@ func (self *Editor) InsertTombs(count int) {
 }
 
 // Text interface
-func (self *Editor) Delete(count int) (err os.Error) {
+func (self *Editor) Delete(count int) (err error) {
   for _, r := range self.ranges {
     r.Delete(self.mutPos, count)
   }
@@ -69,18 +69,18 @@ func (self *Editor) Delete(count int) (err os.Error) {
   if err != nil {
     return
   }
-  Stdwin.Move(self.mutLinePos, self.mutLine)
+  termbox.SetCursor(self.mutLinePos, self.mutLine)
   if strings.Count(self.text[self.mutPos:self.mutPos + burried], "\n") > 0 {
-    Stdwin.Clrtobot()
+    //Stdwin.Clrtobot()
   } else {
-    Stdwin.Clrtoeol()
+    //Stdwin.Clrtoeol()
   }  
   self.text = self.text[:self.mutPos] + self.text[self.mutPos + burried:]
   return
 }
 
 // Text interface
-func (self *Editor) Skip(count int) (err os.Error) {
+func (self *Editor) Skip(count int) (err error) {
   var chars int
   chars, err = self.mutTombs.Skip(count)
   str := self.text[self.mutPos:self.mutPos + chars]
@@ -133,7 +133,9 @@ func (self *Editor) Cursor() int {
 func (self *Editor) SetCursor(pos int) {
   self.ranges[0].Current.TextPos = pos
   linepos, line := self.CursorToScreenPos(pos)
-  Stdwin.Move(linepos - self.ScrollX, line - self.ScrollY)
+  //Stdwin.Move(linepos - self.ScrollX, line - self.ScrollY)
+  termbox.SetCursor(linepos - self.ScrollX, line - self.ScrollY)
+  termbox.Flush()
 }
 
 func (self *Editor) CursorToScreenPos(pos int) (linepos int, line int) {
@@ -173,14 +175,17 @@ func (self *Editor) Refresh() {
     if pos == len(self.text) || self.text[pos] == '\n' {
       // Is this line visible?
       if line - self.ScrollY >= 0 && line - self.ScrollY < self.Rows {
-	str := self.text[start:pos]
-	if len(self.text) > self.ScrollX {
-	  str = str[self.ScrollX:]
-	}
-	if len(str) > self.Columns {
-	  str = str[0:self.Columns]
-	}
-        Stdwin.Addstr(0, line - self.ScrollY, str, 0)
+        str := self.text[start:pos]
+        if len(self.text) > self.ScrollX {
+          str = str[self.ScrollX:]
+        }
+        if len(str) > self.Columns {
+          str = str[0:self.Columns]
+        }
+        for i, r := range(str) {
+          termbox.SetCell(i, line - self.ScrollY, r, termbox.ColorDefault, termbox.ColorDefault)
+        }
+        //Stdwin.Addstr(0, line - self.ScrollY, str, 0)
       }
       line++
       linepos = 0
@@ -191,93 +196,98 @@ func (self *Editor) Refresh() {
   }
   // Show the cursor
   linepos, line = self.CursorToScreenPos(self.Cursor())
-  Stdwin.Move(linepos - self.ScrollX, line - self.ScrollY)
+  //Stdwin.Move(linepos - self.ScrollX, line - self.ScrollY)
+  termbox.SetCursor(linepos - self.ScrollX, line - self.ScrollY)
+  termbox.Flush()
 }
 
 func (self *Editor) Loop() {
   for {
-    inp := Stdwin.Getch()
-    //panic(fmt.Sprintf("KEY %v", inp))
+    e := termbox.PollEvent()
+    if e.Type != termbox.EventKey {
+      continue
+    }
+
     linePos, line := self.CursorToScreenPos(self.Cursor())
-    switch inp {
-    case 'q':
+    switch {
+    case e.Ch == 'q':
       return
-    case KEY_LEFT:
+    case e.Key == termbox.KeyArrowLeft:
       if line == 0 && linePos == 0 {
-	continue
+        continue
       }
       if linePos == 0 {
-	line--
-	str := self.GetLineString(line)
-	linePos = len(str)
-	self.SetCursor(self.ScreenPosToCursor(linePos, line))
+        line--
+        str := self.GetLineString(line)
+        linePos = len(str)
+        self.SetCursor(self.ScreenPosToCursor(linePos, line))
       } else {
-	self.SetCursor(self.Cursor() - 1)
+        self.SetCursor(self.Cursor() - 1)
       }
-    case KEY_RIGHT:
+    case e.Key == termbox.KeyArrowRight:
       str := self.GetLineString(line)
       if linePos >= len(str) {
-	if line == self.LineCount() - 1 {
-	  continue
-	}
-	self.SetCursor(self.ScreenPosToCursor(0, line + 1))
+        if line == self.LineCount() - 1 {
+          continue
+        }
+        self.SetCursor(self.ScreenPosToCursor(0, line + 1))
       } else {
-	self.SetCursor(self.Cursor() + 1)
+        self.SetCursor(self.Cursor() + 1)
       }
-    case KEY_UP:
+    case e.Key == termbox.KeyArrowUp:
       if line == 0 {
-	continue
+        continue
       }
       line--
       str := self.GetLineString(line)
       if linePos > len(str) {
-	linePos = len(str)
+        linePos = len(str)
       }
       self.SetCursor(self.ScreenPosToCursor(linePos, line))
-    case KEY_DOWN:
+    case e.Key == termbox.KeyArrowDown:
       if line + 1 == self.LineCount() {
-	continue
+        continue
       }
       line++
       str := self.GetLineString(line)
       if linePos > len(str) {
-	linePos = len(str)
+        linePos = len(str)
       }
       self.SetCursor(self.ScreenPosToCursor(linePos, line))
-    case KEY_BACKSPACE, 127:
+    case e.Key == termbox.KeyBackspace || e.Key == termbox.KeyBackspace2:
       if line == 0 && linePos == 0 {
-	continue
+        continue
       }
       var mut Mutation
       var ops []Operation
       stream := NewTombStream(&self.tombs)
       skipped, _ := stream.SkipChars(self.Cursor() - 1)
       if skipped > 0 {
-	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+        ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
       }
       deleted, _ := stream.SkipChars(1)
       ops = append(ops, Operation{Kind: DeleteOp, Len: deleted})
       skipped = stream.SkipToEnd()
       if skipped > 0 {
-	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+        ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
       }
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
       self.indexer.HandleClientMutation(mut)
-    default:
-      if inp == KEY_ENTER || inp == 13 {
-	inp = 10
+    case e.Ch != 0 || e.Key == termbox.KeyEnter:
+      if e.Key == termbox.KeyEnter {
+        e.Ch = '\n'
       }
       var mut Mutation
       var ops []Operation
       stream := NewTombStream(&self.tombs)
       skipped, _ := stream.SkipChars(self.Cursor())
       if skipped > 0 {
-	ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
+        ops = append(ops, Operation{Kind: SkipOp, Len: skipped})
       }
-      ops = append(ops, Operation{Kind: InsertOp, Len: 1, Value: string(inp)})
+      ops = append(ops, Operation{Kind: InsertOp, Len: 1, Value: string(e.Ch)})
       skipped = stream.SkipToEnd()
       if skipped > 0 {
-	ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
+        ops = append(ops, Operation{Kind: SkipOp, Len: stream.SkipToEnd()})
       }
       mut.Operation = Operation{Kind: StringOp, Operations: ops}
       self.indexer.HandleClientMutation(mut)
@@ -290,31 +300,19 @@ func (self *Editor) HandleMutation(mut Mutation) {
 //  log.Printf("Apply %v", mut)
   _, err := Execute(self, mut)
   if err != nil {
-    panic(err.String())
+    panic(err.Error())
   }
   self.frontier.Add(mut)
-  Stdwin.Refresh()
+  self.Refresh()
 }
 
-func startGoCurses() (err os.Error) {
-  Initscr()
-  if Stdwin == nil {
-    return os.NewError("Could not init curses")
-  }	
-  Noecho()	
-  Nonl()
-//  if err = Curs_set(2); err != nil {
-//    return
-//  }
-  Stdwin.Keypad(true);	
-  if err = Start_color(); err != nil {
-    return
-  }
+func startGoCurses() (err error) {
+  termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
   return
 }
 
 func stopGoCurses() {
-  Endwin()
+  termbox.Close()
 }
 
 func uuid() string {

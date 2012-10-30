@@ -1,8 +1,8 @@
 package main
 
 import (
-  . "curses"
-  . "lightwaveot"
+  "github.com/nsf/termbox-go"
+  . "lightwave/ot"
   "flag"
 )
 
@@ -13,12 +13,12 @@ func main() {
   flag.Parse()
   
   // Start Curses
-  err := startGoCurses()
-  defer stopGoCurses()
+  err := termbox.Init()
   if err != nil {
-    panic(err.String())
+    panic(err.Error())
   }
-  Init_pair(1, COLOR_RED, COLOR_BLACK)
+  defer termbox.Close()
+  //Init_pair(1, COLOR_RED, COLOR_BLACK)
 
   // Initialize Indexer and Network
   indexer := NewIndexer()

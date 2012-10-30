@@ -43,6 +43,7 @@ func (self *Connection) hasReceivedBlob(blobref string) bool {
 
 // Sends a message that does not require a response
 func (self *Connection) Send(cmd string, data interface{}) (err error) {
+  println("Sending", cmd, "to", self.conn.RemoteAddr().String())
   if cmd == "" {
     return errors.New("Must specify a cmd")
   }
@@ -80,6 +81,8 @@ func (self *Connection) read() {
       self.Close()
       return
     }
+    println("Received", msg.Cmd, "from", self.conn.RemoteAddr().String())
+
     self.replication.HandleMessage(msg)
   }
 }
